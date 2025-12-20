@@ -37,3 +37,5 @@ yarn.lock
 .yarn/
 
 .pnp.cjs
+packages/backend/coverage/
+packages/backend/dist/

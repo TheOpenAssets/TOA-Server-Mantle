@@ -56,7 +56,7 @@ The following directory structure was created based on the architecture plan, fo
 ## 2. Key Files Created
 
 - **Root Configuration:**
-  - `package.json`: Configured with pnpm workspaces for the monorepo.
+  - `package.json`: Configured with yarn workspaces for the monorepo.
   - `tsconfig.json`: Root TypeScript configuration with path aliases for `@/types` and `@/contracts`.
   - `.gitignore`: Standard Node.js ignore file.
 
@@ -83,11 +83,10 @@ The `package.json` files have been populated with the necessary dependencies for
 - `@nestjs/common`, `@nestjs/core`, `@nestjs/platform-express`
 - `reflect-metadata`, `rxjs`
 - Development dependencies like `@nestjs/cli`, `typescript`, `jest`, `prettier`, and `eslint`.
-- `turbo` for monorepo script management.
 
 ## 4. Next Steps
 
-- Install dependencies using `pnpm install`.
+- Install dependencies using `yarn install`.
 - Implement the logic within the placeholder services and controllers.
 - Define schemas in `packages/types`.
 - Write smart contracts in `packages/contracts`.

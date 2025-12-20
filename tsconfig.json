@@ -4,12 +4,13 @@
     "module": "ESNext",
     "moduleResolution": "node",
     "strict": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "strictNullChecks": true,
     "noUncheckedIndexedAccess": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
     "paths": {
       "@mantle/types/*": ["./packages/types/src/*"],
       "@mantle/contracts/*": ["./packages/contracts/generated/*"]
