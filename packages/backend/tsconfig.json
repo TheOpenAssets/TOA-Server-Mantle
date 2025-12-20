@@ -7,7 +7,8 @@
     "paths": {
       "@mantle/types/*": ["../types/src/*"],
       "@mantle/contracts/*": ["../contracts/generated/*"]
-    }
+    },
+    "types": ["jest", "node"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
