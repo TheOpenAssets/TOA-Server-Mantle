@@ -1,0 +1,12 @@
+{
+  "name": "mantle-rwa-platform",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "yarn workspaces foreach -pt run dev",
+    "build": "yarn workspaces foreach -pt run build",
+    "generate:types": "yarn workspace @mantle/contracts generate:types"
+  }
+}
