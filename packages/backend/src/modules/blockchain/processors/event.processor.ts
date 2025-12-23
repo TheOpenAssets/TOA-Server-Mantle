@@ -1,10 +1,6 @@
-import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
+import { TokenHolderTrackingService } from '../../yield/services/token-holder-tracking.service';
 
 @Processor('event-processing')
 export class EventProcessor extends WorkerHost {
@@ -13,6 +9,7 @@ export class EventProcessor extends WorkerHost {
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private tokenHolderTrackingService: TokenHolderTrackingService,
   ) {
     super();
   }
@@ -110,9 +107,9 @@ export class EventProcessor extends WorkerHost {
     const { tokenAddress, from, to, amount, txHash } = data;
     this.logger.log(`Transfer observed for ${tokenAddress}: ${from} -> ${to} [${amount}]`);
     
-    // TODO: Implement Holder Tracking Service sync here
-    // This often involves a separate collection tracking balances per token
+    await this.tokenHolderTrackingService.updateHolderFromTransferEvent(tokenAddress, from, to, amount);
   }
+}
 
   @OnWorkerEvent('completed')
   onCompleted(job: Job) {

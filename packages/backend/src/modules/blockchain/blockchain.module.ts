@@ -10,6 +10,7 @@ import { EventListenerService } from './services/event-listener.service';
 import { EventProcessor } from './processors/event.processor';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { User, UserSchema } from '../../database/schemas/user.schema';
+import { YieldModule } from '../yield/yield.module';
 
 @Global()
 @Module({
@@ -22,6 +23,7 @@ import { User, UserSchema } from '../../database/schemas/user.schema';
     BullModule.registerQueue({
       name: 'event-processing',
     }),
+    YieldModule,
   ],
   providers: [
     BlockchainService,

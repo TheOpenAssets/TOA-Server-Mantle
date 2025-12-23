@@ -11,6 +11,9 @@ import { AuthModule } from './modules/auth/auth.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { KycModule } from './modules/kyc/kyc.module';
 import { BlockchainModule } from './modules/blockchain/blockchain.module';
+import { AssetModule } from './modules/assets/assets.module';
+import { YieldModule } from './modules/yield/yield.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -39,6 +42,9 @@ import { BlockchainModule } from './modules/blockchain/blockchain.module';
     AuthModule,
     KycModule,
     BlockchainModule,
+    AssetModule,
+    YieldModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
