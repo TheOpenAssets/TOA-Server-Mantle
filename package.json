@@ -1,6 +1,7 @@
 {
   "name": "mantle-rwa-platform",
   "private": true,
+  "type": "module",
   "workspaces": [
     "packages/*"
   ],
@@ -9,7 +10,8 @@
     "build": "yarn workspaces foreach -pt run build",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
-    "generate:types": "yarn workspace @mantle/contracts generate:types"
+    "generate:types": "yarn workspace @mantle/contracts generate:types",
+    "sync-env": "cp .env packages/backend/.env && cp .env packages/contracts/.env"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

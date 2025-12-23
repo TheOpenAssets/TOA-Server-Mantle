@@ -47,7 +47,8 @@
     "tesseract.js": "^7.0.0",
     "uuid": "^13.0.0",
     "viem": "^2.43.2",
-    "xml2js": "^0.6.2"
+    "xml2js": "^0.6.2",
+    "@mantle/contracts": "workspace:*"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
