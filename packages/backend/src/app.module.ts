@@ -15,6 +15,7 @@ import { AssetModule } from './modules/assets/assets.module';
 import { YieldModule } from './modules/yield/yield.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ComplianceEngineModule } from './modules/compliance-engine/compliance-engine.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     YieldModule,
     AdminModule,
     NotificationsModule,
+    ComplianceEngineModule,
   ],
   controllers: [AppController],
   providers: [AppService],

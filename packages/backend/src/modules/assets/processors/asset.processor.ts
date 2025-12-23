@@ -113,41 +113,60 @@ export class AssetProcessor extends WorkerHost {
     const { assetId } = data;
     this.logger.log(`Anchoring asset ${assetId} to EigenDA`);
 
-    const asset = await this.assetModel.findOne({ assetId });
-    if (!asset) throw new Error('Asset not found');
+    try {
+      const asset = await this.assetModel.findOne({ assetId });
+      if (!asset) throw new Error('Asset not found');
 
-    // Prepare blob data (simplified JSON for now)
-    const blobData = {
+      // Verify asset has attestation
+      if (!asset.attestation?.signature) {
+        throw new Error('Asset must be attested before EigenDA anchoring');
+      }
+
+      // Prepare blob data including attestation
+      const blobData = {
         assetId: asset.assetId,
         merkleRoot: asset.cryptography.merkleRoot,
         leaves: asset.cryptography.merkleLeaves,
         metadata: asset.metadata,
-        // In real world, include Attestation signature here
-    };
+        attestation: {
+          payload: asset.attestation.payload,
+          hash: asset.attestation.hash,
+          signature: asset.attestation.signature,
+          attestor: asset.attestation.attestor,
+          timestamp: asset.attestation.timestamp,
+        },
+      };
 
-    const blobBuffer = Buffer.from(JSON.stringify(blobData));
+      const blobBuffer = Buffer.from(JSON.stringify(blobData));
 
-    // 1. Disperse
-    const { requestId } = await this.eigenDAService.disperse(blobBuffer);
-    
-    // 2. Wait for confirmation
-    const blobId = await this.eigenDAService.waitForConfirmation(requestId);
+      // 1. Disperse to EigenDA
+      const { requestId } = await this.eigenDAService.disperse(blobBuffer);
+      this.logger.log(`Blob dispersed to EigenDA. Request ID: ${requestId}`);
 
-    // 3. Update Asset
-    await this.assetModel.updateOne(
+      // 2. Wait for confirmation
+      const blobId = await this.eigenDAService.waitForConfirmation(requestId);
+      this.logger.log(`Blob confirmed by EigenDA. Blob ID: ${blobId}`);
+
+      // 3. Update Asset with EigenDA data
+      await this.assetModel.updateOne(
         { assetId },
         {
-            $set: {
-                'eigenDA.blobId': blobId,
-                'eigenDA.blobHash': keccak256(toHex(blobBuffer)),
-                'eigenDA.dispersedAt': new Date(),
-                status: AssetStatus.DA_ANCHORED,
-                'checkpoints.daAnchored': true,
-            }
+          $set: {
+            'eigenDA.blobId': blobId,
+            'eigenDA.requestId': requestId,
+            'eigenDA.blobHash': keccak256(toHex(blobBuffer)),
+            'eigenDA.dispersedAt': new Date(),
+            status: AssetStatus.DA_ANCHORED,
+            'checkpoints.daAnchored': true,
+          }
         }
-    );
+      );
 
-    this.logger.log(`Asset ${assetId} anchored to EigenDA. BlobID: ${blobId}`);
-    return { blobId };
+      this.logger.log(`Asset ${assetId} anchored to EigenDA. BlobID: ${blobId}`);
+      return { blobId, requestId };
+    } catch (error) {
+      this.logger.error(`EigenDA anchoring failed for asset ${assetId}`, error);
+      throw error;
+    }
   }
 }

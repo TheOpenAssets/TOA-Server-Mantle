@@ -7,6 +7,7 @@ import { EigenDAService } from './services/eigenda.service';
 import { AssetProcessor } from './processors/asset.processor';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { AuthModule } from '../auth/auth.module'; // For JwtAuthGuard
+import { ComplianceEngineModule } from '../compliance-engine/compliance-engine.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { AuthModule } from '../auth/auth.module'; // For JwtAuthGuard
       name: 'asset-processing',
     }),
     AuthModule,
+    ComplianceEngineModule,
   ],
   controllers: [AssetsController],
   providers: [AssetLifecycleService, AssetProcessor, EigenDAService],

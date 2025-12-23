@@ -8,6 +8,7 @@ import { CreateAssetDto } from '../dto/create-asset.dto';
 import { v4 as uuidv4 } from 'uuid';
 
 import { RegisterAssetDto } from '../../blockchain/dto/register-asset.dto';
+import { AttestationService } from '../../compliance-engine/services/attestation.service';
 
 @Injectable()
 export class AssetLifecycleService {
@@ -16,6 +17,7 @@ export class AssetLifecycleService {
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectQueue('asset-processing') private assetQueue: Queue,
+    private attestationService: AttestationService,
   ) {}
 
   async getRegisterAssetPayload(assetId: string): Promise<RegisterAssetDto> {
@@ -93,19 +95,38 @@ export class AssetLifecycleService {
 
   async approveAsset(assetId: string, adminWallet: string) {
     this.logger.log(`Asset ${assetId} approved by admin ${adminWallet}`);
-    // In a real flow, this might trigger Attestation generation
-    // For now, we update status to ATTESTED so it can be Registered on-chain
-    return this.assetModel.updateOne(
-        { assetId },
-        { 
-            $set: { 
-                status: AssetStatus.ATTESTED,
-                'checkpoints.attested': true,
-                'attestation.attestor': adminWallet,
-                'attestation.timestamp': new Date()
-            } 
+
+    // Get the asset to generate attestation
+    const asset = await this.assetModel.findOne({ assetId });
+    if (!asset) {
+      throw new Error('Asset not found');
+    }
+
+    // Generate attestation with ECDSA signature
+    const attestation = await this.attestationService.generateAttestation(asset, adminWallet);
+
+    // Update asset with attestation and set status to ATTESTED
+    await this.assetModel.updateOne(
+      { assetId },
+      {
+        $set: {
+          status: AssetStatus.ATTESTED,
+          'checkpoints.attested': true,
+          'attestation.payload': attestation.payload,
+          'attestation.hash': attestation.hash,
+          'attestation.signature': attestation.signature,
+          'attestation.attestor': adminWallet,
+          'attestation.timestamp': new Date()
         }
+      }
     );
+
+    // Queue EigenDA anchoring job
+    await this.assetQueue.add('eigenda-anchoring', { assetId });
+
+    this.logger.log(`Asset ${assetId} attested and queued for EigenDA anchoring`);
+
+    return { success: true, assetId, status: AssetStatus.ATTESTED };
   }
 
   async rejectAsset(assetId: string, reason: string) {
