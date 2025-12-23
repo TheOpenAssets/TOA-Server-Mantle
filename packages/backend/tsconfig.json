@@ -8,7 +8,7 @@
       "@mantle/types/*": ["../types/src/*"],
       "@mantle/contracts/*": ["../contracts/generated/*"]
     },
-    "types": ["jest", "node"]
+    "types": ["jest", "node", "multer"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

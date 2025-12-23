@@ -15,6 +15,6 @@
       "@mantle/types/*": ["./packages/types/src/*"],
       "@mantle/contracts/*": ["./packages/contracts/generated/*"]
     },
-    "types": ["jest", "node"]
+    "types": ["jest", "node", "multer"]
   }
 }
