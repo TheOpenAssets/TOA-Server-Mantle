@@ -6,15 +6,17 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import databaseConfig from './config/database.config';
 import redisConfig from './config/redis.config';
+import blockchainConfig from './config/blockchain.config';
 import { AuthModule } from './modules/auth/auth.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { KycModule } from './modules/kyc/kyc.module';
+import { BlockchainModule } from './modules/blockchain/blockchain.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [databaseConfig, redisConfig],
+      load: [databaseConfig, redisConfig, blockchainConfig],
     }),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
@@ -36,6 +38,7 @@ import { KycModule } from './modules/kyc/kyc.module';
     RedisModule,
     AuthModule,
     KycModule,
+    BlockchainModule,
   ],
   controllers: [AppController],
   providers: [AppService],

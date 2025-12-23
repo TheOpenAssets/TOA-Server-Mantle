@@ -1,27 +1,24 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { RegistryService } from './services/registry.service';
-import { MarketplaceService } from './services/marketplace.service';
-import { TokenService } from './services/token.service';
-import { VaultService } from './services/vault.service';
-import { EventListenerService } from './services/event-listener.service';
+import blockchainConfig from '../../config/blockchain.config';
+import { BlockchainService } from './services/blockchain.service';
+import { WalletService } from './services/wallet.service';
+import { ContractLoaderService } from './services/contract-loader.service';
 
 @Global()
 @Module({
-  imports: [ConfigModule],
+  imports: [
+    ConfigModule.forFeature(blockchainConfig)
+  ],
   providers: [
-    RegistryService,
-    MarketplaceService,
-    TokenService,
-    VaultService,
-    EventListenerService,
+    BlockchainService,
+    WalletService,
+    ContractLoaderService,
   ],
   exports: [
-    RegistryService,
-    MarketplaceService,
-    TokenService,
-    VaultService,
-    EventListenerService,
+    BlockchainService,
+    WalletService,
+    ContractLoaderService,
   ],
 })
 export class BlockchainModule {}
