@@ -6,8 +6,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "yarn workspaces foreach -pt run dev",
-    "build": "yarn workspaces foreach -pt run build",
+    "dev": "yarn workspaces foreach -A -pt run dev",
+    "build": "yarn workspaces foreach -A -pt run build",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "generate:types": "yarn workspace @mantle/contracts generate:types",

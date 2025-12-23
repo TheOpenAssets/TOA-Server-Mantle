@@ -28,9 +28,10 @@ export class SseEmitterService {
     if (!this.connections.has(walletAddress)) {
       this.connections.set(walletAddress, []);
     }
-    this.connections.get(walletAddress).push(connection);
+    const conns = this.connections.get(walletAddress);
+    if (conns) conns.push(connection);
 
-    this.logger.log(`SSE Connected: ${walletAddress} (Total: ${this.connections.get(walletAddress).length})`);
+    this.logger.log(`SSE Connected: ${walletAddress} (Total: ${conns ? conns.length : 0})`);
 
     // Handle disconnect
     res.on('close', () => {
@@ -76,7 +77,7 @@ export class SseEmitterService {
     try {
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
-    } catch (e) {
+    } catch (e: any) {
         this.logger.error(`Failed to send SSE: ${e.message}`);
     }
   }

@@ -14,31 +14,31 @@ export enum SettlementStatus {
 @Schema({ timestamps: true })
 export class Settlement {
   @Prop({ required: true, index: true })
-  assetId: string;
+  assetId!: string;
 
   @Prop({ required: true })
-  tokenAddress: string;
+  tokenAddress!: string;
 
   @Prop({ required: true })
-  settlementAmount: number; // Fiat amount
+  settlementAmount!: number; // Fiat amount
 
   @Prop({ required: true })
-  grossYield: number;
+  grossYield!: number;
 
   @Prop({ required: true })
-  platformFee: number;
+  platformFee!: number;
 
   @Prop({ required: true })
-  netYield: number;
+  netYield!: number;
 
   @Prop()
   usdcAmount?: string; // Actual USDC received after conversion
 
   @Prop({ required: true, enum: SettlementStatus, default: SettlementStatus.PENDING_CONVERSION })
-  status: SettlementStatus;
+  status!: SettlementStatus;
 
   @Prop()
-  settlementDate: Date;
+  settlementDate!: Date;
 
   @Prop()
   conversionTimestamp?: Date;

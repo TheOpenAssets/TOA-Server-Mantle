@@ -3,29 +3,29 @@ import { IsString, IsNotEmpty, IsNumber, IsDateString } from 'class-validator';
 export class RecordSettlementDto {
   @IsString()
   @IsNotEmpty()
-  assetId: string;
+  assetId!: string;
 
   @IsNumber()
   @IsNotEmpty()
-  settlementAmount: number;
+  settlementAmount!: number;
 
   @IsDateString()
   @IsNotEmpty()
-  settlementDate: string;
+  settlementDate!: string;
 }
 
 export class ConfirmUSDCDto {
   @IsString()
   @IsNotEmpty()
-  settlementId: string;
+  settlementId!: string;
 
   @IsString()
   @IsNotEmpty()
-  usdcAmount: string;
+  usdcAmount!: string;
 }
 
 export class DistributeDto {
   @IsString()
   @IsNotEmpty()
-  settlementId: string;
+  settlementId!: string;
 }

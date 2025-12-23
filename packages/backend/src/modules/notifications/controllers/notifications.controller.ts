@@ -18,14 +18,14 @@ export class NotificationsController {
   // For this prototype, we'll assume the client sends the token and we validate via Guard if possible,
   // or logic inside. Let's use a custom logic to allow extracting user from req.
   @UseGuards(JwtAuthGuard)
-  stream(@Req() req, @Res() res: Response) {
+  stream(@Req() req: any, @Res() res: Response) {
     this.sseService.addConnection(req.user.walletAddress, res);
   }
 
   @Get()
   @UseGuards(JwtAuthGuard)
   getNotifications(
-    @Req() req,
+    @Req() req: any,
     @Query('filter') filter: 'all' | 'unread' | 'read' = 'all',
     @Query('limit') limit = 20,
     @Query('offset') offset = 0,
@@ -35,21 +35,21 @@ export class NotificationsController {
 
   @Get('unread-count')
   @UseGuards(JwtAuthGuard)
-  async getUnreadCount(@Req() req) {
+  async getUnreadCount(@Req() req: any) {
     const result = await this.notificationService.getNotifications(req.user.userId, 'all', 1);
     return { unreadCount: result.meta.unreadCount };
   }
 
   @Patch(':id/read')
   @UseGuards(JwtAuthGuard)
-  async markRead(@Req() req, @Param('id') id: string) {
+  async markRead(@Req() req: any, @Param('id') id: string) {
     await this.notificationService.markAsRead(req.user.userId, id);
     return { success: true };
   }
 
   @Post('mark-all-read')
   @UseGuards(JwtAuthGuard)
-  async markAllRead(@Req() req) {
+  async markAllRead(@Req() req: any) {
     await this.notificationService.markAllRead(req.user.userId);
     return { success: true };
   }

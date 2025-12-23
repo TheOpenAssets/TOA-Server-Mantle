@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createWalletClient, http, privateKeyToAccount } from 'viem';
-import { mantleSepolia } from 'viem/chains';
+import { createWalletClient, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { mantleSepolia } from '../../../config/mantle-chain';
 
 @Injectable()
 export class WalletService {

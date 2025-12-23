@@ -5,7 +5,8 @@
   "main": "./typechain-types/index.ts",
   "types": "./typechain-types/index.ts",
   "scripts": {
-    "generate:types": "hardhat compile"
+    "generate:types": "hardhat compile",
+    "dev": "echo 'No dev script for contracts'"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "2.1.0",

@@ -20,16 +20,16 @@ export enum AssetStatus {
 @Schema({ timestamps: true })
 export class Asset {
   @Prop({ required: true, unique: true })
-  assetId: string;
+  assetId!: string;
 
   @Prop({ required: true })
-  originator: string; // Wallet address
+  originator!: string; // Wallet address
 
   @Prop({ required: true, enum: AssetStatus, default: AssetStatus.UPLOADED })
-  status: AssetStatus;
+  status!: AssetStatus;
 
   @Prop({ type: Object })
-  metadata: {
+  metadata!: {
     invoiceNumber: string;
     faceValue: string;
     currency: string;
@@ -41,14 +41,14 @@ export class Asset {
   };
 
   @Prop({ type: Object })
-  tokenParams: {
+  tokenParams!: {
     totalSupply: string;
     pricePerToken: string;
     minInvestment: string;
   };
 
   @Prop({ type: Object })
-  files: {
+  files!: {
     invoice: {
       tempPath: string;
       permanentPath?: string;
@@ -58,7 +58,7 @@ export class Asset {
   };
 
   @Prop({ type: Object })
-  cryptography: {
+  cryptography!: {
     documentHash?: string;
     merkleRoot?: string;
     merkleLeaves?: string[];
@@ -138,7 +138,7 @@ export class Asset {
       tokenized: false,
     },
   })
-  checkpoints: {
+  checkpoints!: {
     uploaded: boolean;
     hashed: boolean;
     merkled: boolean;

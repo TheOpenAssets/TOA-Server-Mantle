@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { createPublicClient, http, webSocket, Address, parseAbiItem } from 'viem';
-import { mantleSepolia } from 'viem/chains';
+import { mantleSepolia } from '../../../config/mantle-chain';
 import { ContractLoaderService } from './contract-loader.service';
 
 @Injectable()
@@ -30,11 +30,37 @@ export class EventListenerService implements OnModuleInit {
   async startListening() {
     this.logger.log('Starting blockchain event listeners...');
 
-    this.watchAttestationRegistry();
-    this.watchTokenFactory();
-    this.watchIdentityRegistry();
-    this.watchPrimaryMarketplace();
-    this.watchYieldVault();
+    // Check if contracts are configured
+    const contractsConfig = this.configService.get('blockchain.contracts');
+    const hasContracts = contractsConfig && Object.values(contractsConfig).some(addr => addr && addr !== '');
+
+    if (!hasContracts) {
+      this.logger.warn('⚠️  Contract addresses not configured. Skipping blockchain event listeners.');
+      this.logger.warn('   Deploy contracts and update .env to enable event listening.');
+      return;
+    }
+
+    // Only watch contracts that are configured
+    try {
+      if (this.contractLoader.hasContract('AttestationRegistry')) {
+        this.watchAttestationRegistry();
+      }
+      if (this.contractLoader.hasContract('TokenFactory')) {
+        this.watchTokenFactory();
+      }
+      if (this.contractLoader.hasContract('IdentityRegistry')) {
+        this.watchIdentityRegistry();
+      }
+      if (this.contractLoader.hasContract('PrimaryMarketplace')) {
+        this.watchPrimaryMarketplace();
+      }
+      if (this.contractLoader.hasContract('YieldVault')) {
+        this.watchYieldVault();
+      }
+    } catch (error) {
+      this.logger.error('Error starting event listeners:', error);
+      this.logger.warn('Continuing without blockchain event listeners...');
+    }
   }
 
   private watchAttestationRegistry() {
@@ -46,7 +72,7 @@ export class EventListenerService implements OnModuleInit {
       abi,
       eventName: 'AssetRegistered',
       onLogs: async (logs) => {
-        for (const log of logs) {
+        for (const log of logs as any[]) {
           const { assetId, blobId, attestationHash, attestor } = log.args;
           await this.eventQueue.add('process-asset-registered', {
             assetId,
@@ -74,7 +100,7 @@ export class EventListenerService implements OnModuleInit {
       abi,
       eventName: 'TokenSuiteDeployed',
       onLogs: async (logs) => {
-        for (const log of logs) {
+        for (const log of logs as any[]) {
           const { assetId, token, compliance, totalSupply } = log.args;
           await this.eventQueue.add('process-token-deployed', {
             assetId,
@@ -104,7 +130,7 @@ export class EventListenerService implements OnModuleInit {
       abi,
       eventName: 'IdentityRegistered',
       onLogs: async (logs) => {
-        for (const log of logs) {
+        for (const log of logs as any[]) {
           const { wallet } = log.args;
           await this.eventQueue.add('process-identity-registered', {
             wallet,
@@ -128,7 +154,7 @@ export class EventListenerService implements OnModuleInit {
       abi,
       eventName: 'TokensPurchased',
       onLogs: async (logs) => {
-        for (const log of logs) {
+        for (const log of logs as any[]) {
           const { assetId, buyer, amount, price, totalPayment } = log.args;
           await this.eventQueue.add('process-token-purchased', {
             assetId,
@@ -154,7 +180,7 @@ export class EventListenerService implements OnModuleInit {
       abi,
       eventName: 'YieldDistributed',
       onLogs: async (logs) => {
-        for (const log of logs) {
+        for (const log of logs as any[]) {
           const { tokenAddress, totalAmount, holderCount } = log.args;
           await this.eventQueue.add('process-yield-distributed', {
             tokenAddress,
@@ -175,7 +201,7 @@ export class EventListenerService implements OnModuleInit {
       abi: this.contractLoader.getContractAbi('RWAToken'),
       eventName: 'Transfer',
       onLogs: async (logs) => {
-        for (const log of logs) {
+        for (const log of logs as any[]) {
           const { from, to, value } = log.args;
           await this.eventQueue.add('process-transfer', {
             tokenAddress,

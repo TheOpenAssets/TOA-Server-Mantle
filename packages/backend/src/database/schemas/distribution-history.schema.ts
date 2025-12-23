@@ -6,25 +6,25 @@ export type DistributionHistoryDocument = DistributionHistory & Document;
 @Schema({ timestamps: true })
 export class DistributionHistory {
   @Prop({ required: true, index: true })
-  settlementId: string;
+  settlementId!: string;
 
   @Prop({ required: true })
-  tokenAddress: string;
+  tokenAddress!: string;
 
   @Prop({ required: true })
-  recipient: string;
+  recipient!: string;
 
   @Prop({ required: true })
-  amount: string;
+  amount!: string;
 
   @Prop()
-  txHash: string;
+  txHash!: string;
 
   @Prop()
-  distributedAt: Date;
+  distributedAt!: Date;
 
   @Prop({ default: 'SUCCESS' })
-  status: 'SUCCESS' | 'FAILED';
+  status!: 'SUCCESS' | 'FAILED';
 }
 
 export const DistributionHistorySchema = SchemaFactory.createForClass(DistributionHistory);

@@ -6,16 +6,16 @@ export type TokenHolderDocument = TokenHolder & Document;
 @Schema({ timestamps: true })
 export class TokenHolder {
   @Prop({ required: true, index: true })
-  tokenAddress: string;
+  tokenAddress!: string;
 
   @Prop({ required: true, index: true })
-  holderAddress: string;
+  holderAddress!: string;
 
   @Prop({ required: true })
-  balance: string; // Store as string to handle BigInt
+  balance!: string; // Store as string to handle BigInt
 
   @Prop()
-  lastUpdated: Date;
+  lastUpdated?: Date;
 }
 
 export const TokenHolderSchema = SchemaFactory.createForClass(TokenHolder);

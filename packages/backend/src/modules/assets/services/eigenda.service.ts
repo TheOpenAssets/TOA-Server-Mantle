@@ -44,7 +44,7 @@ export class EigenDAService {
         } else if (status === 'FAILED') {
             throw new Error('EigenDA dispersion failed');
         }
-      } catch (error) {
+      } catch (error: any) {
           this.logger.warn(`Error checking status: ${error.message}`);
       }
 

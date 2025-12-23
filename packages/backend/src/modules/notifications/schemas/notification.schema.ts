@@ -8,19 +8,19 @@ export type NotificationDocument = Notification & Document;
 @Schema({ timestamps: true })
 export class Notification {
   @Prop({ required: true })
-  header: string;
+  header!: string;
 
   @Prop({ required: true })
-  detail: string;
+  detail!: string;
 
-  @Prop({ required: true, enum: NotificationType })
-  type: NotificationType;
+  @Prop({ required: true, enum: NotificationType, type: String })
+  type!: NotificationType;
 
-  @Prop({ required: true, enum: NotificationSeverity, default: NotificationSeverity.INFO })
-  severity: NotificationSeverity;
+  @Prop({ required: true, enum: NotificationSeverity, default: NotificationSeverity.INFO, type: String })
+  severity!: NotificationSeverity;
 
-  @Prop({ required: true, enum: NotificationAction, default: NotificationAction.NONE })
-  action: NotificationAction;
+  @Prop({ required: true, enum: NotificationAction, default: NotificationAction.NONE, type: String })
+  action!: NotificationAction;
 
   @Prop({ type: Object })
   actionMetadata?: Record<string, any>;

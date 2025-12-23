@@ -3,23 +3,23 @@ import { IsString, IsNotEmpty, IsNumberString, IsOptional } from 'class-validato
 export class DeployTokenDto {
   @IsString()
   @IsNotEmpty()
-  assetId: string;
+  assetId!: string;
 
   @IsNumberString()
   @IsNotEmpty()
-  totalSupply: string;
+  totalSupply!: string;
 
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @IsString()
   @IsNotEmpty()
-  symbol: string;
+  symbol!: string;
 
   @IsString()
   @IsNotEmpty()
-  issuer: string; // Address
+  issuer!: string; // Address
 
   // Listing params (optional, can be done separately)
   @IsOptional()

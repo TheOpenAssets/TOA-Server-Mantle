@@ -7,16 +7,16 @@ export type UserNotificationDocument = UserNotification & Document;
 @Schema()
 class NotificationItem {
   @Prop({ type: Types.ObjectId, ref: 'Notification', required: true })
-  notificationId: Types.ObjectId; // Stores reference, usually populated
+  notificationId!: Types.ObjectId; // Stores reference, usually populated
 
   @Prop({ default: false })
-  read: boolean;
+  read!: boolean;
 
   @Prop()
   readAt?: Date;
 
   @Prop({ default: Date.now })
-  receivedAt: Date;
+  receivedAt!: Date;
 }
 
 const NotificationItemSchema = SchemaFactory.createForClass(NotificationItem);
@@ -24,13 +24,13 @@ const NotificationItemSchema = SchemaFactory.createForClass(NotificationItem);
 @Schema({ timestamps: true })
 export class UserNotification {
   @Prop({ required: true, index: true, unique: true })
-  userId: string; // Reference to User ID string from auth
+  userId!: string; // Reference to User ID string from auth
 
   @Prop({ required: true, index: true })
-  walletAddress: string;
+  walletAddress!: string;
 
   @Prop({ type: [NotificationItemSchema], default: [] })
-  notifications: NotificationItem[];
+  notifications!: NotificationItem[];
 
   @Prop({
     type: Object,
@@ -39,7 +39,7 @@ export class UserNotification {
       totalCount: 0,
     },
   })
-  meta: {
+  meta!: {
     unreadCount: number;
     totalCount: number;
   };

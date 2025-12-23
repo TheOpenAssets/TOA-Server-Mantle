@@ -7,6 +7,7 @@ import { Settlement, SettlementSchema } from '../../database/schemas/settlement.
 import { DistributionHistory, DistributionHistorySchema } from '../../database/schemas/distribution-history.schema';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { BlockchainModule } from '../blockchain/blockchain.module';
+import { forwardRef } from '@nestjs/common';
 
 @Module({
   imports: [
@@ -16,7 +17,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
       { name: DistributionHistory.name, schema: DistributionHistorySchema },
       { name: Asset.name, schema: AssetSchema },
     ]),
-    BlockchainModule,
+    forwardRef(() => BlockchainModule),
   ],
   providers: [YieldDistributionService, TokenHolderTrackingService],
   exports: [YieldDistributionService, TokenHolderTrackingService],

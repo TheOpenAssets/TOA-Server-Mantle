@@ -1,3 +1,8 @@
+import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
+import { Logger } from '@nestjs/common';
+import { Job } from 'bullmq';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { TokenHolderTrackingService } from '../../yield/services/token-holder-tracking.service';
@@ -109,7 +114,6 @@ export class EventProcessor extends WorkerHost {
     
     await this.tokenHolderTrackingService.updateHolderFromTransferEvent(tokenAddress, from, to, amount);
   }
-}
 
   @OnWorkerEvent('completed')
   onCompleted(job: Job) {

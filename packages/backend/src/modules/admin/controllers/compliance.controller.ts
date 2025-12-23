@@ -4,13 +4,13 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 
 export class ApproveAssetDto {
-  assetId: string;
-  adminWallet: string;
+  assetId!: string;
+  adminWallet!: string;
 }
 
 export class RejectAssetDto {
-  assetId: string;
-  reason: string;
+  assetId!: string;
+  reason!: string;
 }
 
 @Controller('admin/compliance')

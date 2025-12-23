@@ -64,7 +64,10 @@ export class ContractLoaderService implements OnModuleInit {
   }
 
   getContractAddress(name: string): string {
-    const addr = this.contracts[name];
+    // Try both the original key and camelCase version
+    const camelCaseName = name.charAt(0).toLowerCase() + name.slice(1);
+    const addr = this.contracts[name] || this.contracts[camelCaseName];
+    
     if (!addr) {
       throw new Error(`Contract address for ${name} not configured`);
     }
@@ -74,8 +77,16 @@ export class ContractLoaderService implements OnModuleInit {
   getContractAbi(name: string): any {
     const abi = this.abis[name];
     if (!abi) {
-      throw new Error(`ABI for ${name} not loaded`);
+      this.logger.warn(`ABI for ${name} not loaded. Contract interactions may fail.`);
+      return []; // Return empty ABI array instead of throwing
     }
     return abi;
+  }
+  
+  hasContract(name: string): boolean {
+    const camelCaseName = name.charAt(0).toLowerCase() + name.slice(1);
+    const addr = this.contracts[name] || this.contracts[camelCaseName];
+    const hasAbi = !!this.abis[name];
+    return !!addr && addr !== '' && hasAbi;
   }
 }

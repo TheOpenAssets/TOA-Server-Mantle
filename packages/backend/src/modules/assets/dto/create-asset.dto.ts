@@ -3,46 +3,46 @@ import { IsString, IsNotEmpty, IsNumberString, IsDateString, IsEnum } from 'clas
 export class CreateAssetDto {
   @IsString()
   @IsNotEmpty()
-  invoiceNumber: string;
+  invoiceNumber!: string;
 
   @IsNumberString()
   @IsNotEmpty()
-  faceValue: string;
+  faceValue!: string;
 
   @IsString()
   @IsNotEmpty()
-  currency: string;
+  currency!: string;
 
   @IsDateString()
   @IsNotEmpty()
-  issueDate: string;
+  issueDate!: string;
 
   @IsDateString()
   @IsNotEmpty()
-  dueDate: string;
+  dueDate!: string;
 
   @IsString()
   @IsNotEmpty()
-  buyerName: string;
+  buyerName!: string;
 
   @IsString()
   @IsNotEmpty()
-  industry: string;
+  industry!: string;
 
   @IsString()
   @IsNotEmpty()
-  riskTier: string;
+  riskTier!: string;
 
   // Token Params
   @IsNumberString()
   @IsNotEmpty()
-  totalSupply: string;
+  totalSupply!: string;
 
   @IsNumberString()
   @IsNotEmpty()
-  pricePerToken: string;
+  pricePerToken!: string;
 
   @IsNumberString()
   @IsNotEmpty()
-  minInvestment: string;
+  minInvestment!: string;
 }

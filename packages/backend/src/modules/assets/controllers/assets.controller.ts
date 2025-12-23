@@ -39,7 +39,7 @@ export class AssetsController {
     }),
   )
   async uploadAsset(
-    @Req() req,
+    @Req() req: any,
     @Body() dto: CreateAssetDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
@@ -53,7 +53,7 @@ export class AssetsController {
 
   @Get('originator/my-assets')
   @UseGuards(OriginatorGuard)
-  async getMyAssets(@Req() req) {
+  async getMyAssets(@Req() req: any) {
     return this.assetLifecycleService.getAssetsByOriginator(req.user.walletAddress);
   }
 }

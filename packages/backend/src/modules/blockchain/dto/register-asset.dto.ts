@@ -3,21 +3,21 @@ import { IsString, IsNotEmpty } from 'class-validator';
 export class RegisterAssetDto {
   @IsString()
   @IsNotEmpty()
-  assetId: string;
+  assetId!: string;
 
   @IsString()
   @IsNotEmpty()
-  attestationHash: string;
+  attestationHash!: string;
 
   @IsString()
   @IsNotEmpty()
-  blobId: string;
+  blobId!: string;
 
   @IsString()
   @IsNotEmpty()
-  payload: string; // Hex string
+  payload!: string; // Hex string
 
   @IsString()
   @IsNotEmpty()
-  signature: string; // Hex string
+  signature!: string; // Hex string
 }

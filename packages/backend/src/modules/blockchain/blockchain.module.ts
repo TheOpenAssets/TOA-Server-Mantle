@@ -11,6 +11,7 @@ import { EventProcessor } from './processors/event.processor';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { YieldModule } from '../yield/yield.module';
+import { forwardRef } from '@nestjs/common';
 
 @Global()
 @Module({
@@ -23,7 +24,7 @@ import { YieldModule } from '../yield/yield.module';
     BullModule.registerQueue({
       name: 'event-processing',
     }),
-    YieldModule,
+    forwardRef(() => YieldModule),
   ],
   providers: [
     BlockchainService,

@@ -5,22 +5,22 @@ import { NotificationAction } from '../enums/notification-action.enum';
 export class CreateNotificationDto {
   @IsString()
   @IsNotEmpty()
-  userId: string; // Internal User ID
+  userId!: string; // Internal User ID
 
   @IsString()
   @IsNotEmpty()
-  walletAddress: string;
+  walletAddress!: string;
 
   @IsString()
   @IsNotEmpty()
-  header: string;
+  header!: string;
 
   @IsString()
   @IsNotEmpty()
-  detail: string;
+  detail!: string;
 
   @IsEnum(NotificationType)
-  type: NotificationType;
+  type!: NotificationType;
 
   @IsEnum(NotificationSeverity)
   @IsOptional()

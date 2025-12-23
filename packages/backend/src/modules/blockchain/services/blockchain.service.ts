@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createPublicClient, http, Hash, Address } from 'viem';
-import { mantleSepolia } from 'viem/chains';
+import { mantleSepolia } from '../../../config/mantle-chain';
 import { ContractLoaderService } from './contract-loader.service';
 import { WalletService } from './wallet.service';
 import { RegisterAssetDto } from '../dto/register-asset.dto';
