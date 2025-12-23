@@ -1,0 +1,56 @@
+import { Controller, Get, Post, Patch, Param, Query, UseGuards, Req, Res } from '@nestjs/common';
+import { Response } from 'express';
+import { NotificationService } from '../services/notification.service';
+import { SseEmitterService } from '../services/sse-emitter.service';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+
+@Controller('notifications')
+export class NotificationsController {
+  constructor(
+    private readonly notificationService: NotificationService,
+    private readonly sseService: SseEmitterService,
+  ) {}
+
+  @Get('stream')
+  // We handle auth manually here via query param token or cookie usually for SSE,
+  // but for simplicity assuming header auth works or handling basic connect
+  // SSE often requires token in query param: /stream?token=...
+  // For this prototype, we'll assume the client sends the token and we validate via Guard if possible,
+  // or logic inside. Let's use a custom logic to allow extracting user from req.
+  @UseGuards(JwtAuthGuard)
+  stream(@Req() req, @Res() res: Response) {
+    this.sseService.addConnection(req.user.walletAddress, res);
+  }
+
+  @Get()
+  @UseGuards(JwtAuthGuard)
+  getNotifications(
+    @Req() req,
+    @Query('filter') filter: 'all' | 'unread' | 'read' = 'all',
+    @Query('limit') limit = 20,
+    @Query('offset') offset = 0,
+  ) {
+    return this.notificationService.getNotifications(req.user.userId, filter, Number(limit), Number(offset));
+  }
+
+  @Get('unread-count')
+  @UseGuards(JwtAuthGuard)
+  async getUnreadCount(@Req() req) {
+    const result = await this.notificationService.getNotifications(req.user.userId, 'all', 1);
+    return { unreadCount: result.meta.unreadCount };
+  }
+
+  @Patch(':id/read')
+  @UseGuards(JwtAuthGuard)
+  async markRead(@Req() req, @Param('id') id: string) {
+    await this.notificationService.markAsRead(req.user.userId, id);
+    return { success: true };
+  }
+
+  @Post('mark-all-read')
+  @UseGuards(JwtAuthGuard)
+  async markAllRead(@Req() req) {
+    await this.notificationService.markAllRead(req.user.userId);
+    return { success: true };
+  }
+}

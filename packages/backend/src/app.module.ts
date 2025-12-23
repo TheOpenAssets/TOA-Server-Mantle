@@ -14,6 +14,7 @@ import { BlockchainModule } from './modules/blockchain/blockchain.module';
 import { AssetModule } from './modules/assets/assets.module';
 import { YieldModule } from './modules/yield/yield.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { AdminModule } from './modules/admin/admin.module';
     AssetModule,
     YieldModule,
     AdminModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

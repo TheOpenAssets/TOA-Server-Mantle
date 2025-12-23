@@ -1,0 +1,16 @@
+export enum NotificationType {
+  ASSET_STATUS = 'ASSET_STATUS',
+  KYC_STATUS = 'KYC_STATUS',
+  YIELD_DISTRIBUTED = 'YIELD_DISTRIBUTED',
+  TOKEN_PURCHASED = 'TOKEN_PURCHASED',
+  TOKEN_DEPLOYED = 'TOKEN_DEPLOYED',
+  SYSTEM_ALERT = 'SYSTEM_ALERT',
+  MARKETPLACE_LISTING = 'MARKETPLACE_LISTING',
+}
+
+export enum NotificationSeverity {
+  INFO = 'info',
+  SUCCESS = 'success',
+  WARNING = 'warning',
+  ERROR = 'error',
+}
