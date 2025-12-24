@@ -1,11 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createPublicClient, http, Hash, Address } from 'viem';
+import { createPublicClient, http, Hash, Address, decodeEventLog } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
 import { ContractLoaderService } from './contract-loader.service';
 import { WalletService } from './wallet.service';
 import { RegisterAssetDto } from '../dto/register-asset.dto';
 import { DeployTokenDto } from '../dto/deploy-token.dto';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 
 @Injectable()
 export class BlockchainService {
@@ -16,6 +19,7 @@ export class BlockchainService {
     private configService: ConfigService,
     private contractLoader: ContractLoaderService,
     private walletService: WalletService,
+    @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) {
     this.publicClient = createPublicClient({
       chain: mantleSepolia,
@@ -84,9 +88,68 @@ export class BlockchainService {
       args: [assetIdBytes32, BigInt(totalSupply), dto.name, dto.symbol, issuer],
     });
 
-    // Don't wait for receipt - return immediately
-    // The event listener will pick up the TokenSuiteDeployed event and update the DB
     this.logger.log(`Token deployment submitted in tx: ${hash}`);
+    this.logger.log(`Waiting for transaction confirmation...`);
+
+    // Wait for transaction receipt
+    const receipt = await this.publicClient.waitForTransactionReceipt({ 
+      hash,
+      timeout: 60_000, // 60 second timeout
+    });
+
+    this.logger.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+
+    // Parse logs to extract token address
+    let tokenAddress: string | undefined;
+    let complianceAddress: string | undefined;
+
+    for (const log of receipt.logs) {
+      try {
+        const decoded = decodeEventLog({
+          abi,
+          data: log.data,
+          topics: log.topics,
+        }) as { eventName: string; args: any };
+
+        if (decoded.eventName === 'TokenSuiteDeployed') {
+          const args = decoded.args;
+          tokenAddress = args.token;
+          complianceAddress = args.compliance;
+          this.logger.log(`Token deployed at: ${tokenAddress}`);
+          this.logger.log(`Compliance module at: ${complianceAddress}`);
+          break;
+        }
+      } catch (e) {
+        // Skip logs that don't match
+        continue;
+      }
+    }
+
+    if (!tokenAddress) {
+      this.logger.error(`Could not find TokenSuiteDeployed event in transaction logs`);
+      // Still return hash, but status won't be updated
+      return hash;
+    }
+
+    // Update MongoDB with token info and status
+    this.logger.log(`Updating asset ${dto.assetId} status to TOKENIZED`);
+    
+    await this.assetModel.updateOne(
+      { assetId: dto.assetId },
+      {
+        $set: {
+          'token.address': tokenAddress,
+          'token.compliance': complianceAddress,
+          'token.supply': totalSupply,
+          'token.deployedAt': new Date(),
+          'token.transactionHash': hash,
+          status: AssetStatus.TOKENIZED,
+          'checkpoints.tokenized': true,
+        },
+      }
+    );
+
+    this.logger.log(`Asset ${dto.assetId} updated to TOKENIZED status`);
     
     return hash;
   }

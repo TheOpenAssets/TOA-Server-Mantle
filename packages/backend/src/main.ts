@@ -5,15 +5,15 @@ import * as express from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Global JSON body parser (must come before specific middleware)
-  app.use(express.json());
-
-  // Raw body middleware for Typeform webhook
+  // Raw body middleware for Typeform webhook (must come BEFORE global JSON parser)
   app.use('/webhooks/typeform', express.json({
-    verify: (req: any, res, buf) => {
+    verify: (req: any, _res, buf) => {
       req.rawBody = buf.toString('utf8');
     }
   }));
+
+  // Global JSON body parser for all other routes
+  app.use(express.json());
 
   app.enableCors({
     origin: '*',

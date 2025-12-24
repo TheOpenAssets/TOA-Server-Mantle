@@ -80,13 +80,17 @@ export class AssetOpsController {
     try {
       const txHash = await this.blockchainService.deployToken(dto);
       
+      // Fetch updated asset to get token address
+      const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+      
       return {
         success: true,
-        message: 'Token deployment initiated',
+        message: 'Token deployed successfully',
         assetId: dto.assetId,
+        tokenAddress: asset?.token?.address,
         transactionHash: txHash,
         explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
-        note: 'Token address will be available once the transaction is confirmed. Check the events or query the asset.',
+        status: asset?.status,
       };
     } catch (error: any) {
       const errorMessage = error.message || 'Unknown error';

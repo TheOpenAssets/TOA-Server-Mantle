@@ -194,27 +194,93 @@ else
     fi
 fi
 
+# Wait for transaction to be mined
+print_info "Waiting 15 seconds for transaction confirmation..."
+sleep 15
+
+# Step 5: Get Token Address from Explorer
+print_header "Step 5: Get Token Address"
+print_info "Please check the transaction on the explorer to get the token address:"
+echo "   $DEPLOY_EXPLORER"
+echo ""
+print_info "Look for the 'TokenSuiteDeployed' event in the logs"
+echo ""
+echo -n "Enter the Token Address (or press Enter to skip): "
+read TOKEN_ADDRESS
+
+if [ ! -z "$TOKEN_ADDRESS" ]; then
+    print_success "Token Address: $TOKEN_ADDRESS"
+    
+    # Step 6: Update Status to TOKENIZED
+    print_header "Step 6: Sync Tokenization Status"
+    print_info "Updating asset status to TOKENIZED..."
+    
+    SYNC_TOKENIZED_RESPONSE=$(curl -s -X POST "$API_BASE_URL/admin/sync/update-status" \
+      --header "Authorization: Bearer $ADMIN_TOKEN" \
+      --header 'Content-Type: application/json' \
+      --data "{
+        \"assetId\": \"$ASSET_ID\",
+        \"txHash\": \"$DEPLOY_TX_HASH\",
+        \"status\": \"TOKENIZED\",
+        \"tokenAddress\": \"$TOKEN_ADDRESS\"
+      }")
+    
+    echo "Response:"
+    echo "$SYNC_TOKENIZED_RESPONSE" | jq '.' 2>/dev/null || echo "$SYNC_TOKENIZED_RESPONSE"
+    echo ""
+    
+    if echo "$SYNC_TOKENIZED_RESPONSE" | jq -e '.success' > /dev/null 2>&1; then
+        print_success "Status updated to TOKENIZED"
+    else
+        print_info "Status sync failed (may need manual update)"
+    fi
+else
+    print_info "Token address skipped. You can update it manually later."
+    echo ""
+    print_info "To update status manually, use:"
+    echo ""
+    echo "curl -X POST \"$API_BASE_URL/admin/sync/update-status\" \\"
+    echo "  --header \"Authorization: Bearer \$ADMIN_TOKEN\" \\"
+    echo "  --header 'Content-Type: application/json' \\"
+    echo "  --data '{"
+    echo "    \"assetId\": \"$ASSET_ID\","
+    echo "    \"txHash\": \"$DEPLOY_TX_HASH\","
+    echo "    \"status\": \"TOKENIZED\","
+    echo "    \"tokenAddress\": \"YOUR_TOKEN_ADDRESS\""
+    echo "  }'"
+    echo ""
+fi
+
 # Final Summary
 print_header "Deployment Summary"
 print_success "Asset lifecycle completed!"
 echo ""
 echo "Asset ID: $ASSET_ID"
-echo "Status: TOKENIZED (pending confirmation)"
-echo ""
-echo "Next Steps:"
-echo "1. Wait ~30 seconds for transaction confirmation"
-echo "2. Get token address from explorer: $DEPLOY_EXPLORER"
-echo "3. List on marketplace:"
-echo ""
-echo "   curl -X POST \"$API_BASE_URL/admin/assets/list-on-marketplace\" \\"
-echo "     --header \"Authorization: Bearer \$ADMIN_TOKEN\" \\"
-echo "     --header 'Content-Type: application/json' \\"
-echo "     --data '{"
-echo "       \"assetId\": \"$ASSET_ID\","
-echo "       \"type\": \"STATIC\","
-echo "       \"price\": \"1000000\","
-echo "       \"minInvestment\": \"1000000\""
-echo "     }' | jq"
+if [ ! -z "$TOKEN_ADDRESS" ]; then
+    echo "Token Address: $TOKEN_ADDRESS"
+    echo "Status: TOKENIZED ✓"
+    echo ""
+    echo "Next Step: List on Marketplace"
+    echo ""
+    echo "Run this command to list the asset:"
+    echo ""
+    echo "curl -X POST \"$API_BASE_URL/admin/assets/list-on-marketplace\" \\"
+    echo "  --header \"Authorization: Bearer \$ADMIN_TOKEN\" \\"
+    echo "  --header 'Content-Type: application/json' \\"
+    echo "  --data '{"
+    echo "    \"assetId\": \"$ASSET_ID\","
+    echo "    \"type\": \"STATIC\","
+    echo "    \"price\": \"1000000\","
+    echo "    \"minInvestment\": \"1000000\""
+    echo "  }' | jq"
+else
+    echo "Status: REGISTERED (token deployed, needs manual sync)"
+    echo ""
+    echo "Next Steps:"
+    echo "1. Get token address from: $DEPLOY_EXPLORER"
+    echo "2. Update status to TOKENIZED (see command above)"
+    echo "3. List on marketplace"
+fi
 echo ""
 
 print_header "Deployment Complete! 🎉"
