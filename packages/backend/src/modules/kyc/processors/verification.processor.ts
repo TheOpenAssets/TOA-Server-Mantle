@@ -188,25 +188,27 @@ export class VerificationProcessor extends WorkerHost {
         const status = score >= 80 ? 'VERIFIED' : 'REJECTED';
         const kycStatus = score >= 80;
 
-        // Extract QR data for storage
+        // Extract QR data for storage (matching schema structure)
         let extractedQRData: any = null;
         if (qrDecoded && qrData && qrData.PrintLetterBarcodeData) {
             const attrs = qrData.PrintLetterBarcodeData.$;
             extractedQRData = {
                 uid: attrs.uid || null,
                 name: attrs.name || null,
-                careOf: attrs.careOf || null,
-                locality: attrs.locality || null,
-                vtcName: attrs.vtcName || null,
-                district: attrs.districtName || null,
-                state: attrs.stateName || null,
-                pincode: attrs.pincode || null,
                 dob: attrs.dob || attrs.yob || null,
                 gender: attrs.gender || null,
+                address: {
+                    careOf: attrs.careOf || null,
+                    locality: attrs.locality || null,
+                    vtcName: attrs.vtcName || null,
+                    district: attrs.districtName || null,
+                    state: attrs.stateName || null,
+                    pincode: attrs.pincode || null,
+                },
             };
         }
 
-        // 5. Update DB
+        // 5. Update DB (matching schema field names)
         await this.userModel.updateOne(
             { _id: userId },
             {
@@ -215,11 +217,12 @@ export class VerificationProcessor extends WorkerHost {
                     'kycDocuments.aadhaar.status': status,
                     'kycDocuments.aadhaar.verificationScore': score,
                     'kycDocuments.aadhaar.verifiedAt': new Date(),
+                    'kycDocuments.aadhaar.extractedData': extractedQRData,
                     'kycDocuments.aadhaar.verificationMeta': {
-                        qrDecoded: qrDecoded,
+                        qr1Decoded: qrDecoded,
+                        qr2Decoded: false,
                         qrDataMatch: qrDataMatch,
-                        verificationScore: score,
-                        extractedData: extractedQRData,
+                        textMatchScore: score,
                     },
                     'kycDocuments.aadhaar.rejectionReason': status === 'REJECTED' ? 'Low verification score' : null
                 }
