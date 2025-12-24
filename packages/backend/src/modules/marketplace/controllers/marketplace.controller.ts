@@ -1,13 +1,16 @@
-import { Controller, Get, Param, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Param, UseGuards, Query, Body, Request } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PurchaseTrackerService } from '../services/purchase-tracker.service';
+import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
 
 @Controller('marketplace')
 export class MarketplaceController {
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
+    private purchaseTracker: PurchaseTrackerService,
   ) {}
 
   @Get('listings')
@@ -134,5 +137,27 @@ export class MarketplaceController {
         byIndustry,
       },
     };
+  }
+
+  @Post('purchases/notify')
+  @UseGuards(JwtAuthGuard)
+  async notifyPurchase(@Request() req: any, @Body() dto: NotifyPurchaseDto) {
+    const investorWallet = req.user.walletAddress;
+    return this.purchaseTracker.notifyPurchase(dto, investorWallet);
+  }
+
+  @Get('portfolio')
+  @UseGuards(JwtAuthGuard)
+  async getPortfolio(@Request() req: any) {
+    const investorWallet = req.user.walletAddress;
+    return this.purchaseTracker.getInvestorPortfolio(investorWallet);
+  }
+
+  @Get('purchases/history')
+  @UseGuards(JwtAuthGuard)
+  async getPurchaseHistory(@Request() req: any, @Query('limit') limit?: string) {
+    const investorWallet = req.user.walletAddress;
+    const limitNum = limit ? parseInt(limit) : 50;
+    return this.purchaseTracker.getPurchaseHistory(investorWallet, limitNum);
   }
 }

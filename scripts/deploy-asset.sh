@@ -251,6 +251,61 @@ else
     echo ""
 fi
 
+# Step 7: List on Marketplace (if token address is available)
+if [ ! -z "$TOKEN_ADDRESS" ]; then
+    print_header "Step 7: List on Marketplace"
+    print_info "Listing asset on primary marketplace..."
+
+    # Marketplace configuration (can be customized via env vars)
+    LISTING_TYPE="${LISTING_TYPE:-STATIC}"
+    LISTING_PRICE="${LISTING_PRICE:-1000000}"  # 1 USDC (6 decimals)
+    MIN_INVESTMENT="${MIN_INVESTMENT:-1000000000000000000000}"  # 1000 tokens (18 decimals)
+
+    print_info "Listing Type: $LISTING_TYPE"
+    print_info "Price: $LISTING_PRICE (1 USDC per token)"
+    print_info "Min Investment: $MIN_INVESTMENT (1000 tokens)"
+    echo ""
+
+    # Wait for tokenization to settle
+    print_info "Waiting 5 seconds for tokenization to settle..."
+    sleep 5
+
+    LISTING_RESPONSE=$(curl -s -X POST "$API_BASE_URL/admin/assets/list-on-marketplace" \
+      --header "Authorization: Bearer $ADMIN_TOKEN" \
+      --header 'Content-Type: application/json' \
+      --data "{
+        \"assetId\": \"$ASSET_ID\",
+        \"type\": \"$LISTING_TYPE\",
+        \"price\": \"$LISTING_PRICE\",
+        \"minInvestment\": \"$MIN_INVESTMENT\",
+        \"duration\": \"0\"
+      }")
+
+    echo "Response:"
+    echo "$LISTING_RESPONSE" | jq '.' 2>/dev/null || echo "$LISTING_RESPONSE"
+    echo ""
+
+    # Check if listing succeeded
+    if echo "$LISTING_RESPONSE" | jq -e '.success' > /dev/null 2>&1; then
+        LISTING_TX_HASH=$(echo "$LISTING_RESPONSE" | jq -r '.transactionHash')
+        LISTING_EXPLORER=$(echo "$LISTING_RESPONSE" | jq -r '.explorerUrl')
+        print_success "Asset listed on marketplace!"
+        print_info "Transaction Hash: $LISTING_TX_HASH"
+        print_info "Explorer: $LISTING_EXPLORER"
+
+        # Update database listing status
+        print_info "Waiting 5 seconds for listing transaction..."
+        sleep 5
+
+        print_success "Asset is now available for investors!"
+        LISTING_STATUS="LISTED ✓"
+    else
+        ERROR=$(echo "$LISTING_RESPONSE" | jq -r '.error // .message // "Unknown error"')
+        print_error "Marketplace listing failed: $ERROR"
+        LISTING_STATUS="TOKENIZED (listing failed)"
+    fi
+fi
+
 # Final Summary
 print_header "Deployment Summary"
 print_success "Asset lifecycle completed!"
@@ -258,21 +313,26 @@ echo ""
 echo "Asset ID: $ASSET_ID"
 if [ ! -z "$TOKEN_ADDRESS" ]; then
     echo "Token Address: $TOKEN_ADDRESS"
-    echo "Status: TOKENIZED ✓"
+    echo "Status: ${LISTING_STATUS:-TOKENIZED ✓}"
     echo ""
-    echo "Next Step: List on Marketplace"
-    echo ""
-    echo "Run this command to list the asset:"
-    echo ""
-    echo "curl -X POST \"$API_BASE_URL/admin/assets/list-on-marketplace\" \\"
-    echo "  --header \"Authorization: Bearer \$ADMIN_TOKEN\" \\"
-    echo "  --header 'Content-Type: application/json' \\"
-    echo "  --data '{"
-    echo "    \"assetId\": \"$ASSET_ID\","
-    echo "    \"type\": \"STATIC\","
-    echo "    \"price\": \"1000000\","
-    echo "    \"minInvestment\": \"1000000\""
-    echo "  }' | jq"
+    if [ ! -z "$LISTING_TX_HASH" ]; then
+        print_success "Ready for investor purchases!"
+        echo ""
+        print_info "Test purchase with:"
+        echo "  node scripts/buy-tokens.js $ASSET_ID 1000"
+    else
+        echo "Next Step: List on Marketplace (manual)"
+        echo ""
+        echo "curl -X POST \"$API_BASE_URL/admin/assets/list-on-marketplace\" \\"
+        echo "  --header \"Authorization: Bearer \$ADMIN_TOKEN\" \\"
+        echo "  --header 'Content-Type: application/json' \\"
+        echo "  --data '{"
+        echo "    \"assetId\": \"$ASSET_ID\","
+        echo "    \"type\": \"STATIC\","
+        echo "    \"price\": \"1000000\","
+        echo "    \"minInvestment\": \"1000000000000000000000\""
+        echo "  }' | jq"
+    fi
 else
     echo "Status: REGISTERED (token deployed, needs manual sync)"
     echo ""

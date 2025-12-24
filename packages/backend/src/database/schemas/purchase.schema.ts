@@ -1,0 +1,51 @@
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document } from 'mongoose';
+
+export type PurchaseDocument = Purchase & Document;
+
+@Schema({ timestamps: true })
+export class Purchase {
+  @Prop({ required: true, index: true })
+  txHash!: string;
+
+  @Prop({ required: true, index: true })
+  assetId!: string;
+
+  @Prop({ required: true, index: true })
+  investorWallet!: string;
+
+  @Prop({ required: true })
+  tokenAddress!: string;
+
+  @Prop({ required: true })
+  amount!: string; // Token amount in wei
+
+  @Prop({ required: true })
+  price!: string; // Price per token at time of purchase
+
+  @Prop({ required: true })
+  totalPayment!: string; // Total USDC paid
+
+  @Prop()
+  blockNumber?: number;
+
+  @Prop()
+  blockTimestamp?: Date;
+
+  @Prop({ default: 'CONFIRMED' })
+  status!: 'PENDING' | 'CONFIRMED' | 'FAILED';
+
+  @Prop({ type: Object })
+  metadata?: {
+    assetName?: string;
+    industry?: string;
+    riskTier?: string;
+  };
+}
+
+export const PurchaseSchema = SchemaFactory.createForClass(Purchase);
+
+// Indexes
+PurchaseSchema.index({ investorWallet: 1, assetId: 1 });
+PurchaseSchema.index({ txHash: 1 }, { unique: true });
+PurchaseSchema.index({ createdAt: -1 });
