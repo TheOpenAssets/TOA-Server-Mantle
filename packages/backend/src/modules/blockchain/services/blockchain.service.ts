@@ -38,7 +38,7 @@ export class BlockchainService {
       args: [assetId, attestationHash, blobId, payload, signature],
     });
 
-    await this.publicClient.waitForTransactionReceipt({ hash });
+    // Don't wait for receipt - return immediately
     this.logger.log(`Asset registered: ${hash}`);
     return hash;
   }
@@ -84,16 +84,11 @@ export class BlockchainService {
       args: [assetIdBytes32, BigInt(totalSupply), dto.name, dto.symbol, issuer],
     });
 
-    const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+    // Don't wait for receipt - return immediately
+    // The event listener will pick up the TokenSuiteDeployed event and update the DB
+    this.logger.log(`Token deployment submitted in tx: ${hash}`);
     
-    // Parse logs to find TokenSuiteDeployed event and extract token address
-    // This requires parsing logic, simplified here:
-    // Ideally use parseEventLogs from viem
-    this.logger.log(`Token deployed in tx: ${hash}`);
-    
-    // For now, return tx hash. The event listener service should pick up the actual address.
-    // Or we can parse it here if needed immediately.
-    return hash; 
+    return hash;
   }
 
   async depositYield(tokenAddress: string, amount: string): Promise<Hash> {

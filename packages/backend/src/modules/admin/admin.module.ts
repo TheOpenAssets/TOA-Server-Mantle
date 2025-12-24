@@ -7,6 +7,7 @@ import { ComplianceController } from './controllers/compliance.controller';
 import { AssetOpsController } from './controllers/asset-ops.controller';
 import { YieldOpsController } from './controllers/yield-ops.controller';
 import { AdminController } from './controllers/admin.controller';
+import { SyncController } from './controllers/sync.controller';
 import { AdminService } from './services/admin.service';
 import { AuthModule } from '../auth/auth.module';
 import { User, UserSchema } from '../../database/schemas/user.schema';
@@ -28,6 +29,7 @@ import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
     ComplianceController,
     AssetOpsController,
     YieldOpsController,
+    SyncController,
   ],
   providers: [AdminService],
 })
