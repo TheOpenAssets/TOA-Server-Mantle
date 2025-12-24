@@ -19,6 +19,14 @@ export class EventProcessor extends WorkerHost {
     super();
   }
 
+  // Helper to convert bytes32 back to UUID format
+  private bytes32ToUuid(bytes32: string): string {
+    // Remove 0x prefix and trailing zeros
+    const hex = bytes32.replace('0x', '').replace(/0+$/, '');
+    // Insert hyphens at UUID positions: 8-4-4-4-12
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+  }
+
   async process(job: Job<any, any, string>): Promise<any> {
     this.logger.log(`Processing event job: ${job.name} [${job.id}]`);
 
@@ -37,9 +45,12 @@ export class EventProcessor extends WorkerHost {
   }
 
   private async processAssetRegistered(data: any) {
-    const { assetId, blobId, attestationHash, attestor, txHash, blockNumber, timestamp } = data;
+    const { assetId: assetIdBytes32, blobId, attestationHash, attestor, txHash, blockNumber, timestamp } = data;
     
-    this.logger.log(`Syncing AssetRegistered for ${assetId}`);
+    // Convert bytes32 to UUID format
+    const assetId = this.bytes32ToUuid(assetIdBytes32);
+    
+    this.logger.log(`Syncing AssetRegistered for ${assetIdBytes32} -> UUID: ${assetId}`);
 
     const asset = await this.assetModel.findOneAndUpdate(
       { assetId },
@@ -67,9 +78,12 @@ export class EventProcessor extends WorkerHost {
   }
 
   private async processTokenDeployed(data: any) {
-    const { assetId, tokenAddress, complianceAddress, totalSupply, txHash, blockNumber, timestamp } = data;
+    const { assetId: assetIdBytes32, tokenAddress, complianceAddress, totalSupply, txHash, blockNumber, timestamp } = data;
 
-    this.logger.log(`Syncing TokenSuiteDeployed for ${assetId} -> ${tokenAddress}`);
+    // Convert bytes32 to UUID format
+    const assetId = this.bytes32ToUuid(assetIdBytes32);
+
+    this.logger.log(`Syncing TokenSuiteDeployed for ${assetIdBytes32} -> UUID: ${assetId} -> Token: ${tokenAddress}`);
 
     await this.assetModel.updateOne(
       { assetId },

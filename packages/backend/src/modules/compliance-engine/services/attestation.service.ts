@@ -51,7 +51,7 @@ export class AttestationService {
       attestor: adminWallet,
     };
 
-    // Convert payload to canonical JSON string
+    // Convert payload to canonical JSON string and then to hex bytes
     const payloadString = JSON.stringify(payload);
     const payloadHex = toHex(payloadString);
 
@@ -69,7 +69,7 @@ export class AttestationService {
     this.logger.log(`Signature: ${signature}`);
 
     return {
-      payload: payloadString,
+      payload: payloadHex,  // Store as hex bytes, not JSON string
       hash,
       signature,
     };

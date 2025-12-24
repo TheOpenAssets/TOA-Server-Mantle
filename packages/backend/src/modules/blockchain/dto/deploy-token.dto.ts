@@ -1,13 +1,9 @@
-import { IsString, IsNotEmpty, IsNumberString, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class DeployTokenDto {
   @IsString()
   @IsNotEmpty()
   assetId!: string;
-
-  @IsNumberString()
-  @IsNotEmpty()
-  totalSupply!: string;
 
   @IsString()
   @IsNotEmpty()
@@ -17,9 +13,14 @@ export class DeployTokenDto {
   @IsNotEmpty()
   symbol!: string;
 
+  // These are now optional - will be fetched from asset record if not provided
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  issuer!: string; // Address
+  totalSupply?: string;
+
+  @IsOptional()
+  @IsString()
+  issuer?: string; // Address
 
   // Listing params (optional, can be done separately)
   @IsOptional()

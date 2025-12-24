@@ -62,18 +62,26 @@ export class BlockchainService {
   }
 
   async deployToken(dto: DeployTokenDto): Promise<string> {
-    const { assetId, totalSupply, name, symbol, issuer } = dto;
     const wallet = this.walletService.getAdminWallet();
     const address = this.contractLoader.getContractAddress('TokenFactory');
     const abi = this.contractLoader.getContractAbi('TokenFactory');
 
-    this.logger.log(`Deploying token for asset ${assetId}...`);
+    this.logger.log(`Deploying token for asset ${dto.assetId}...`);
+
+    // Convert UUID to bytes32 for on-chain usage
+    const assetIdBytes32 = '0x' + dto.assetId.replace(/-/g, '').padEnd(64, '0');
+    
+    // Use provided values or defaults
+    const totalSupply = dto.totalSupply || '100000'; // Default 100k tokens
+    const issuer = dto.issuer || wallet.account.address; // Default to admin wallet
+
+    this.logger.log(`Token params: supply=${totalSupply}, name=${dto.name}, symbol=${dto.symbol}, issuer=${issuer}`);
 
     const hash = await wallet.writeContract({
       address: address as Address,
       abi,
       functionName: 'deployTokenSuite',
-      args: [assetId, BigInt(totalSupply), name, symbol, issuer],
+      args: [assetIdBytes32, BigInt(totalSupply), dto.name, dto.symbol, issuer],
     });
 
     const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
@@ -123,6 +131,51 @@ export class BlockchainService {
     });
 
     await this.publicClient.waitForTransactionReceipt({ hash });
+    return hash;
+  }
+
+  async listOnMarketplace(
+    tokenAddress: string,
+    type: 'STATIC' | 'AUCTION',
+    price: string,
+    minInvestment: string,
+    duration?: string,
+  ): Promise<Hash> {
+    const wallet = this.walletService.getAdminWallet();
+    const address = this.contractLoader.getContractAddress('PrimaryMarketplace');
+    const abi = this.contractLoader.getContractAbi('PrimaryMarketplace');
+
+    this.logger.log(`Listing token ${tokenAddress} on ${type} marketplace...`);
+
+    // For STATIC listings
+    if (type === 'STATIC') {
+      const hash = await wallet.writeContract({
+        address: address as Address,
+        abi,
+        functionName: 'listToken',
+        args: [tokenAddress, BigInt(price), BigInt(minInvestment)],
+      });
+
+      await this.publicClient.waitForTransactionReceipt({ hash });
+      this.logger.log(`Token listed in tx: ${hash}`);
+      return hash;
+    }
+
+    // For AUCTION listings
+    const hash = await wallet.writeContract({
+      address: address as Address,
+      abi,
+      functionName: 'listTokenAuction',
+      args: [
+        tokenAddress,
+        BigInt(price), // Starting price
+        BigInt(minInvestment),
+        BigInt(duration || '86400'), // Default 24 hours
+      ],
+    });
+
+    await this.publicClient.waitForTransactionReceipt({ hash });
+    this.logger.log(`Auction listed in tx: ${hash}`);
     return hash;
   }
 

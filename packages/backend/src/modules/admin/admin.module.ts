@@ -10,10 +10,14 @@ import { AdminController } from './controllers/admin.controller';
 import { AdminService } from './services/admin.service';
 import { AuthModule } from '../auth/auth.module';
 import { User, UserSchema } from '../../database/schemas/user.schema';
+import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+    MongooseModule.forFeature([
+      { name: User.name, schema: UserSchema },
+      { name: Asset.name, schema: AssetSchema },
+    ]),
     AssetModule,
     BlockchainModule,
     YieldModule,

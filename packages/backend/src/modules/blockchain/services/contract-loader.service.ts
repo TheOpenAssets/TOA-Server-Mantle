@@ -21,7 +21,9 @@ export class ContractLoaderService implements OnModuleInit {
 
     // Try to load from deployed_contracts.json
     try {
-      const deployPath = path.join(process.cwd(), 'packages/contracts/deployed_contracts.json');
+      // Navigate to monorepo root (up two levels from packages/backend)
+      const monorepoRoot = path.join(process.cwd(), '../..');
+      const deployPath = path.join(monorepoRoot, 'packages/contracts/deployed_contracts.json');
       if (fs.existsSync(deployPath)) {
         const data = JSON.parse(fs.readFileSync(deployPath, 'utf8'));
         this.contracts = { ...data.contracts, ...envContracts }; // Env overrides file
@@ -37,8 +39,10 @@ export class ContractLoaderService implements OnModuleInit {
   }
 
   private loadAbis() {
-    const artifactBase = path.join(process.cwd(), 'packages/contracts/artifacts/contracts');
-    
+    // Navigate to monorepo root (up two levels from packages/backend)
+    const monorepoRoot = path.join(process.cwd(), '../..');
+    const artifactBase = path.join(monorepoRoot, 'packages/contracts/artifacts/contracts');
+
     const mapping = {
       AttestationRegistry: 'core/AttestationRegistry.sol/AttestationRegistry.json',
       IdentityRegistry: 'core/IdentityRegistry.sol/IdentityRegistry.json',
@@ -54,6 +58,7 @@ export class ContractLoaderService implements OnModuleInit {
         if (fs.existsSync(fullPath)) {
           const artifact = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
           this.abis[name] = artifact.abi;
+          this.logger.log(`Loaded ABI for ${name}`);
         } else {
           this.logger.warn(`ABI not found for ${name} at ${fullPath}`);
         }

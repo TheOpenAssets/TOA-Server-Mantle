@@ -24,10 +24,13 @@ export class AssetLifecycleService {
     const asset = await this.assetModel.findOne({ assetId });
     if (!asset) throw new Error('Asset not found');
 
+    // Convert UUID to bytes32 (remove hyphens and pad to 32 bytes)
+    const assetIdBytes32 = '0x' + asset.assetId.replace(/-/g, '').padEnd(64, '0');
+
     // Mocks for now - in real flow these come from Attestation/EigenDA steps
     return {
-        assetId: asset.assetId,
-        attestationHash: asset.attestation?.hash || '0x' + '0'.repeat(64), 
+        assetId: assetIdBytes32,
+        attestationHash: asset.attestation?.hash || '0x' + '0'.repeat(64),
         blobId: asset.eigenDA?.blobId || '0x' + '0'.repeat(64),
         payload: asset.attestation?.payload || '0x',
         signature: asset.attestation?.signature || '0x' + '0'.repeat(130),

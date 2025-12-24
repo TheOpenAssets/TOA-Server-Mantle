@@ -17,6 +17,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ComplianceEngineModule } from './modules/compliance-engine/compliance-engine.module';
 import { TypeformModule } from './modules/typeform/typeform.module';
+import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { TypeformModule } from './modules/typeform/typeform.module';
     NotificationsModule,
     ComplianceEngineModule,
     TypeformModule,
+    MarketplaceModule,
   ],
   controllers: [AppController],
   providers: [AppService],
