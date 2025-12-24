@@ -63,7 +63,10 @@ export class VerificationProcessor extends WorkerHost {
             }
 
             // 3. OCR Extraction
-            const worker = await createWorker('eng');
+            const worker = await createWorker('eng', undefined, {
+              workerPath: undefined, // Let tesseract.js use defaults for Node.js
+              logger: (m: any) => console.log(m),
+            });
             const ret = await worker.recognize(filePath);
             extractedText = ret.data.text;
             await worker.terminate();

@@ -18,10 +18,10 @@ export class ContractLoaderService implements OnModuleInit {
 
   private loadContracts() {
     const envContracts = this.configService.get('blockchain.contracts');
-    
+
     // Try to load from deployed_contracts.json
     try {
-      const deployPath = path.resolve(__dirname, '../../../../../../contracts/deployed_contracts.json');
+      const deployPath = path.join(process.cwd(), 'packages/contracts/deployed_contracts.json');
       if (fs.existsSync(deployPath)) {
         const data = JSON.parse(fs.readFileSync(deployPath, 'utf8'));
         this.contracts = { ...data.contracts, ...envContracts }; // Env overrides file
@@ -37,7 +37,7 @@ export class ContractLoaderService implements OnModuleInit {
   }
 
   private loadAbis() {
-    const artifactBase = path.resolve(__dirname, '../../../../../../contracts/artifacts/contracts');
+    const artifactBase = path.join(process.cwd(), 'packages/contracts/artifacts/contracts');
     
     const mapping = {
       AttestationRegistry: 'core/AttestationRegistry.sol/AttestationRegistry.json',

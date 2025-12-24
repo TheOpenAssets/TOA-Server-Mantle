@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Delete, UseGuards, Request, UploadedFile, UseInterceptors, ParseFilePipeBuilder, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Delete, UseGuards, Request, UploadedFile, UseInterceptors, ParseFilePipeBuilder, HttpStatus, Res, StreamableFile } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { KycService } from '../services/kyc.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -31,5 +32,15 @@ export class KycController {
   @Delete('documents')
   async deleteDocument(@Request() req: any) {
     return this.kycService.deleteDocument(req.user);
+  }
+
+  @Get('document')
+  async getDocument(@Request() req: any, @Res({ passthrough: true }) res: Response) {
+    const { file, contentType } = await this.kycService.getDocument(req.user);
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `inline; filename="${req.user.walletAddress}-kyc-document"`,
+    });
+    return new StreamableFile(file);
   }
 }

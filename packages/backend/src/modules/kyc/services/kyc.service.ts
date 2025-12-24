@@ -4,6 +4,8 @@ import { Model } from 'mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { v4 as uuidv4 } from 'uuid';
+import * as fs from 'fs';
+import * as path from 'path';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { DocumentStorageService } from './document-storage.service';
 
@@ -86,7 +88,35 @@ export class KycService {
           { _id: user._id },
           { $unset: { 'kycDocuments.aadhaar': "" } }
       );
-      
+
       return { message: 'Document deleted' };
+  }
+
+  async getDocument(user: UserDocument) {
+    const fullUser = await this.userModel.findById(user._id);
+    const aadhaar = fullUser?.kycDocuments?.aadhaar;
+
+    if (!aadhaar) {
+      throw new NotFoundException('No document found');
+    }
+
+    const filePath = this.storageService.getFullPath(aadhaar.fileUrl);
+
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('Document file not found');
+    }
+
+    const fileExtension = path.extname(filePath).toLowerCase();
+    const contentTypeMap: { [key: string]: string } = {
+      '.pdf': 'application/pdf',
+      '.jpeg': 'image/jpeg',
+      '.jpg': 'image/jpeg',
+      '.png': 'image/png',
+    };
+
+    const contentType = contentTypeMap[fileExtension] || 'application/octet-stream';
+    const file = fs.createReadStream(filePath);
+
+    return { file, contentType };
   }
 }
