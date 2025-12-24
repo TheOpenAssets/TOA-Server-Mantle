@@ -13,12 +13,14 @@ async function main() {
   if (!usdcAddress) {
     if (network.name === "localhost" || network.name === "hardhat") {
       console.warn("⚠️  No USDC_ADDRESS found in env. Deploying MockUSDC for local testing...");
-      // Simple mock since user deleted the file, we inline a factory or just fail if they really don't want it.
-      // But for the script to run locally without crashing, we need *something*.
-      // Since the user explicitly deleted the mock file, I will throw an error if missing.
       throw new Error("USDC_ADDRESS is missing. Please set it in your .env file.");
     } else {
-      throw new Error("USDC_ADDRESS is missing. Please set it in your .env file for this network.");
+      console.warn("⚠️  No USDC_ADDRESS found in env. Deploying MockUSDC for testnet...");
+      const MockUSDC = await ethers.getContractFactory("MockUSDC");
+      const mockUSDC = await MockUSDC.deploy();
+      await mockUSDC.waitForDeployment();
+      usdcAddress = await mockUSDC.getAddress();
+      console.log("✅ MockUSDC deployed to:", usdcAddress);
     }
   }
   console.log("Using USDC Address:", usdcAddress);

@@ -5,3 +5,5 @@ import type * as core from "./core";
 export type { core };
 import type * as marketplace from "./marketplace";
 export type { marketplace };
+import type * as test from "./test";
+export type { test };

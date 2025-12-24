@@ -942,6 +942,44 @@
       "artifacts": [
         "SecondaryMarket"
       ]
+    },
+    "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/MockUSDC.sol": {
+      "lastModificationDate": 1766568781379,
+      "contentHash": "87552e5a9befa185875faa42f863fd2c",
+      "sourceName": "contracts/test/MockUSDC.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/ERC20.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "MockUSDC"
+      ]
     }
   }
 }

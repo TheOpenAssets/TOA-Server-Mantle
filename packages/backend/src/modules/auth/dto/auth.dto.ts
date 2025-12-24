@@ -1,9 +1,14 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum } from 'class-validator';
+import { UserRole } from '../../../database/schemas/user.schema';
 
 export class ChallengeDto {
   @IsString()
   @IsNotEmpty()
   walletAddress!: string;
+
+  @IsOptional()
+  @IsEnum(UserRole)
+  role?: UserRole;
 }
 
 export class LoginDto {

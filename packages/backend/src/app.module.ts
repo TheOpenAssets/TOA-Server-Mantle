@@ -16,6 +16,7 @@ import { YieldModule } from './modules/yield/yield.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ComplianceEngineModule } from './modules/compliance-engine/compliance-engine.module';
+import { TypeformModule } from './modules/typeform/typeform.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { ComplianceEngineModule } from './modules/compliance-engine/compliance-e
     AdminModule,
     NotificationsModule,
     ComplianceEngineModule,
+    TypeformModule,
   ],
   controllers: [AppController],
   providers: [AppService],

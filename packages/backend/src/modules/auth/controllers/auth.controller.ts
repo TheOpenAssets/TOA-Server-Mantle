@@ -9,7 +9,7 @@ export class AuthController {
 
   @Get('challenge')
   async getChallenge(@Query() query: ChallengeDto) {
-    return this.authService.createChallenge(query.walletAddress);
+    return this.authService.createChallenge(query.walletAddress, query.role);
   }
 
   @Post('login')

@@ -24,12 +24,16 @@ export class AuthService {
     private signatureService: SignatureService,
   ) {}
 
-  async createChallenge(walletAddress: string): Promise<{ message: string; nonce: string }> {
+  async createChallenge(walletAddress: string, role?: UserRole): Promise<{ message: string; nonce: string }> {
     const nonce = uuidv4();
     const message = `Sign this message to authenticate with Mantle RWA Platform.\nNonce: ${nonce}\nTimestamp: ${Date.now()}`;
-    
+
+    // Store nonce and role preference in Redis
     await this.redisService.set(`nonce:${walletAddress}`, nonce, 60);
-    
+    if (role) {
+      await this.redisService.set(`role:${walletAddress}:${nonce}`, role, 60);
+    }
+
     return { message, nonce };
   }
 
@@ -48,7 +52,15 @@ export class AuthService {
     if (!storedNonce || storedNonce !== nonce) {
       throw new BadRequestException('Invalid or expired nonce');
     }
+
+    // 2a. Get role preference from Redis (if provided during challenge)
+    const rolePreference = await this.redisService.get(`role:${walletAddress}:${nonce}`) as UserRole | null;
+
+    // Clean up nonce and role from Redis
     await this.redisService.del(`nonce:${walletAddress}`);
+    if (rolePreference) {
+      await this.redisService.del(`role:${walletAddress}:${nonce}`);
+    }
 
     // 3. Verify Signature
     const isValid = await this.signatureService.verifySignature(walletAddress, message, signature);
@@ -61,7 +73,7 @@ export class AuthService {
     if (!user) {
       user = await this.userModel.create({
         walletAddress,
-        role: UserRole.INVESTOR,
+        role: rolePreference || UserRole.INVESTOR, // Use provided role or default to INVESTOR
         kyc: false,
       });
     }

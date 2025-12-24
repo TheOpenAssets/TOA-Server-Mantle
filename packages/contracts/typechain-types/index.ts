@@ -40,3 +40,5 @@ export type { YieldVault } from "./contracts/core/YieldVault";
 export { YieldVault__factory } from "./factories/contracts/core/YieldVault__factory";
 export type { PrimaryMarket } from "./contracts/marketplace/PrimaryMarket";
 export { PrimaryMarket__factory } from "./factories/contracts/marketplace/PrimaryMarket__factory";
+export type { MockUSDC } from "./contracts/test/MockUSDC";
+export { MockUSDC__factory } from "./factories/contracts/test/MockUSDC__factory";

@@ -3,3 +3,4 @@
 /* eslint-disable */
 export * as core from "./core";
 export * as marketplace from "./marketplace";
+export * as test from "./test";

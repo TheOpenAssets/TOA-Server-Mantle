@@ -81,6 +81,10 @@ declare module "hardhat/types/runtime" {
       name: "PrimaryMarket",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.PrimaryMarket__factory>;
+    getContractFactory(
+      name: "MockUSDC",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.MockUSDC__factory>;
 
     getContractAt(
       name: "IERC1155Errors",
@@ -167,6 +171,11 @@ declare module "hardhat/types/runtime" {
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.PrimaryMarket>;
+    getContractAt(
+      name: "MockUSDC",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.MockUSDC>;
 
     deployContract(
       name: "IERC1155Errors",
@@ -236,6 +245,10 @@ declare module "hardhat/types/runtime" {
       name: "PrimaryMarket",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.PrimaryMarket>;
+    deployContract(
+      name: "MockUSDC",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.MockUSDC>;
 
     deployContract(
       name: "IERC1155Errors",
@@ -322,6 +335,11 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.PrimaryMarket>;
+    deployContract(
+      name: "MockUSDC",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.MockUSDC>;
 
     // default types
     getContractFactory(
