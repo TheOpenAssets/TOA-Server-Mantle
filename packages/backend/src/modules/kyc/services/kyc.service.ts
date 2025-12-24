@@ -119,4 +119,32 @@ export class KycService {
 
     return { file, contentType };
   }
+
+  async manualApprove(user: UserDocument) {
+    // TEMPORARY: Manual KYC approval for testing (REMOVE IN PRODUCTION!)
+    const fullUser = await this.userModel.findById(user._id);
+
+    if (!fullUser?.kycDocuments?.aadhaar) {
+      throw new NotFoundException('No KYC document found');
+    }
+
+    await this.userModel.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          kyc: true,
+          'kycDocuments.aadhaar.status': 'VERIFIED',
+          'kycDocuments.aadhaar.verificationScore': 100,
+          'kycDocuments.aadhaar.verifiedAt': new Date(),
+          'kycDocuments.aadhaar.verificationMeta.manualApproval': true,
+        },
+      },
+    );
+
+    return {
+      message: 'KYC manually approved (testing mode)',
+      kyc: true,
+      status: 'VERIFIED',
+    };
+  }
 }

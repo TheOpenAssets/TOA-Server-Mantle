@@ -42,3 +42,4 @@ packages/backend/dist/
 packages/backend/node_modules/
 packages/contracts/node_modules/
 packages/contracts/artifacts/
+packages/backend/local-storage/

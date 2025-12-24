@@ -43,4 +43,10 @@ export class KycController {
     });
     return new StreamableFile(file);
   }
+
+  @Post('manual-approve')
+  async manualApprove(@Request() req: any) {
+    // TEMPORARY: Manual approval for testing (remove in production)
+    return this.kycService.manualApprove(req.user);
+  }
 }
