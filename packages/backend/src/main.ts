@@ -5,6 +5,9 @@ import * as express from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Global JSON body parser (must come before specific middleware)
+  app.use(express.json());
+
   // Raw body middleware for Typeform webhook
   app.use('/webhooks/typeform', express.json({
     verify: (req: any, res, buf) => {
