@@ -5,7 +5,7 @@ export type PurchaseDocument = Purchase & Document;
 
 @Schema({ timestamps: true })
 export class Purchase {
-  @Prop({ required: true, index: true })
+  @Prop({ required: true, unique: true })
   txHash!: string;
 
   @Prop({ required: true, index: true })
@@ -41,11 +41,14 @@ export class Purchase {
     industry?: string;
     riskTier?: string;
   };
+
+  // Timestamps (automatically added by Mongoose with timestamps: true)
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const PurchaseSchema = SchemaFactory.createForClass(Purchase);
 
 // Indexes
 PurchaseSchema.index({ investorWallet: 1, assetId: 1 });
-PurchaseSchema.index({ txHash: 1 }, { unique: true });
 PurchaseSchema.index({ createdAt: -1 });

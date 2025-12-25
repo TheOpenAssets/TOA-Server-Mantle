@@ -65,7 +65,7 @@ export class BlockchainService {
     return hash;
   }
 
-  async deployToken(dto: DeployTokenDto): Promise<string> {
+  async deployToken(dto: DeployTokenDto): Promise<{ hash: string; tokenAddress?: string; complianceAddress?: string }> {
     const wallet = this.walletService.getAdminWallet();
     const address = this.contractLoader.getContractAddress('TokenFactory');
     const abi = this.contractLoader.getContractAbi('TokenFactory');
@@ -74,7 +74,7 @@ export class BlockchainService {
 
     // Convert UUID to bytes32 for on-chain usage
     const assetIdBytes32 = '0x' + dto.assetId.replace(/-/g, '').padEnd(64, '0');
-    
+
     // Use provided values or defaults and convert to wei (18 decimals)
     const totalSupplyRaw = dto.totalSupply || '100000'; // Default 100k tokens
     const totalSupplyWei = BigInt(totalSupplyRaw) * BigInt(10 ** 18);
@@ -93,7 +93,7 @@ export class BlockchainService {
     this.logger.log(`Waiting for transaction confirmation...`);
 
     // Wait for transaction receipt
-    const receipt = await this.publicClient.waitForTransactionReceipt({ 
+    const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
       timeout: 60_000, // 60 second timeout
     });
@@ -129,12 +129,12 @@ export class BlockchainService {
     if (!tokenAddress) {
       this.logger.error(`Could not find TokenSuiteDeployed event in transaction logs`);
       // Still return hash, but status won't be updated
-      return hash;
+      return { hash };
     }
 
     // Update MongoDB with token info and status
     this.logger.log(`Updating asset ${dto.assetId} status to TOKENIZED`);
-    
+
     await this.assetModel.updateOne(
       { assetId: dto.assetId },
       {
@@ -151,8 +151,8 @@ export class BlockchainService {
     );
 
     this.logger.log(`Asset ${dto.assetId} updated to TOKENIZED status`);
-    
-    return hash;
+
+    return { hash, tokenAddress, complianceAddress };
   }
 
   async depositYield(tokenAddress: string, amount: string): Promise<Hash> {

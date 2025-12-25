@@ -177,83 +177,39 @@ echo ""
 if echo "$DEPLOY_RESPONSE" | jq -e '.success' > /dev/null 2>&1; then
     DEPLOY_TX_HASH=$(echo "$DEPLOY_RESPONSE" | jq -r '.transactionHash')
     DEPLOY_EXPLORER=$(echo "$DEPLOY_RESPONSE" | jq -r '.explorerUrl')
-    print_success "Token deployment submitted!"
+    TOKEN_ADDRESS=$(echo "$DEPLOY_RESPONSE" | jq -r '.tokenAddress')
+    COMPLIANCE_ADDRESS=$(echo "$DEPLOY_RESPONSE" | jq -r '.complianceAddress')
+
+    print_success "Token deployed successfully!"
     print_info "Transaction Hash: $DEPLOY_TX_HASH"
+    print_info "Token Address: $TOKEN_ADDRESS"
+    print_info "Compliance Address: $COMPLIANCE_ADDRESS"
     print_info "Explorer: $DEPLOY_EXPLORER"
-    print_info "Note: Token address will be available in the transaction logs"
     echo ""
-    print_info "View transaction to get token address:"
-    echo "   $DEPLOY_EXPLORER"
 else
     ERROR=$(echo "$DEPLOY_RESPONSE" | jq -r '.error // .message // "Unknown error"')
     if [[ "$ERROR" == *"already deployed"* ]] || [[ "$ERROR" == *"already tokenized"* ]]; then
         print_info "Token was already deployed for this asset"
+        # Try to get token address from database
+        ASSET_DATA=$(curl -s -X GET "$API_BASE_URL/admin/assets/$ASSET_ID" \
+          --header "Authorization: Bearer $ADMIN_TOKEN")
+        TOKEN_ADDRESS=$(echo "$ASSET_DATA" | jq -r '.asset.token.address // empty')
+        if [ ! -z "$TOKEN_ADDRESS" ]; then
+            print_info "Found existing token address: $TOKEN_ADDRESS"
+        fi
     else
         print_error "Token deployment failed: $ERROR"
         exit 1
     fi
 fi
 
-# Wait for transaction to be mined
-print_info "Waiting 15 seconds for transaction confirmation..."
-sleep 15
+# Wait for transaction to settle
+print_info "Waiting 10 seconds for transaction to settle..."
+sleep 10
 
-# Step 5: Get Token Address from Explorer
-print_header "Step 5: Get Token Address"
-print_info "Please check the transaction on the explorer to get the token address:"
-echo "   $DEPLOY_EXPLORER"
-echo ""
-print_info "Look for the 'TokenSuiteDeployed' event in the logs"
-echo ""
-echo -n "Enter the Token Address (or press Enter to skip): "
-read TOKEN_ADDRESS
-
+# Step 5: List on Marketplace (if token address is available)
 if [ ! -z "$TOKEN_ADDRESS" ]; then
-    print_success "Token Address: $TOKEN_ADDRESS"
-    
-    # Step 6: Update Status to TOKENIZED
-    print_header "Step 6: Sync Tokenization Status"
-    print_info "Updating asset status to TOKENIZED..."
-    
-    SYNC_TOKENIZED_RESPONSE=$(curl -s -X POST "$API_BASE_URL/admin/sync/update-status" \
-      --header "Authorization: Bearer $ADMIN_TOKEN" \
-      --header 'Content-Type: application/json' \
-      --data "{
-        \"assetId\": \"$ASSET_ID\",
-        \"txHash\": \"$DEPLOY_TX_HASH\",
-        \"status\": \"TOKENIZED\",
-        \"tokenAddress\": \"$TOKEN_ADDRESS\"
-      }")
-    
-    echo "Response:"
-    echo "$SYNC_TOKENIZED_RESPONSE" | jq '.' 2>/dev/null || echo "$SYNC_TOKENIZED_RESPONSE"
-    echo ""
-    
-    if echo "$SYNC_TOKENIZED_RESPONSE" | jq -e '.success' > /dev/null 2>&1; then
-        print_success "Status updated to TOKENIZED"
-    else
-        print_info "Status sync failed (may need manual update)"
-    fi
-else
-    print_info "Token address skipped. You can update it manually later."
-    echo ""
-    print_info "To update status manually, use:"
-    echo ""
-    echo "curl -X POST \"$API_BASE_URL/admin/sync/update-status\" \\"
-    echo "  --header \"Authorization: Bearer \$ADMIN_TOKEN\" \\"
-    echo "  --header 'Content-Type: application/json' \\"
-    echo "  --data '{"
-    echo "    \"assetId\": \"$ASSET_ID\","
-    echo "    \"txHash\": \"$DEPLOY_TX_HASH\","
-    echo "    \"status\": \"TOKENIZED\","
-    echo "    \"tokenAddress\": \"YOUR_TOKEN_ADDRESS\""
-    echo "  }'"
-    echo ""
-fi
-
-# Step 7: List on Marketplace (if token address is available)
-if [ ! -z "$TOKEN_ADDRESS" ]; then
-    print_header "Step 7: List on Marketplace"
+    print_header "Step 5: List on Marketplace"
     print_info "Listing asset on primary marketplace..."
 
     # Marketplace configuration (can be customized via env vars)

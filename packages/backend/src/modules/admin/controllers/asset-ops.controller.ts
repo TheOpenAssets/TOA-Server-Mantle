@@ -78,19 +78,17 @@ export class AssetOpsController {
   @Post('deploy-token')
   async deployToken(@Body() dto: DeployTokenDto) {
     try {
-      const txHash = await this.blockchainService.deployToken(dto);
-      
-      // Fetch updated asset to get token address
-      const asset = await this.assetModel.findOne({ assetId: dto.assetId });
-      
+      const result = await this.blockchainService.deployToken(dto);
+
       return {
         success: true,
         message: 'Token deployed successfully',
         assetId: dto.assetId,
-        tokenAddress: asset?.token?.address,
-        transactionHash: txHash,
-        explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
-        status: asset?.status,
+        tokenAddress: result.tokenAddress,
+        complianceAddress: result.complianceAddress,
+        transactionHash: result.hash,
+        explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${result.hash}`,
+        status: 'TOKENIZED',
       };
     } catch (error: any) {
       const errorMessage = error.message || 'Unknown error';
