@@ -8,6 +8,7 @@ async function main() {
 
   // 0. Configuration & Setup
   let usdcAddress = process.env.USDC_ADDRESS;
+  let faucetAddress: string | undefined;
   const platformCustody = deployer.address; // Default to deployer for initial setup
   
   if (!usdcAddress) {
@@ -21,6 +22,14 @@ async function main() {
       await mockUSDC.waitForDeployment();
       usdcAddress = await mockUSDC.getAddress();
       console.log("✅ MockUSDC deployed to:", usdcAddress);
+
+      // Deploy Faucet
+      console.log("\nDeploying Faucet...");
+      const Faucet = await ethers.getContractFactory("Faucet");
+      const faucet = await Faucet.deploy(usdcAddress);
+      await faucet.waitForDeployment();
+      faucetAddress = await faucet.getAddress();
+      console.log("✅ Faucet deployed to:", faucetAddress);
     }
   }
   console.log("Using USDC Address:", usdcAddress);
@@ -90,7 +99,7 @@ async function main() {
   console.log("✅ PrimaryMarketplace deployed to:", primaryMarketplaceAddress);
 
   console.log("\n🎉 Deployment Complete! Summary:");
-  console.table({
+  const summary: any = {
     AttestationRegistry: attestationRegistryAddress,
     TrustedIssuersRegistry: trustedIssuersRegistryAddress,
     IdentityRegistry: identityRegistryAddress,
@@ -98,7 +107,11 @@ async function main() {
     TokenFactory: tokenFactoryAddress,
     PrimaryMarketplace: primaryMarketplaceAddress,
     USDC: usdcAddress,
-  });
+  };
+  if (faucetAddress) {
+    summary.Faucet = faucetAddress;
+  }
+  console.table(summary);
 
   // Save to deployed_contracts.json
   const fs = require("fs");
@@ -115,6 +128,7 @@ async function main() {
       TokenFactory: tokenFactoryAddress,
       PrimaryMarketplace: primaryMarketplaceAddress,
       USDC: usdcAddress,
+      ...(faucetAddress && { Faucet: faucetAddress }),
     }
   };
 

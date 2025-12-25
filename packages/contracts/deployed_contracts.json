@@ -1,13 +1,14 @@
 {
   "network": "mantleTestnet",
-  "timestamp": "2025-12-24T09:34:50.996Z",
+  "timestamp": "2025-12-25T16:15:45.951Z",
   "contracts": {
-    "AttestationRegistry": "0x4d0B52aB6303C4532bE779c14C49d6a97A5867ac",
-    "TrustedIssuersRegistry": "0x2104A6Fff392f36d03f3D6C38b37E2b215Bd7D7c",
-    "IdentityRegistry": "0xD93911f05958b017F43DAcF99A0eB9a1EB91431d",
-    "YieldVault": "0x04bABaDA4b187d39BcB4e3e851e909fAD0513Fe5",
-    "TokenFactory": "0x094A619b6E7e851C128317795266468552F4e964",
-    "PrimaryMarketplace": "0x444a6f69FC9411d0ea9627CbDdBD3Dfa563aE615",
-    "USDC": "0xfD61dC86e7799479597c049D7b19e6E638adDdd0"
+    "AttestationRegistry": "0x03FE7d3736402D140659e7bD92B64808E31C3f51",
+    "TrustedIssuersRegistry": "0xf63B563b6D438122cBC87f4356e60b8BB3Bc53E2",
+    "IdentityRegistry": "0x2E310C62A225033055E88B690F8d054ece8bcbC4",
+    "YieldVault": "0xb9BfaEDe01f0f2b2162072b73e2b2038Fb42b5cD",
+    "TokenFactory": "0x89C70bB202341c28e7a8dF333b4981BfB49b3c21",
+    "PrimaryMarketplace": "0x96183D507Bbb0dA7d78192dce7FBC8C1f209061C",
+    "USDC": "0x9A54Bad93a00Bf1232D4e636f5e53055Dc0b8238",
+    "Faucet": "0x643b8c16F894B39399506cC921efa68d61A14905"
   }
 }

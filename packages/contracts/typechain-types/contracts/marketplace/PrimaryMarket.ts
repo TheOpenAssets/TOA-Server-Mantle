@@ -27,21 +27,34 @@ export interface PrimaryMarketInterface extends Interface {
   getFunction(
     nameOrSignature:
       | "USDC"
+      | "bids"
       | "buyTokens"
       | "closeListing"
       | "createListing"
+      | "endAuction"
       | "factory"
-      | "getCurrentPrice"
+      | "getBidCount"
       | "listings"
       | "owner"
       | "platformCustody"
+      | "settleBid"
+      | "submitBid"
   ): FunctionFragment;
 
   getEvent(
-    nameOrSignatureOrTopic: "ListingCreated" | "TokensPurchased"
+    nameOrSignatureOrTopic:
+      | "AuctionEnded"
+      | "BidSettled"
+      | "BidSubmitted"
+      | "ListingCreated"
+      | "TokensPurchased"
   ): EventFragment;
 
   encodeFunctionData(functionFragment: "USDC", values?: undefined): string;
+  encodeFunctionData(
+    functionFragment: "bids",
+    values: [BytesLike, BigNumberish]
+  ): string;
   encodeFunctionData(
     functionFragment: "buyTokens",
     values: [BytesLike, BigNumberish]
@@ -59,13 +72,16 @@ export interface PrimaryMarketInterface extends Interface {
       BigNumberish,
       BigNumberish,
       BigNumberish,
-      BigNumberish,
       BigNumberish
     ]
   ): string;
+  encodeFunctionData(
+    functionFragment: "endAuction",
+    values: [BytesLike, BigNumberish]
+  ): string;
   encodeFunctionData(functionFragment: "factory", values?: undefined): string;
   encodeFunctionData(
-    functionFragment: "getCurrentPrice",
+    functionFragment: "getBidCount",
     values: [BytesLike]
   ): string;
   encodeFunctionData(functionFragment: "listings", values: [BytesLike]): string;
@@ -74,8 +90,17 @@ export interface PrimaryMarketInterface extends Interface {
     functionFragment: "platformCustody",
     values?: undefined
   ): string;
+  encodeFunctionData(
+    functionFragment: "settleBid",
+    values: [BytesLike, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "submitBid",
+    values: [BytesLike, BigNumberish, BigNumberish]
+  ): string;
 
   decodeFunctionResult(functionFragment: "USDC", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "bids", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "buyTokens", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "closeListing",
@@ -85,9 +110,10 @@ export interface PrimaryMarketInterface extends Interface {
     functionFragment: "createListing",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "endAuction", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "factory", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "getCurrentPrice",
+    functionFragment: "getBidCount",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "listings", data: BytesLike): Result;
@@ -96,6 +122,86 @@ export interface PrimaryMarketInterface extends Interface {
     functionFragment: "platformCustody",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "settleBid", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "submitBid", data: BytesLike): Result;
+}
+
+export namespace AuctionEndedEvent {
+  export type InputTuple = [
+    assetId: BytesLike,
+    clearingPrice: BigNumberish,
+    totalTokensSold: BigNumberish
+  ];
+  export type OutputTuple = [
+    assetId: string,
+    clearingPrice: bigint,
+    totalTokensSold: bigint
+  ];
+  export interface OutputObject {
+    assetId: string;
+    clearingPrice: bigint;
+    totalTokensSold: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace BidSettledEvent {
+  export type InputTuple = [
+    assetId: BytesLike,
+    bidder: AddressLike,
+    tokensReceived: BigNumberish,
+    cost: BigNumberish,
+    refund: BigNumberish
+  ];
+  export type OutputTuple = [
+    assetId: string,
+    bidder: string,
+    tokensReceived: bigint,
+    cost: bigint,
+    refund: bigint
+  ];
+  export interface OutputObject {
+    assetId: string;
+    bidder: string;
+    tokensReceived: bigint;
+    cost: bigint;
+    refund: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace BidSubmittedEvent {
+  export type InputTuple = [
+    assetId: BytesLike,
+    bidder: AddressLike,
+    tokenAmount: BigNumberish,
+    price: BigNumberish,
+    bidIndex: BigNumberish
+  ];
+  export type OutputTuple = [
+    assetId: string,
+    bidder: string,
+    tokenAmount: bigint,
+    price: bigint,
+    bidIndex: bigint
+  ];
+  export interface OutputObject {
+    assetId: string;
+    bidder: string;
+    tokenAmount: bigint;
+    price: bigint;
+    bidIndex: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
 }
 
 export namespace ListingCreatedEvent {
@@ -103,19 +209,19 @@ export namespace ListingCreatedEvent {
     assetId: BytesLike,
     tokenAddress: AddressLike,
     listingType: BigNumberish,
-    price: BigNumberish
+    priceOrReserve: BigNumberish
   ];
   export type OutputTuple = [
     assetId: string,
     tokenAddress: string,
     listingType: bigint,
-    price: bigint
+    priceOrReserve: bigint
   ];
   export interface OutputObject {
     assetId: string;
     tokenAddress: string;
     listingType: bigint;
-    price: bigint;
+    priceOrReserve: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -196,6 +302,20 @@ export interface PrimaryMarket extends BaseContract {
 
   USDC: TypedContractMethod<[], [string], "view">;
 
+  bids: TypedContractMethod<
+    [arg0: BytesLike, arg1: BigNumberish],
+    [
+      [string, bigint, bigint, bigint, boolean] & {
+        bidder: string;
+        tokenAmount: bigint;
+        price: bigint;
+        usdcDeposited: bigint;
+        settled: boolean;
+      }
+    ],
+    "view"
+  >;
+
   buyTokens: TypedContractMethod<
     [assetId: BytesLike, amount: BigNumberish],
     [void],
@@ -209,8 +329,7 @@ export interface PrimaryMarket extends BaseContract {
       assetId: BytesLike,
       tokenAddress: AddressLike,
       listingType: BigNumberish,
-      priceOrStart: BigNumberish,
-      endPrice: BigNumberish,
+      priceOrReserve: BigNumberish,
       duration: BigNumberish,
       totalSupply: BigNumberish,
       minInvestment: BigNumberish
@@ -219,9 +338,15 @@ export interface PrimaryMarket extends BaseContract {
     "nonpayable"
   >;
 
+  endAuction: TypedContractMethod<
+    [assetId: BytesLike, clearingPrice: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
   factory: TypedContractMethod<[], [string], "view">;
 
-  getCurrentPrice: TypedContractMethod<[assetId: BytesLike], [bigint], "view">;
+  getBidCount: TypedContractMethod<[assetId: BytesLike], [bigint], "view">;
 
   listings: TypedContractMethod<
     [arg0: BytesLike],
@@ -244,10 +369,10 @@ export interface PrimaryMarket extends BaseContract {
         assetId: string;
         listingType: bigint;
         staticPrice: bigint;
-        startPrice: bigint;
-        endPrice: bigint;
-        duration: bigint;
-        startTime: bigint;
+        reservePrice: bigint;
+        endTime: bigint;
+        clearingPrice: bigint;
+        auctionPhase: bigint;
         totalSupply: bigint;
         sold: bigint;
         active: boolean;
@@ -261,6 +386,18 @@ export interface PrimaryMarket extends BaseContract {
 
   platformCustody: TypedContractMethod<[], [string], "view">;
 
+  settleBid: TypedContractMethod<
+    [assetId: BytesLike, bidIndex: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
+  submitBid: TypedContractMethod<
+    [assetId: BytesLike, tokenAmount: BigNumberish, price: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
   ): T;
@@ -268,6 +405,21 @@ export interface PrimaryMarket extends BaseContract {
   getFunction(
     nameOrSignature: "USDC"
   ): TypedContractMethod<[], [string], "view">;
+  getFunction(
+    nameOrSignature: "bids"
+  ): TypedContractMethod<
+    [arg0: BytesLike, arg1: BigNumberish],
+    [
+      [string, bigint, bigint, bigint, boolean] & {
+        bidder: string;
+        tokenAmount: bigint;
+        price: bigint;
+        usdcDeposited: bigint;
+        settled: boolean;
+      }
+    ],
+    "view"
+  >;
   getFunction(
     nameOrSignature: "buyTokens"
   ): TypedContractMethod<
@@ -285,8 +437,7 @@ export interface PrimaryMarket extends BaseContract {
       assetId: BytesLike,
       tokenAddress: AddressLike,
       listingType: BigNumberish,
-      priceOrStart: BigNumberish,
-      endPrice: BigNumberish,
+      priceOrReserve: BigNumberish,
       duration: BigNumberish,
       totalSupply: BigNumberish,
       minInvestment: BigNumberish
@@ -295,10 +446,17 @@ export interface PrimaryMarket extends BaseContract {
     "nonpayable"
   >;
   getFunction(
+    nameOrSignature: "endAuction"
+  ): TypedContractMethod<
+    [assetId: BytesLike, clearingPrice: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
     nameOrSignature: "factory"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
-    nameOrSignature: "getCurrentPrice"
+    nameOrSignature: "getBidCount"
   ): TypedContractMethod<[assetId: BytesLike], [bigint], "view">;
   getFunction(
     nameOrSignature: "listings"
@@ -323,10 +481,10 @@ export interface PrimaryMarket extends BaseContract {
         assetId: string;
         listingType: bigint;
         staticPrice: bigint;
-        startPrice: bigint;
-        endPrice: bigint;
-        duration: bigint;
-        startTime: bigint;
+        reservePrice: bigint;
+        endTime: bigint;
+        clearingPrice: bigint;
+        auctionPhase: bigint;
         totalSupply: bigint;
         sold: bigint;
         active: boolean;
@@ -341,7 +499,42 @@ export interface PrimaryMarket extends BaseContract {
   getFunction(
     nameOrSignature: "platformCustody"
   ): TypedContractMethod<[], [string], "view">;
+  getFunction(
+    nameOrSignature: "settleBid"
+  ): TypedContractMethod<
+    [assetId: BytesLike, bidIndex: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "submitBid"
+  ): TypedContractMethod<
+    [assetId: BytesLike, tokenAmount: BigNumberish, price: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
 
+  getEvent(
+    key: "AuctionEnded"
+  ): TypedContractEvent<
+    AuctionEndedEvent.InputTuple,
+    AuctionEndedEvent.OutputTuple,
+    AuctionEndedEvent.OutputObject
+  >;
+  getEvent(
+    key: "BidSettled"
+  ): TypedContractEvent<
+    BidSettledEvent.InputTuple,
+    BidSettledEvent.OutputTuple,
+    BidSettledEvent.OutputObject
+  >;
+  getEvent(
+    key: "BidSubmitted"
+  ): TypedContractEvent<
+    BidSubmittedEvent.InputTuple,
+    BidSubmittedEvent.OutputTuple,
+    BidSubmittedEvent.OutputObject
+  >;
   getEvent(
     key: "ListingCreated"
   ): TypedContractEvent<
@@ -358,6 +551,39 @@ export interface PrimaryMarket extends BaseContract {
   >;
 
   filters: {
+    "AuctionEnded(bytes32,uint256,uint256)": TypedContractEvent<
+      AuctionEndedEvent.InputTuple,
+      AuctionEndedEvent.OutputTuple,
+      AuctionEndedEvent.OutputObject
+    >;
+    AuctionEnded: TypedContractEvent<
+      AuctionEndedEvent.InputTuple,
+      AuctionEndedEvent.OutputTuple,
+      AuctionEndedEvent.OutputObject
+    >;
+
+    "BidSettled(bytes32,address,uint256,uint256,uint256)": TypedContractEvent<
+      BidSettledEvent.InputTuple,
+      BidSettledEvent.OutputTuple,
+      BidSettledEvent.OutputObject
+    >;
+    BidSettled: TypedContractEvent<
+      BidSettledEvent.InputTuple,
+      BidSettledEvent.OutputTuple,
+      BidSettledEvent.OutputObject
+    >;
+
+    "BidSubmitted(bytes32,address,uint256,uint256,uint256)": TypedContractEvent<
+      BidSubmittedEvent.InputTuple,
+      BidSubmittedEvent.OutputTuple,
+      BidSubmittedEvent.OutputObject
+    >;
+    BidSubmitted: TypedContractEvent<
+      BidSubmittedEvent.InputTuple,
+      BidSubmittedEvent.OutputTuple,
+      BidSubmittedEvent.OutputObject
+    >;
+
     "ListingCreated(bytes32,address,uint8,uint256)": TypedContractEvent<
       ListingCreatedEvent.InputTuple,
       ListingCreatedEvent.OutputTuple,

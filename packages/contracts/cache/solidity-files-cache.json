@@ -796,8 +796,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/marketplace/PrimaryMarket.sol": {
-      "lastModificationDate": 1766465339693,
-      "contentHash": "bd9ea0cccabffe74b364df5626ef56ca",
+      "lastModificationDate": 1766673616378,
+      "contentHash": "55b9c92c9b0067c5381f276384d04d97",
       "sourceName": "contracts/marketplace/PrimaryMarket.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -978,6 +978,45 @@
         "^0.8.20"
       ],
       "artifacts": [
+        "MockUSDC"
+      ]
+    },
+    "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/Faucet.sol": {
+      "lastModificationDate": 1766678513799,
+      "contentHash": "ac1a5b03879c1d67f8cae2020379c758",
+      "sourceName": "contracts/test/Faucet.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "Faucet",
         "MockUSDC"
       ]
     }
