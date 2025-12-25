@@ -68,37 +68,46 @@ async function analyzeToken(tokenAddress) {
   const currentBlock = await provider.getBlockNumber();
   const holders = new Set();
 
+  // Always add known platform addresses
+  holders.add(platformCustody);
+  holders.add(MARKETPLACE);
+
   try {
-    // Get all Transfer events from contract deployment to now
-    // Split into chunks to avoid RPC limits
-    const CHUNK_SIZE = 10000;
-    let fromBlock = 0;
+    // Scan only recent blocks (last 100k blocks or ~7 days on Mantle)
+    // This avoids hanging on old/empty blocks
+    const blocksToScan = 100000;
+    const startBlock = Math.max(currentBlock - blocksToScan, 0);
+    
+    console.log(`Scanning blocks ${startBlock} to ${currentBlock}...`);
 
-    while (fromBlock < currentBlock) {
-      const toBlock = Math.min(fromBlock + CHUNK_SIZE, currentBlock);
+    // Get all Transfer events in one query for recent blocks
+    const filter = token.filters.Transfer();
+    const events = await Promise.race([
+      token.queryFilter(filter, startBlock, currentBlock),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout')), 10000) // 10 second timeout
+      )
+    ]);
 
-      const filter = token.filters.Transfer();
-      const events = await token.queryFilter(filter, fromBlock, toBlock);
-
-      for (const event of events) {
-        const to = event.args.to;
-        // Add all recipients except zero address (minting doesn't create holders)
-        if (to !== ethers.ZeroAddress) {
-          holders.add(to);
-        }
+    for (const event of events) {
+      const to = event.args.to;
+      const from = event.args.from;
+      
+      // Add all addresses that have received tokens
+      if (to !== ethers.ZeroAddress) {
+        holders.add(to);
       }
-
-      fromBlock = toBlock + 1;
+      // Add senders too (in case they still hold)
+      if (from !== ethers.ZeroAddress) {
+        holders.add(from);
+      }
     }
 
-    console.log(`Found ${holders.size} potential holders\n`);
+    console.log(`Found ${holders.size} potential holders from recent activity\n`);
 
   } catch (error) {
-    console.log('⚠️  Could not scan all events (RPC limitation)');
-    console.log('   Showing key addresses only...\n');
-
-    // Fallback: check known addresses
-    holders.add(platformCustody);
+    console.log('⚠️  Could not scan all events (RPC limitation or timeout)');
+    console.log('   Checking key addresses only...\n');
   }
 
   // 4. Check balances of all holders
