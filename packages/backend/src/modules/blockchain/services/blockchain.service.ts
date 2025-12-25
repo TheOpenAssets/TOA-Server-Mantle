@@ -75,8 +75,34 @@ export class BlockchainService {
     // Convert UUID to bytes32 for on-chain usage
     const assetIdBytes32 = '0x' + dto.assetId.replace(/-/g, '').padEnd(64, '0');
 
-    // Use provided values or defaults and convert to wei (18 decimals)
-    const totalSupplyRaw = dto.totalSupply || '100000'; // Default 100k tokens
+    // Calculate total supply if not provided
+    let totalSupplyRaw: string;
+
+    if (dto.totalSupply) {
+      // Use provided value
+      totalSupplyRaw = dto.totalSupply;
+    } else {
+      // Calculate from asset's faceValue and pricePerToken
+      const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+      if (!asset) {
+        throw new Error(`Asset ${dto.assetId} not found`);
+      }
+
+      const faceValue = parseFloat(asset.metadata?.faceValue || '0');
+      const pricePerToken = parseFloat(asset.tokenParams?.pricePerToken || '1');
+
+      if (faceValue === 0 || pricePerToken === 0) {
+        throw new Error(`Asset ${dto.assetId} missing faceValue or pricePerToken`);
+      }
+
+      // Calculate total tokens: faceValue / pricePerToken
+      const totalTokens = Math.floor(faceValue / pricePerToken);
+      totalSupplyRaw = totalTokens.toString();
+
+      this.logger.log(`Calculated totalSupply from asset: faceValue=${faceValue}, pricePerToken=${pricePerToken}, totalTokens=${totalTokens}`);
+    }
+
+    // Convert to wei (18 decimals)
     const totalSupplyWei = BigInt(totalSupplyRaw) * BigInt(10 ** 18);
     const issuer = dto.issuer || wallet.account.address; // Default to admin wallet
 
@@ -141,7 +167,7 @@ export class BlockchainService {
         $set: {
           'token.address': tokenAddress,
           'token.compliance': complianceAddress,
-          'token.supply': totalSupplyRaw,
+          'token.supply': totalSupplyWei.toString(), // ✅ FIX: Save wei amount, not token count
           'token.deployedAt': new Date(),
           'token.transactionHash': hash,
           status: AssetStatus.TOKENIZED,
@@ -222,30 +248,9 @@ export class BlockchainService {
     // Determine listing type enum (0 = STATIC, 1 = AUCTION)
     const listingTypeEnum = type === 'STATIC' ? 0 : 1;
 
-    // For STATIC listings
-    if (type === 'STATIC') {
-      const hash = await wallet.writeContract({
-        address: address as Address,
-        abi,
-        functionName: 'createListing',
-        args: [
-          assetIdBytes32,
-          tokenAddress as Address,
-          listingTypeEnum,
-          BigInt(price),      // staticPrice
-          BigInt(0),          // endPrice (not used for static)
-          BigInt(0),          // duration (not used for static)
-          totalSupplyWei,     // totalSupply in wei
-          BigInt(minInvestment),
-        ],
-      });
-
-      await this.publicClient.waitForTransactionReceipt({ hash });
-      this.logger.log(`Token listed in tx: ${hash}`);
-      return hash;
-    }
-
-    // For AUCTION listings
+    // New createListing signature:
+    // createListing(assetId, tokenAddress, listingType, priceOrReserve, duration, totalSupply, minInvestment)
+    
     const hash = await wallet.writeContract({
       address: address as Address,
       abi,
@@ -254,16 +259,36 @@ export class BlockchainService {
         assetIdBytes32,
         tokenAddress as Address,
         listingTypeEnum,
-        BigInt(price),      // startPrice
-        BigInt(price),      // endPrice (could be different for Dutch auction)
-        BigInt(duration || '86400'), // duration in seconds
-        totalSupplyWei,     // totalSupply in wei
-        BigInt(minInvestment),
+        BigInt(price),               // priceOrReserve
+        BigInt(duration || '0'),     // duration (0 for STATIC is fine, or ignored)
+        totalSupplyWei,              // totalSupply
+        BigInt(minInvestment),       // minInvestment
       ],
     });
 
     await this.publicClient.waitForTransactionReceipt({ hash });
-    this.logger.log(`Auction listed in tx: ${hash}`);
+    this.logger.log(`${type} listing created in tx: ${hash}`);
+    return hash;
+  }
+
+  async endAuction(assetId: string, clearingPrice: string): Promise<Hash> {
+    const wallet = this.walletService.getAdminWallet();
+    const address = this.contractLoader.getContractAddress('PrimaryMarketplace');
+    const abi = this.contractLoader.getContractAbi('PrimaryMarketplace');
+
+    const assetIdBytes32 = ('0x' + assetId.replace(/-/g, '').padEnd(64, '0')) as Hash;
+
+    this.logger.log(`Ending auction for asset ${assetId} with clearing price ${clearingPrice}...`);
+
+    const hash = await wallet.writeContract({
+      address: address as Address,
+      abi,
+      functionName: 'endAuction',
+      args: [assetIdBytes32, BigInt(clearingPrice)],
+    });
+
+    await this.publicClient.waitForTransactionReceipt({ hash });
+    this.logger.log(`Auction ended in tx: ${hash}`);
     return hash;
   }
 
