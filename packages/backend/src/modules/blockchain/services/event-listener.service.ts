@@ -149,6 +149,7 @@ export class EventListenerService implements OnModuleInit {
     const address = this.contractLoader.getContractAddress('PrimaryMarketplace');
     const abi = this.contractLoader.getContractAbi('PrimaryMarketplace');
 
+    // Watch TokensPurchased (Static Sales)
     this.publicClient.watchContractEvent({
       address: address as Address,
       abi,
@@ -162,6 +163,66 @@ export class EventListenerService implements OnModuleInit {
             amount: amount.toString(),
             price: price.toString(),
             totalPayment: totalPayment.toString(),
+            txHash: log.transactionHash,
+          });
+        }
+      },
+    });
+
+    // Watch BidSubmitted
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'BidSubmitted',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { assetId, bidder, tokenAmount, price, bidIndex } = log.args;
+          await this.eventQueue.add('process-bid-submitted', {
+            assetId,
+            bidder,
+            tokenAmount: tokenAmount.toString(),
+            price: price.toString(),
+            bidIndex: Number(bidIndex),
+            txHash: log.transactionHash,
+            blockNumber: Number(log.blockNumber),
+          });
+        }
+      },
+    });
+
+    // Watch AuctionEnded
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'AuctionEnded',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { assetId, clearingPrice, totalTokensSold } = log.args;
+          await this.eventQueue.add('process-auction-ended', {
+            assetId,
+            clearingPrice: clearingPrice.toString(),
+            totalTokensSold: totalTokensSold.toString(),
+            txHash: log.transactionHash,
+          });
+        }
+      },
+    });
+
+    // Watch BidSettled
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'BidSettled',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { assetId, bidder, tokensReceived, cost, refund, bidIndex } = log.args;
+          await this.eventQueue.add('process-bid-settled', {
+            assetId,
+            bidder,
+            bidIndex: Number(bidIndex), // Assuming added to event or derived
+            tokensReceived: tokensReceived.toString(),
+            cost: cost.toString(),
+            refund: refund.toString(),
             txHash: log.transactionHash,
           });
         }

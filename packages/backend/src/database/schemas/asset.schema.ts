@@ -111,12 +111,14 @@ export class Asset {
   listing?: {
     type: 'STATIC' | 'AUCTION';
     price?: string;
+    reservePrice?: string;
     priceRange?: { start: string; end: string };
     duration?: number;
     sold: string;
     amountRaised?: string; // Total USDC raised from primary sales (for yield calculation)
     active: boolean;
     listedAt: Date;
+    phase?: 'BIDDING' | 'ENDED' | 'SETTLED' | 'FAILED';
   };
 
   @Prop({ type: Object })

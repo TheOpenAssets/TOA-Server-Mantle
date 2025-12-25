@@ -1,0 +1,44 @@
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document } from 'mongoose';
+
+export type BidDocument = Bid & Document;
+
+export enum BidStatus {
+  PENDING = 'PENDING',
+  WON = 'WON',
+  LOST = 'LOST',
+  SETTLED = 'SETTLED',
+}
+
+@Schema({ timestamps: true })
+export class Bid {
+  @Prop({ required: true, index: true })
+  assetId!: string;
+
+  @Prop({ required: true, index: true })
+  bidder!: string; // Wallet address
+
+  @Prop({ required: true })
+  tokenAmount!: string; // BigInt as string
+
+  @Prop({ required: true })
+  price!: string; // BigInt as string
+
+  @Prop({ required: true })
+  usdcDeposited!: string; // BigInt as string
+
+  @Prop({ required: true })
+  bidIndex!: number; // Index in smart contract array
+
+  @Prop({ required: true, enum: BidStatus, default: BidStatus.PENDING })
+  status!: BidStatus;
+
+  @Prop({ type: String })
+  transactionHash!: string;
+
+  @Prop({ type: Number })
+  blockNumber!: number;
+}
+
+export const BidSchema = SchemaFactory.createForClass(Bid);
+BidSchema.index({ assetId: 1, price: -1 }); // Index for sorting bids by price

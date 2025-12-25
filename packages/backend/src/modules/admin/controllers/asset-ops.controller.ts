@@ -5,9 +5,13 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 import { DeployTokenDto } from '../../blockchain/dto/deploy-token.dto';
 import { ListOnMarketplaceDto } from '../../blockchain/dto/list-on-marketplace.dto';
+import { CreateAuctionDto } from '../../marketplace/dto/create-auction.dto';
+import { EndAuctionDto } from '../../marketplace/dto/end-auction.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
+
+import { AuctionService } from '../../marketplace/services/auction.service';
 
 @Controller('admin/assets')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
@@ -15,6 +19,7 @@ export class AssetOpsController {
   constructor(
     private readonly blockchainService: BlockchainService,
     private readonly assetLifecycleService: AssetLifecycleService,
+    private readonly auctionService: AuctionService,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) {}
 
@@ -273,5 +278,15 @@ export class AssetOpsController {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  @Post('auctions/create')
+  async createAuction(@Body() dto: CreateAuctionDto) {
+    return this.auctionService.createAuction(dto);
+  }
+
+  @Post('auctions/end')
+  async endAuction(@Body() dto: EndAuctionDto) {
+    return this.auctionService.calculateAndEndAuction(dto.assetId);
   }
 }

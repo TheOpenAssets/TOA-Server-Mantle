@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
+import { Bid, BidDocument, BidStatus } from '../../../database/schemas/bid.schema';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { TokenHolderTrackingService } from '../../yield/services/token-holder-tracking.service';
 
@@ -13,6 +14,7 @@ export class EventProcessor extends WorkerHost {
 
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
+    @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private tokenHolderTrackingService: TokenHolderTrackingService,
   ) {
@@ -39,9 +41,88 @@ export class EventProcessor extends WorkerHost {
         return this.processIdentityRegistered(job.data);
       case 'process-transfer':
         return this.processTransfer(job.data);
+      case 'process-bid-submitted':
+        return this.processBidSubmitted(job.data);
+      case 'process-auction-ended':
+        return this.processAuctionEnded(job.data);
+      case 'process-bid-settled':
+        return this.processBidSettled(job.data);
       default:
         this.logger.warn(`Unknown job name: ${job.name}`);
     }
+  }
+
+  private async processBidSubmitted(data: any) {
+    const { assetId: assetIdBytes32, bidder, tokenAmount, price, bidIndex, txHash, blockNumber } = data;
+    const assetId = this.bytes32ToUuid(assetIdBytes32);
+
+    this.logger.log(`Processing new bid for ${assetId} from ${bidder}`);
+
+    const newBid = new this.bidModel({
+      assetId,
+      bidder,
+      tokenAmount,
+      price,
+      bidIndex,
+      transactionHash: txHash,
+      blockNumber,
+      status: BidStatus.PENDING,
+    });
+    await newBid.save();
+
+    // Optionally, update asset with bid stats
+    await this.assetModel.updateOne(
+      { assetId },
+      { $inc: { 'listing.totalBids': 1 } }
+    );
+  }
+
+  private async processAuctionEnded(data: any) {
+    const { assetId: assetIdBytes32, clearingPrice, txHash } = data;
+    const assetId = this.bytes32ToUuid(assetIdBytes32);
+
+    this.logger.log(`Processing auction end for ${assetId} with clearing price ${clearingPrice}`);
+
+    await this.assetModel.updateOne(
+      { assetId },
+      {
+        $set: {
+          'listing.active': false,
+          'listing.clearingPrice': clearingPrice,
+          'listing.phase': 'ENDED',
+        },
+      }
+    );
+
+    // Update status of all bids for this auction
+    await this.bidModel.updateMany(
+      { assetId, price: { $gte: clearingPrice } },
+      { $set: { status: BidStatus.WON } }
+    );
+    await this.bidModel.updateMany(
+      { assetId, price: { $lt: clearingPrice } },
+      { $set: { status: BidStatus.LOST } }
+    );
+  }
+
+  private async processBidSettled(data: any) {
+    const { assetId: assetIdBytes32, bidder, bidIndex, tokensReceived, cost, refund, txHash } = data;
+    const assetId = this.bytes32ToUuid(assetIdBytes32);
+
+    this.logger.log(`Processing settlement for bid ${bidIndex} on ${assetId} by ${bidder}`);
+    
+    await this.bidModel.updateOne(
+      { assetId, bidIndex },
+      {
+        $set: {
+          status: BidStatus.SETTLED,
+          settledAt: new Date(),
+          tokensReceived,
+          cost,
+          refund,
+        },
+      }
+    );
   }
 
   private async processAssetRegistered(data: any) {

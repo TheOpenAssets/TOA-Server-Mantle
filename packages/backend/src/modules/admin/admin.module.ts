@@ -12,6 +12,7 @@ import { AdminService } from './services/admin.service';
 import { AuthModule } from '../auth/auth.module';
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
+import { MarketplaceModule } from '../marketplace/marketplace.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
     BlockchainModule,
     YieldModule,
     AuthModule,
+    MarketplaceModule,
   ],
   controllers: [
     AdminController,
