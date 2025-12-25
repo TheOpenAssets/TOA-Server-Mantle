@@ -26,18 +26,44 @@ export class YieldDistributionService {
       throw new NotFoundException('Asset not found or not tokenized');
     }
 
-    const faceValue = parseFloat(asset.metadata.faceValue);
-    const grossYield = dto.settlementAmount - faceValue;
-    const platformFee = grossYield * 0.05; // 5% fee
-    const netYield = grossYield - platformFee;
+    // Dynamic Yield Model:
+    // - settlementAmount = what debtor paid (₹50L)
+    // - amountRaised = what investors paid during primary sale (varies!)
+    // - platformFee = 1.5% of settlement
+    // - netDistribution = settlementAmount - platformFee
+    // - Yield = (netDistribution - amountRaised) / amountRaised (emergent!)
+
+    const settlementAmount = dto.settlementAmount; // ₹50,00,000
+    const amountRaised = parseFloat(asset.listing?.amountRaised || '0'); // What investors paid
+    const platformFeeRate = 0.015; // 1.5% platform fee
+    const platformFee = settlementAmount * platformFeeRate; // ₹75,000
+    const netDistribution = settlementAmount - platformFee; // ₹49,25,000
+
+    // Validation: Ensure we don't distribute less than what was raised
+    if (netDistribution < amountRaised) {
+      this.logger.warn(
+        `Settlement distributes less than raised! Raised: ${amountRaised}, Distributing: ${netDistribution}`,
+      );
+      // This means investors will take a loss - should have risk management here
+    }
+
+    // Calculate effective yield for logging/analytics
+    const effectiveYield = amountRaised > 0
+      ? ((netDistribution - amountRaised) / amountRaised) * 100
+      : 0;
+
+    this.logger.log(
+      `Settlement recorded: Raised ₹${amountRaised}, Distributing ₹${netDistribution}, Yield: ${effectiveYield.toFixed(2)}%`,
+    );
 
     const settlement = await this.settlementModel.create({
       assetId: dto.assetId,
       tokenAddress: asset.token.address,
-      settlementAmount: dto.settlementAmount,
-      grossYield,
+      settlementAmount,
+      amountRaised,
+      platformFeeRate,
       platformFee,
-      netYield,
+      netDistribution,
       status: SettlementStatus.PENDING_CONVERSION,
       settlementDate: new Date(dto.settlementDate),
     });
@@ -70,7 +96,7 @@ export class YieldDistributionService {
     // Example threshold: 1 token (1e18)
     const holders = await this.holderTrackingService.getHoldersAboveThreshold(
       tokenAddress,
-      BigInt(1e18), 
+      BigInt(1e18),
     );
 
     if (holders.length === 0) {
@@ -78,35 +104,39 @@ export class YieldDistributionService {
     }
 
     // 2. Get Total Supply (from DB asset or blockchain)
-    // Using blockchain for accuracy
-    // Note: We need a getTotalSupply method in BlockchainService, adding placeholder logic
-    // Or we assume asset.token.supply is accurate enough if we track burns.
-    // Ideally, call chain.
-    const totalSupply = await this.getTotalSupply(tokenAddress); // Helper below
+    const totalSupply = await this.getTotalSupply(tokenAddress);
 
     // 3. Calculate Amounts
-    const usdcTotal = BigInt(settlement.usdcAmount!);
+    // CRITICAL: Distribute the FULL netDistribution amount (settlement - platform fee)
+    // This is NOT just "yield" - it's the entire investor payout (principal + yield)
+    const usdcTotal = BigInt(settlement.usdcAmount!); // This should be netDistribution in USDC
+
     const distributions = holders.map((holder) => ({
       address: holder.holderAddress,
       amount: (BigInt(holder.balance) * usdcTotal) / totalSupply,
     }));
 
-    this.logger.log(`Starting distribution for ${tokenAddress}. Total holders: ${holders.length}`);
+    this.logger.log(
+      `Starting distribution for ${tokenAddress}. ` +
+      `Total holders: ${holders.length}, ` +
+      `Distributing: ${settlement.usdcAmount} USDC, ` +
+      `Amount originally raised: ${settlement.amountRaised}`,
+    );
 
-    // 4. Deposit Yield to Vault
+    // 4. Deposit Full Distribution to Vault
     await this.blockchainService.depositYield(tokenAddress, settlement.usdcAmount!);
 
     // 5. Distribute in Batches
     const batchSize = 50; // Conservative batch size
     for (let i = 0; i < distributions.length; i += batchSize) {
       const batch = distributions.slice(i, i + batchSize);
-      
+
       const addresses = batch.map((d) => d.address);
       const amounts = batch.map((d) => d.amount.toString());
 
       try {
         const txHash = await this.blockchainService.distributeYield(tokenAddress, addresses, amounts);
-        
+
         // Record History
         const historyRecords = batch.map((d) => ({
           settlementId,
@@ -117,7 +147,7 @@ export class YieldDistributionService {
           distributedAt: new Date(),
           status: 'SUCCESS',
         }));
-        
+
         await this.historyModel.insertMany(historyRecords);
       } catch (e) {
         this.logger.error(`Batch distribution failed`, e);
@@ -139,7 +169,14 @@ export class YieldDistributionService {
     settlement.distributedAt = new Date();
     await settlement.save();
 
-    return { message: 'Distribution completed' };
+    return {
+      message: 'Distribution completed',
+      totalDistributed: settlement.usdcAmount,
+      holders: holders.length,
+      effectiveYield: settlement.amountRaised > 0
+        ? `${(((settlement.netDistribution - settlement.amountRaised) / settlement.amountRaised) * 100).toFixed(2)}%`
+        : 'N/A',
+    };
   }
 
   // Helper placeholder - in prod add to BlockchainService

@@ -20,19 +20,22 @@ export class Settlement {
   tokenAddress!: string;
 
   @Prop({ required: true })
-  settlementAmount!: number; // Fiat amount
+  settlementAmount!: number; // Full settlement received from debtor (₹50L)
 
   @Prop({ required: true })
-  grossYield!: number;
+  amountRaised!: number; // What investors paid during primary sale (₹46.73L)
 
   @Prop({ required: true })
-  platformFee!: number;
+  platformFeeRate!: number; // Platform fee percentage (0.015 = 1.5%)
 
   @Prop({ required: true })
-  netYield!: number;
+  platformFee!: number; // Calculated platform fee in fiat
+
+  @Prop({ required: true })
+  netDistribution!: number; // Amount distributed to investors (settlement - platform fee)
 
   @Prop()
-  usdcAmount?: string; // Actual USDC received after conversion
+  usdcAmount?: string; // USDC equivalent after fiat conversion
 
   @Prop({ required: true, enum: SettlementStatus, default: SettlementStatus.PENDING_CONVERSION })
   status!: SettlementStatus;
