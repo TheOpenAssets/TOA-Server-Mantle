@@ -8,6 +8,7 @@ import {
   UseGuards,
   Req,
   Param,
+  Query,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -16,11 +17,29 @@ import { AssetLifecycleService } from '../services/asset-lifecycle.service';
 import { CreateAssetDto } from '../dto/create-asset.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { OriginatorGuard } from '../guards/originator.guard';
+import { AssetStatus } from '../../../database/schemas/asset.schema';
 
 @Controller('assets')
 @UseGuards(JwtAuthGuard)
 export class AssetsController {
   constructor(private readonly assetLifecycleService: AssetLifecycleService) {}
+
+  @Get()
+  async getAllMyAssets(
+    @Req() req: any,
+    @Query('status') status?: AssetStatus,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const filters = {
+      status,
+      originator: req.user.walletAddress, // Always filter by authenticated user's wallet
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    };
+
+    return this.assetLifecycleService.getAllAssets(filters);
+  }
 
   @Post('upload')
   @UseGuards(OriginatorGuard)

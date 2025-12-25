@@ -270,7 +270,85 @@ curl -X DELETE 'http://localhost:3000/kyc/documents' \
 
 All asset endpoints are under `/assets` base path and require JWT authentication.
 
-### 1. Upload Asset
+### 1. Get All My Assets
+
+Retrieves all assets for the authenticated user with optional filtering and pagination.
+
+**Endpoint:** `GET /assets`
+
+**Authentication:** Required (JWT)
+
+**Query Parameters:**
+- `status` (string, optional) - Filter by asset status: `UPLOADED`, `ATTESTED`, `REGISTERED`, `TOKENIZED`, `LISTED`, `SETTLED`, `REJECTED`, `REVOKED`
+- `page` (number, optional) - Page number for pagination (default: 1)
+- `limit` (number, optional) - Number of results per page (default: 50)
+
+**Response:**
+```json
+{
+  "assets": [
+    {
+      "assetId": "string",
+      "originator": "string",
+      "status": "string",
+      "metadata": {
+        "invoiceNumber": "string",
+        "faceValue": "string",
+        "currency": "string",
+        "issueDate": "date",
+        "dueDate": "date",
+        "buyerName": "string",
+        "industry": "string",
+        "riskTier": "string"
+      },
+      "tokenParams": {
+        "totalSupply": "string",
+        "pricePerToken": "string",
+        "minInvestment": "string"
+      },
+      "token": {
+        "address": "string",
+        "deployedAt": "date"
+      },
+      "listing": {
+        "type": "STATIC" | "AUCTION",
+        "price": "string",
+        "active": boolean,
+        "sold": "string",
+        "amountRaised": "string"
+      },
+      "createdAt": "date"
+    }
+  ],
+  "pagination": {
+    "total": number,
+    "page": number,
+    "limit": number,
+    "totalPages": number
+  }
+}
+```
+
+**Examples:**
+```bash
+# Get all my assets
+curl -X GET 'http://localhost:3000/assets' \
+  --header 'Authorization: Bearer <access_token>'
+
+# Get assets by status
+curl -X GET 'http://localhost:3000/assets?status=TOKENIZED' \
+  --header 'Authorization: Bearer <access_token>'
+
+# Get assets with pagination
+curl -X GET 'http://localhost:3000/assets?page=2&limit=20' \
+  --header 'Authorization: Bearer <access_token>'
+```
+
+**Note:** This endpoint automatically filters by the authenticated user's wallet address. Users can only see their own assets.
+
+---
+
+### 2. Upload Asset
 
 Upload a new asset (invoice) for tokenization.
 
@@ -321,7 +399,7 @@ curl -X POST 'http://localhost:3000/assets/upload' \
 
 ---
 
-### 2. Get Asset Details
+### 3. Get Asset Details
 
 Retrieves details of a specific asset.
 
@@ -359,9 +437,9 @@ curl -X GET 'http://localhost:3000/assets/asset_123456' \
 
 ---
 
-### 3. Get My Assets (Originator)
+### 4. Get My Assets (Originator - Legacy)
 
-Retrieves all assets uploaded by the authenticated originator.
+Retrieves all assets uploaded by the authenticated originator. This is a legacy endpoint, prefer using `GET /assets` instead.
 
 **Endpoint:** `GET /assets/originator/my-assets`
 
