@@ -143,4 +143,60 @@ export class AssetLifecycleService {
         }
     );
   }
+
+  async getAllAssets(filters?: {
+    status?: AssetStatus;
+    originator?: string;
+    needsAttention?: boolean;
+    page?: number;
+    limit?: number;
+  }) {
+    const query: any = {};
+
+    // Apply status filter
+    if (filters?.status) {
+      query.status = filters.status;
+    }
+
+    // Apply originator filter
+    if (filters?.originator) {
+      query.originator = filters.originator;
+    }
+
+    // Apply "needs attention" filter (assets requiring admin action)
+    if (filters?.needsAttention) {
+      query.status = {
+        $in: [
+          AssetStatus.UPLOADED,
+          AssetStatus.ATTESTED,
+          AssetStatus.REGISTERED,
+          AssetStatus.TOKENIZED,
+        ],
+      };
+    }
+
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 50;
+    const skip = (page - 1) * limit;
+
+    const [assets, total] = await Promise.all([
+      this.assetModel
+        .find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.assetModel.countDocuments(query),
+    ]);
+
+    return {
+      assets,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
 }

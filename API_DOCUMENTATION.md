@@ -392,7 +392,93 @@ curl -X GET 'http://localhost:3000/assets/originator/my-assets' \
 
 All admin asset operation endpoints are under `/admin/assets` base path and require JWT authentication + Admin role.
 
-### 1. Register Asset
+### 1. Get All Assets
+
+Retrieves all assets with optional filtering and pagination.
+
+**Endpoint:** `GET /admin/assets`
+
+**Authentication:** Required (JWT + Admin Role)
+
+**Query Parameters:**
+- `status` (string, optional) - Filter by asset status: `UPLOADED`, `ATTESTED`, `REGISTERED`, `TOKENIZED`, `LISTED`, `SETTLED`, `REJECTED`, `REVOKED`
+- `originator` (string, optional) - Filter by originator wallet address
+- `needsAttention` (boolean, optional) - If `true`, returns only assets requiring admin action (statuses: UPLOADED, ATTESTED, REGISTERED, TOKENIZED)
+- `page` (number, optional) - Page number for pagination (default: 1)
+- `limit` (number, optional) - Number of results per page (default: 50)
+
+**Response:**
+```json
+{
+  "assets": [
+    {
+      "assetId": "string",
+      "originator": "string",
+      "status": "string",
+      "metadata": {
+        "invoiceNumber": "string",
+        "faceValue": "string",
+        "currency": "string",
+        "issueDate": "date",
+        "dueDate": "date",
+        "buyerName": "string",
+        "industry": "string",
+        "riskTier": "string"
+      },
+      "tokenParams": {
+        "totalSupply": "string",
+        "pricePerToken": "string",
+        "minInvestment": "string"
+      },
+      "token": {
+        "address": "string",
+        "deployedAt": "date"
+      },
+      "listing": {
+        "type": "STATIC" | "AUCTION",
+        "price": "string",
+        "active": boolean,
+        "sold": "string",
+        "amountRaised": "string"
+      },
+      "createdAt": "date"
+    }
+  ],
+  "pagination": {
+    "total": number,
+    "page": number,
+    "limit": number,
+    "totalPages": number
+  }
+}
+```
+
+**Examples:**
+```bash
+# Get all assets
+curl -X GET 'http://localhost:3000/admin/assets' \
+  --header 'Authorization: Bearer <admin_access_token>'
+
+# Get assets that need attention
+curl -X GET 'http://localhost:3000/admin/assets?needsAttention=true' \
+  --header 'Authorization: Bearer <admin_access_token>'
+
+# Get assets by status
+curl -X GET 'http://localhost:3000/admin/assets?status=UPLOADED' \
+  --header 'Authorization: Bearer <admin_access_token>'
+
+# Get assets with pagination
+curl -X GET 'http://localhost:3000/admin/assets?page=2&limit=20' \
+  --header 'Authorization: Bearer <admin_access_token>'
+
+# Get assets by originator
+curl -X GET 'http://localhost:3000/admin/assets?originator=0x23e67597f0898f747Fa3291C892016hadF9455D0' \
+  --header 'Authorization: Bearer <admin_access_token>'
+```
+
+---
+
+### 2. Register Asset
 
 Registers an approved asset on the blockchain.
 
@@ -420,7 +506,7 @@ curl -X POST 'http://localhost:3000/admin/assets/asset_123456/register' \
 
 ---
 
-### 2. Deploy Token
+### 3. Deploy Token
 
 Deploys an ERC20 token for an asset.
 
@@ -474,7 +560,7 @@ curl -X POST 'http://localhost:3000/admin/assets/deploy-token' \
 
 ---
 
-### 3. Revoke Asset
+### 4. Revoke Asset
 
 Revokes an asset from the blockchain.
 

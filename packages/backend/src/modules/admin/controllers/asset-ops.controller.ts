@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Param, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Param, Query, HttpException, HttpStatus } from '@nestjs/common';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -7,7 +7,7 @@ import { DeployTokenDto } from '../../blockchain/dto/deploy-token.dto';
 import { ListOnMarketplaceDto } from '../../blockchain/dto/list-on-marketplace.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 
 @Controller('admin/assets')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
@@ -17,6 +17,25 @@ export class AssetOpsController {
     private readonly assetLifecycleService: AssetLifecycleService,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) {}
+
+  @Get()
+  async getAllAssets(
+    @Query('status') status?: AssetStatus,
+    @Query('originator') originator?: string,
+    @Query('needsAttention') needsAttention?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const filters = {
+      status,
+      originator,
+      needsAttention: needsAttention === 'true',
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    };
+
+    return this.assetLifecycleService.getAllAssets(filters);
+  }
 
   @Post(':assetId/register')
   async registerAsset(@Param('assetId') assetId: string) {
