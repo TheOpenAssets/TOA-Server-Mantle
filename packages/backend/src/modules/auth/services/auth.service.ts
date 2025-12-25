@@ -8,6 +8,8 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { User, UserDocument, UserRole } from '../../../database/schemas/user.schema';
 import { UserSession, UserSessionDocument } from '../../../database/schemas/session.schema';
 import { RedisService } from '../../redis/redis.service';
@@ -16,15 +18,38 @@ import { LoginDto, RefreshDto } from '../dto/auth.dto';
 
 @Injectable()
 export class AuthService {
+  private approvedAdmins: string[] = [];
+
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(UserSession.name) private sessionModel: Model<UserSessionDocument>,
     private jwtService: JwtService,
     private redisService: RedisService,
     private signatureService: SignatureService,
-  ) {}
+  ) {
+    // Load approved admins from config file
+    try {
+      const configPath = join(process.cwd(), 'configs', 'approved_admins.json');
+      const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+      this.approvedAdmins = config.admins.map((addr: string) => addr.toLowerCase());
+    } catch (error) {
+      console.error('Failed to load approved admins config:', error);
+      this.approvedAdmins = [];
+    }
+  }
+
+  /**
+   * Check if a wallet address is approved as admin
+   */
+  private isApprovedAdmin(walletAddress: string): boolean {
+    return this.approvedAdmins.includes(walletAddress.toLowerCase());
+  }
 
   async createChallenge(walletAddress: string, role?: UserRole): Promise<{ message: string; nonce: string }> {
+    // Validate admin role request
+    if (role === UserRole.ADMIN && !this.isApprovedAdmin(walletAddress)) {
+      throw new ForbiddenException('Wallet address not authorized for admin role');
+    }
     const nonce = uuidv4();
     const message = `Sign this message to authenticate with Mantle RWA Platform.\nNonce: ${nonce}\nTimestamp: ${Date.now()}`;
 
@@ -68,12 +93,22 @@ export class AuthService {
       throw new UnauthorizedException('Invalid signature');
     }
 
+    // 3a. Validate admin role (defense in depth)
+    if (rolePreference === UserRole.ADMIN && !this.isApprovedAdmin(walletAddress)) {
+      throw new ForbiddenException('Wallet address not authorized for admin role');
+    }
+
     // 4. Find or Create User
     let user = await this.userModel.findOne({ walletAddress });
     if (!user) {
+      // Determine final role - only allow ADMIN if wallet is approved
+      const finalRole = rolePreference === UserRole.ADMIN && this.isApprovedAdmin(walletAddress)
+        ? UserRole.ADMIN
+        : (rolePreference === UserRole.ORIGINATOR ? UserRole.ORIGINATOR : UserRole.INVESTOR);
+
       user = await this.userModel.create({
         walletAddress,
-        role: rolePreference || UserRole.INVESTOR, // Use provided role or default to INVESTOR
+        role: finalRole,
         kyc: false,
       });
     }
