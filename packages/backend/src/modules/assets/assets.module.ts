@@ -6,13 +6,17 @@ import { AssetLifecycleService } from './services/asset-lifecycle.service';
 import { EigenDAService } from './services/eigenda.service';
 import { AssetProcessor } from './processors/asset.processor';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
+import { Bid, BidSchema } from '../../database/schemas/bid.schema';
 import { AuthModule } from '../auth/auth.module'; // For JwtAuthGuard
 import { ComplianceEngineModule } from '../compliance-engine/compliance-engine.module';
 import { AnnouncementsModule } from '../announcements/announcements.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Asset.name, schema: AssetSchema }]),
+    MongooseModule.forFeature([
+      { name: Asset.name, schema: AssetSchema },
+      { name: Bid.name, schema: BidSchema },
+    ]),
     BullModule.registerQueue({
       name: 'asset-processing',
     }),

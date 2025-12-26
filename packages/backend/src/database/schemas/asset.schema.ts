@@ -122,7 +122,11 @@ export class Asset {
     amountRaised?: string; // Total USDC raised from primary sales (for yield calculation)
     active: boolean;
     listedAt: Date;
+    endedAt?: Date; // When the auction/listing ended
     phase?: 'BIDDING' | 'ENDED' | 'SETTLED' | 'FAILED';
+    clearingPrice?: string; // For AUCTION: final clearing price after settlement
+    transactionHash?: string; // Transaction hash for listing creation
+    endTransactionHash?: string; // Transaction hash for auction settlement
   };
 
   @Prop({ type: Object })

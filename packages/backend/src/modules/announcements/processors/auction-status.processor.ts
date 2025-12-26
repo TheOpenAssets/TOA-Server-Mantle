@@ -214,14 +214,17 @@ export class AuctionStatusProcessor extends WorkerHost {
         return;
       }
 
-      this.logger.log(`Auction ${assetId} has ended. Fetching bids and calculating results...`);
+      this.logger.log(`Auction ${assetId} has ended. Checking if settled by admin...`);
 
       // Fetch all bids for this auction
-      const bids = await this.bidModel.find({ assetId }).exec();
+      const bids = await this.bidModel.find({ assetId }).sort({ price: -1 }).exec();
       this.logger.log(`Found ${bids.length} bids for auction ${assetId}`);
 
-      // Get clearing price from asset (set by admin via endAuction call)
-      // If not set, we'll use "0" to indicate auction ended without settlement
+      // ==============================================
+      // MANUAL MODE: Get clearing price set by admin
+      // ==============================================
+      // Get clearing price from asset (should be set by admin via endAuction endpoint)
+      // If not set, we'll use "0" to indicate auction ended without settlement yet
       const clearingPrice = asset.listing?.clearingPrice || '0';
 
       // Calculate tokens sold and remaining
@@ -229,19 +232,75 @@ export class AuctionStatusProcessor extends WorkerHost {
       let tokensRemaining = asset.tokenParams.totalSupply;
 
       if (clearingPrice !== '0') {
-        // If clearing price was set, calculate sold tokens
-        // This would normally be done during settlement, but we can estimate from listing.sold
+        // If clearing price was set by admin, calculate sold tokens from listing.sold
         tokensSold = asset.listing?.sold || '0';
         const totalSupply = BigInt(asset.tokenParams.totalSupply);
         const sold = BigInt(tokensSold);
         tokensRemaining = (totalSupply - sold).toString();
       }
 
+      // ==============================================
+      // AUTOMATIC MODE (COMMENTED OUT - TODO: Enable later)
+      // ==============================================
+      // // Calculate clearing price using Dutch auction logic
+      // // Sort bids by price (highest first) and find clearing price
+      // const totalSupply = BigInt(asset.tokenParams.totalSupply);
+      // let clearingPrice = asset.listing?.reservePrice || '0';
+      // let tokensSold = BigInt(0);
+      //
+      // if (bids.length > 0) {
+      //   let accumulatedDemand = BigInt(0);
+      //
+      //   for (const bid of bids) {
+      //     const bidAmount = BigInt(bid.tokenAmount);
+      //     accumulatedDemand += bidAmount;
+      //
+      //     // If accumulated demand meets or exceeds total supply, this bid's price is clearing price
+      //     if (accumulatedDemand >= totalSupply) {
+      //       clearingPrice = bid.price;
+      //       tokensSold = totalSupply; // All tokens sold
+      //       break;
+      //     }
+      //
+      //     // Otherwise, keep going and this could be the clearing price for partial fill
+      //     clearingPrice = bid.price;
+      //     tokensSold = accumulatedDemand;
+      //   }
+      //
+      //   this.logger.log(
+      //     `Calculated clearing price: ${clearingPrice} with ${tokensSold.toString()} tokens sold`,
+      //   );
+      // } else {
+      //   this.logger.log(`No bids received, using reserve price: ${clearingPrice}`);
+      // }
+      //
+      // // Call blockchain to end auction with calculated clearing price
+      // this.logger.log(`Calling blockchain to end auction ${assetId} with clearing price ${clearingPrice}`);
+      // const txHash = await this.blockchainService.endAuction(assetId, clearingPrice);
+      // this.logger.log(`Auction ended on-chain in tx: ${txHash}`);
+      //
+      // // Update asset with clearing price and mark as ended
+      // await this.assetModel.updateOne(
+      //   { assetId },
+      //   {
+      //     $set: {
+      //       'listing.clearingPrice': clearingPrice,
+      //       'listing.active': false,
+      //       'listing.endedAt': new Date(),
+      //       'listing.endTransactionHash': txHash,
+      //       'listing.sold': tokensSold.toString(),
+      //     },
+      //   },
+      // );
+      //
+      // const tokensRemaining = (totalSupply - tokensSold).toString();
+
       this.logger.log(
         `Auction ${assetId} results: Clearing price: ${clearingPrice}, Sold: ${tokensSold}, Remaining: ${tokensRemaining}`,
       );
 
       // Create AUCTION_ENDED announcement
+      // Note: Admin should call endAuction endpoint to settle on-chain before this runs
       await this.announcementService.createAuctionEndedAnnouncement(
         assetId,
         clearingPrice,

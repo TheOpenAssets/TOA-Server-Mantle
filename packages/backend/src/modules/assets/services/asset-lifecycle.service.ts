@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
+import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { CreateAssetDto } from '../dto/create-asset.dto';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -17,6 +18,7 @@ export class AssetLifecycleService {
 
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
+    @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     @InjectQueue('asset-processing') private assetQueue: Queue,
     @InjectQueue('auction-status-check') private auctionStatusQueue: Queue,
     private attestationService: AttestationService,
@@ -278,6 +280,80 @@ export class AssetLifecycleService {
       scheduledStartTime: auctionStartTime,
       scheduledEndTime: auctionEndTime,
       message: `Auction scheduled to start in ${startDelayMinutes} minutes and run for ${auctionDuration / 60} minutes`,
+    };
+  }
+
+  async endAuction(assetId: string, clearingPrice: string, transactionHash: string) {
+    this.logger.log(`Ending auction for asset ${assetId} with clearing price ${clearingPrice}`);
+
+    const asset = await this.assetModel.findOne({ assetId });
+    if (!asset) {
+      throw new Error('Asset not found');
+    }
+
+    if (asset.assetType !== 'AUCTION') {
+      throw new Error('Asset is not an auction type');
+    }
+
+    if (!asset.listing || !asset.listing.active) {
+      throw new Error('Auction is not active');
+    }
+
+    // Update asset with clearing price and mark as ended
+    await this.assetModel.updateOne(
+      { assetId },
+      {
+        $set: {
+          'listing.clearingPrice': clearingPrice,
+          'listing.active': false,
+          'listing.endedAt': new Date(),
+          'listing.endTransactionHash': transactionHash,
+        },
+      },
+    );
+
+    this.logger.log(`Auction ${assetId} ended with clearing price ${clearingPrice}`);
+
+    // Get all bids to calculate results
+    const bids = await this.bidModel.find({ assetId }).exec();
+    this.logger.log(`Found ${bids.length} bids for auction ${assetId}`);
+
+    // Calculate tokens sold (bids >= clearing price)
+    const clearingPriceBigInt = BigInt(clearingPrice);
+    let tokensSold = BigInt(0);
+
+    for (const bid of bids) {
+      const bidPrice = BigInt(bid.price);
+      if (bidPrice >= clearingPriceBigInt) {
+        tokensSold += BigInt(bid.tokenAmount);
+      }
+    }
+
+    // Calculate remaining tokens
+    const totalSupply = BigInt(asset.tokenParams.totalSupply);
+    const tokensRemaining = totalSupply - tokensSold;
+
+    this.logger.log(
+      `Auction results: Clearing price: ${clearingPrice}, Sold: ${tokensSold.toString()}, Remaining: ${tokensRemaining.toString()}`,
+    );
+
+    // Create AUCTION_ENDED announcement
+    await this.announcementService.createAuctionEndedAnnouncement(
+      assetId,
+      clearingPrice,
+      tokensSold.toString(),
+      tokensRemaining.toString(),
+    );
+
+    return {
+      success: true,
+      assetId,
+      clearingPrice,
+      tokensSold: tokensSold.toString(),
+      tokensRemaining: tokensRemaining.toString(),
+      totalBids: bids.length,
+      transactionHash,
+      message: 'Auction ended successfully',
     };
   }
 

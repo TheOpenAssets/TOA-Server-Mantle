@@ -18,6 +18,12 @@ export class ScheduleAuctionDto {
   startDelayMinutes!: number; // Minutes from now when auction should start
 }
 
+export class EndAuctionDto {
+  assetId!: string;
+  clearingPrice!: string; // Clearing price in USDC wei (6 decimals)
+  transactionHash!: string; // Transaction hash from endAuction call
+}
+
 @Controller('admin/compliance')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
 export class ComplianceController {
@@ -36,5 +42,10 @@ export class ComplianceController {
   @Post('schedule-auction')
   async scheduleAuction(@Body() dto: ScheduleAuctionDto) {
     return this.assetLifecycleService.scheduleAuction(dto.assetId, dto.startDelayMinutes);
+  }
+
+  @Post('end-auction')
+  async endAuction(@Body() dto: EndAuctionDto) {
+    return this.assetLifecycleService.endAuction(dto.assetId, dto.clearingPrice, dto.transactionHash);
   }
 }
