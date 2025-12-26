@@ -28,6 +28,9 @@ export class Asset {
   @Prop({ required: true, enum: AssetStatus, default: AssetStatus.UPLOADED })
   status!: AssetStatus;
 
+  @Prop({ required: true, enum: ['STATIC', 'AUCTION'] })
+  assetType!: 'STATIC' | 'AUCTION';
+
   @Prop({ type: Object })
   metadata!: {
     invoiceNumber: string;
@@ -43,8 +46,9 @@ export class Asset {
   @Prop({ type: Object })
   tokenParams!: {
     totalSupply: string;
-    pricePerToken: string;
+    pricePerToken?: string; // Optional for auctions
     minInvestment: string;
+    minRaise: string; // Minimum amount that must be raised
   };
 
   @Prop({ type: Object })
@@ -110,10 +114,10 @@ export class Asset {
   @Prop({ type: Object })
   listing?: {
     type: 'STATIC' | 'AUCTION';
-    price?: string;
-    reservePrice?: string;
-    priceRange?: { start: string; end: string };
-    duration?: number;
+    price?: string; // For STATIC listings
+    reservePrice?: string; // For AUCTION: minimum acceptable price
+    priceRange?: { min: string; max: string }; // For AUCTION: bid price range
+    duration?: number; // For AUCTION: duration in seconds
     sold: string;
     amountRaised?: string; // Total USDC raised from primary sales (for yield calculation)
     active: boolean;

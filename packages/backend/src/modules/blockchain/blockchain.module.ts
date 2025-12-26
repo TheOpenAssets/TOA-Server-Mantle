@@ -9,6 +9,7 @@ import { ContractLoaderService } from './services/contract-loader.service';
 import { EventListenerService } from './services/event-listener.service';
 import { EventProcessor } from './processors/event.processor';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
+import { Bid, BidSchema } from '../../database/schemas/bid.schema';
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { YieldModule } from '../yield/yield.module';
 import { forwardRef } from '@nestjs/common';
@@ -19,6 +20,7 @@ import { forwardRef } from '@nestjs/common';
     ConfigModule.forFeature(blockchainConfig),
     MongooseModule.forFeature([
       { name: Asset.name, schema: AssetSchema },
+      { name: Bid.name, schema: BidSchema },
       { name: User.name, schema: UserSchema },
     ]),
     BullModule.registerQueue({

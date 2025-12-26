@@ -12,8 +12,9 @@ async function bootstrap() {
     }
   }));
 
-  // Global JSON body parser for all other routes
-  app.use(express.json());
+  // Global JSON body parser for all other routes with increased limit
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   app.enableCors({
     origin: '*',

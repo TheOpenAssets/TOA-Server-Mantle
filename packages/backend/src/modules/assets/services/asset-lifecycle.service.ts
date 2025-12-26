@@ -39,13 +39,56 @@ export class AssetLifecycleService {
 
   async createAsset(userWallet: string, dto: CreateAssetDto, file: Express.Multer.File) {
     const assetId = uuidv4();
-    this.logger.log(`Creating asset ${assetId} for originator ${userWallet}`);
+    this.logger.log(`Creating ${dto.assetType} asset ${assetId} for originator ${userWallet}`);
+
+    // Calculate price ranges based on face value and percentages
+    const faceValue = BigInt(dto.faceValue);
+    const totalSupply = BigInt(dto.totalSupply);
+    const minRaisePercentage = BigInt(dto.minRaisePercentage);
+    const maxRaisePercentage = BigInt(dto.maxRaisePercentage || '95'); // Default 95%
+
+    // Calculate minimum and maximum raise amounts (in USD, no decimals yet)
+    const minRaiseUSD = (faceValue * minRaisePercentage) / BigInt(100);
+    const maxRaiseUSD = (faceValue * maxRaisePercentage) / BigInt(100);
+
+    // Convert to USDC (6 decimals) for blockchain
+    const minRaise = minRaiseUSD * BigInt(10 ** 6);
+    const maxRaise = maxRaiseUSD * BigInt(10 ** 6);
+
+    // Calculate min and max price per token
+    // totalSupply is in wei (18 decimals), e.g., 100000 * 10^18
+    // raiseAmount is in USDC wei (6 decimals), e.g., 80000 * 10^6
+    // Price formula: (raiseAmount * 10^18) / totalSupply
+    // Result is in USDC wei (6 decimals) per full token (10^18 wei)
+    // Example: (80000 * 10^6 * 10^18) / (100000 * 10^18) = 800000 USDC wei = 0.8 USDC
+    const minPricePerToken = (minRaise * BigInt(10 ** 18)) / totalSupply;
+    const maxPricePerToken = (maxRaise * BigInt(10 ** 18)) / totalSupply;
+
+    // For STATIC assets, validate custom price if provided
+    let finalPricePerToken: string | undefined;
+    if (dto.assetType === 'STATIC') {
+      if (dto.pricePerToken) {
+        const customPrice = BigInt(dto.pricePerToken);
+        // Validate that custom price is within calculated range
+        if (customPrice < minPricePerToken || customPrice > maxPricePerToken) {
+          throw new Error(
+            `Price per token must be between ${minPricePerToken.toString()} and ${maxPricePerToken.toString()} wei. ` +
+            `Provided: ${customPrice.toString()} wei. This ensures the raise amount is between ${minRaisePercentage}% and ${maxRaisePercentage}% of face value.`
+          );
+        }
+        finalPricePerToken = dto.pricePerToken;
+      } else {
+        // Use max price by default for static listings
+        finalPricePerToken = maxPricePerToken.toString();
+      }
+    }
 
     // Create Asset Record
     const asset = new this.assetModel({
       assetId,
       originator: userWallet,
       status: AssetStatus.UPLOADED,
+      assetType: dto.assetType,
       metadata: {
         invoiceNumber: dto.invoiceNumber,
         faceValue: dto.faceValue,
@@ -58,8 +101,9 @@ export class AssetLifecycleService {
       },
       tokenParams: {
         totalSupply: dto.totalSupply,
-        pricePerToken: dto.pricePerToken,
+        pricePerToken: finalPricePerToken,
         minInvestment: dto.minInvestment,
+        minRaise: minRaise.toString(),
       },
       files: {
         invoice: {
@@ -73,6 +117,23 @@ export class AssetLifecycleService {
       },
     });
 
+    // Store auction parameters if asset type is AUCTION
+    if (dto.assetType === 'AUCTION') {
+      asset.listing = {
+        type: 'AUCTION',
+        reservePrice: minPricePerToken.toString(),
+        priceRange: {
+          min: minPricePerToken.toString(),
+          max: maxPricePerToken.toString(),
+        },
+        duration: parseInt(dto.auctionDuration),
+        sold: '0',
+        active: false, // Will be activated when admin approves and deploys
+        listedAt: new Date(),
+        phase: 'BIDDING',
+      };
+    }
+
     await asset.save();
 
     // Queue Hash Computation
@@ -84,7 +145,14 @@ export class AssetLifecycleService {
     return {
       assetId,
       status: AssetStatus.UPLOADED,
-      message: 'Asset uploaded successfully. Processing started.',
+      assetType: dto.assetType,
+      message: `${dto.assetType} asset uploaded successfully. Processing started.`,
+      priceRange: {
+        min: minPricePerToken.toString(),
+        max: maxPricePerToken.toString(),
+        minRaise: minRaise.toString(),
+        maxRaise: maxRaise.toString(),
+      },
     };
   }
 

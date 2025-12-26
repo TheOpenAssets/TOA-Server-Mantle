@@ -1,7 +1,15 @@
 # AUCTION E2E TESTING GUIDE
 
 ## Overview
-This guide provides comprehensive end-to-end testing instructions for the Uniform Price Auction system implemented in the RWA platform. The auction system allows originators to create auctions for their tokenized assets, investors to place bids, and the system to execute uniform price auctions with automatic settlement.
+This guide provides comprehensive end-to-end testing instructions for the Uniform Price Auction system implemented in the RWA platform. The auction system follows a structured workflow:
+
+1. **Originator** creates and uploads asset details
+2. **Originator** submits auction request with parameters
+3. **Admin** reviews and creates the auction (deploys token and schedules auction)
+4. **Investors** place bids during auction period
+5. **System** executes uniform price auction with automatic settlement
+
+This mirrors the static pricing flow where originators request listings and admins execute deployments.
 
 ## Prerequisites
 
@@ -78,7 +86,7 @@ INVESTOR2_TOKEN=$(curl -X POST http://localhost:3000/auth/login \
   -d '{"email":"investor2@test.com","password":"password123"}' | jq -r '.access_token')
 ```
 
-#### Step 2: Create Asset
+#### Step 2: Create Asset (Originator)
 ```bash
 # Create asset as originator
 ASSET_RESPONSE=$(curl -X POST http://localhost:3000/assets \
@@ -98,11 +106,33 @@ ASSET_ID=$(echo $ASSET_RESPONSE | jq -r '.asset._id')
 echo "Created asset with ID: $ASSET_ID"
 ```
 
-#### Step 3: Create Auction
+#### Step 3: Request Auction (Originator)
 ```bash
-# Create auction for the asset
-AUCTION_RESPONSE=$(curl -X POST http://localhost:3000/admin/asset-ops/create-auction \
+# Originator requests auction for the asset
+AUCTION_REQUEST_RESPONSE=$(curl -X POST http://localhost:3000/assets/$ASSET_ID/request-auction \
   -H "Authorization: Bearer $ORIGINATOR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "totalTokens": 1000,
+    "reservePrice": 900000,
+    "startTime": "'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'",
+    "endTime": "'$(date -u -v+1H +%Y-%m-%dT%H:%M:%S.000Z)'",
+    "minBidAmount": 100
+  }')
+
+echo "Auction request submitted. Admin will review and create the auction."
+```
+
+#### Step 4: Admin Creates Auction
+```bash
+# Admin login to get token
+ADMIN_TOKEN=$(curl -X POST http://localhost:3000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@test.com","password":"password123"}' | jq -r '.access_token')
+
+# Admin creates the auction after reviewing the request
+AUCTION_RESPONSE=$(curl -X POST http://localhost:3000/admin/asset-ops/create-auction \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
     \"assetId\": \"$ASSET_ID\",
@@ -114,10 +144,10 @@ AUCTION_RESPONSE=$(curl -X POST http://localhost:3000/admin/asset-ops/create-auc
   }")
 
 AUCTION_ID=$(echo $AUCTION_RESPONSE | jq -r '.auction._id')
-echo "Created auction with ID: $AUCTION_ID"
+echo "Admin created auction with ID: $AUCTION_ID"
 ```
 
-#### Step 4: Place Bids
+#### Step 5: Place Bids
 ```bash
 # Investor 1 places bid
 curl -X POST http://localhost:3000/assets/$ASSET_ID/bid \
@@ -138,14 +168,14 @@ curl -X POST http://localhost:3000/assets/$ASSET_ID/bid \
   }'
 ```
 
-#### Step 5: End Auction
+#### Step 6: End Auction
 ```bash
 # Wait for auction end time or manually end it
 curl -X POST http://localhost:3000/admin/asset-ops/end-auction/$AUCTION_ID \
   -H "Authorization: Bearer $ORIGINATOR_TOKEN"
 ```
 
-#### Step 6: Verify Results
+#### Step 7: Verify Results
 ```bash
 # Check auction results
 curl -X GET http://localhost:3000/assets/$ASSET_ID/auction-results \
