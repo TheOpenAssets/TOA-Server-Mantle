@@ -5,6 +5,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { AnnouncementService } from '../services/announcement.service';
 
 interface ActivateAuctionJob {
@@ -17,6 +18,11 @@ interface CheckAuctionStatusJob {
   expectedStartTime: Date;
 }
 
+interface CheckAuctionEndJob {
+  assetId: string;
+  expectedEndTime: Date;
+}
+
 @Processor('auction-status-check')
 export class AuctionStatusProcessor extends WorkerHost {
   private readonly logger = new Logger(AuctionStatusProcessor.name);
@@ -24,6 +30,8 @@ export class AuctionStatusProcessor extends WorkerHost {
   constructor(
     @InjectModel(Asset.name)
     private assetModel: Model<AssetDocument>,
+    @InjectModel(Bid.name)
+    private bidModel: Model<BidDocument>,
     @InjectQueue('auction-status-check')
     private auctionStatusQueue: Queue,
     private announcementService: AnnouncementService,
@@ -31,11 +39,13 @@ export class AuctionStatusProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<ActivateAuctionJob | CheckAuctionStatusJob>): Promise<void> {
+  async process(job: Job<ActivateAuctionJob | CheckAuctionStatusJob | CheckAuctionEndJob>): Promise<void> {
     if (job.name === 'activate-auction') {
       await this.activateAuction(job as Job<ActivateAuctionJob>);
     } else if (job.name === 'check-auction-status') {
       await this.checkAuctionStatus(job as Job<CheckAuctionStatusJob>);
+    } else if (job.name === 'check-auction-end') {
+      await this.checkAuctionEnd(job as Job<CheckAuctionEndJob>);
     } else {
       this.logger.warn(`Unknown job type: ${job.name}`);
     }
@@ -136,6 +146,81 @@ export class AuctionStatusProcessor extends WorkerHost {
     } catch (error) {
       this.logger.error(
         `Error checking auction status for ${assetId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
+    }
+  }
+
+  private async checkAuctionEnd(job: Job<CheckAuctionEndJob>): Promise<void> {
+    const { assetId, expectedEndTime } = job.data;
+
+    this.logger.log(
+      `Checking auction end for asset ${assetId} (expected end: ${expectedEndTime})`,
+    );
+
+    try {
+      const asset = await this.assetModel.findOne({ assetId });
+
+      if (!asset) {
+        this.logger.error(`Asset ${assetId} not found`);
+        return;
+      }
+
+      // Check if auction has ended
+      const now = new Date();
+      const auctionEndTime = asset.listing?.listedAt
+        ? new Date(asset.listing.listedAt.getTime() + (asset.listing.duration || 0) * 1000)
+        : null;
+
+      if (!auctionEndTime) {
+        this.logger.error(`Asset ${assetId} has no auction end time`);
+        return;
+      }
+
+      if (now < auctionEndTime) {
+        this.logger.warn(
+          `Auction ${assetId} has not ended yet. Current time: ${now.toISOString()}, End time: ${auctionEndTime.toISOString()}`,
+        );
+        return;
+      }
+
+      this.logger.log(`Auction ${assetId} has ended. Fetching bids and calculating results...`);
+
+      // Fetch all bids for this auction
+      const bids = await this.bidModel.find({ assetId }).exec();
+      this.logger.log(`Found ${bids.length} bids for auction ${assetId}`);
+
+      // Get clearing price from asset (set by admin via endAuction call)
+      // If not set, we'll use "0" to indicate auction ended without settlement
+      const clearingPrice = asset.listing?.clearingPrice || '0';
+
+      // Calculate tokens sold and remaining
+      let tokensSold = '0';
+      let tokensRemaining = asset.tokenParams.totalSupply;
+
+      if (clearingPrice !== '0') {
+        // If clearing price was set, calculate sold tokens
+        // This would normally be done during settlement, but we can estimate from listing.sold
+        tokensSold = asset.listing?.sold || '0';
+        const totalSupply = BigInt(asset.tokenParams.totalSupply);
+        const sold = BigInt(tokensSold);
+        tokensRemaining = (totalSupply - sold).toString();
+      }
+
+      this.logger.log(
+        `Auction ${assetId} results: Clearing price: ${clearingPrice}, Sold: ${tokensSold}, Remaining: ${tokensRemaining}`,
+      );
+
+      // Create AUCTION_ENDED announcement
+      await this.announcementService.createAuctionEndedAnnouncement(
+        assetId,
+        clearingPrice,
+        tokensSold,
+        tokensRemaining,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error checking auction end for ${assetId}: ${error instanceof Error ? error.message : String(error)}`,
       );
       throw error;
     }

@@ -6,12 +6,14 @@ import { AnnouncementService } from './services/announcement.service';
 import { AuctionStatusProcessor } from './processors/auction-status.processor';
 import { Announcement, AnnouncementSchema } from '../../database/schemas/announcement.schema';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
+import { Bid, BidSchema } from '../../database/schemas/bid.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Announcement.name, schema: AnnouncementSchema },
       { name: Asset.name, schema: AssetSchema },
+      { name: Bid.name, schema: BidSchema },
     ]),
     BullModule.registerQueue({
       name: 'auction-status-check',

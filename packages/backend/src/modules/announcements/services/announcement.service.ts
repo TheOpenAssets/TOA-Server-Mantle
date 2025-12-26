@@ -126,6 +126,63 @@ export class AnnouncementService {
     return announcement;
   }
 
+  async createAuctionEndedAnnouncement(
+    assetId: string,
+    clearingPrice: string,
+    tokensSold: string,
+    tokensRemaining: string,
+  ) {
+    const asset = await this.assetModel.findOne({ assetId });
+    if (!asset) {
+      throw new Error('Asset not found');
+    }
+
+    const clearingPriceUSD = Number(clearingPrice) / 10**6; // Convert from USDC wei
+    const tokensSoldFormatted = Number(tokensSold) / 10**18; // Convert from wei
+    const tokensRemainingFormatted = Number(tokensRemaining) / 10**18;
+    const totalSupply = Number(asset.tokenParams.totalSupply) / 10**18;
+
+    let message = `The auction for invoice ${asset.metadata.invoiceNumber} has ended! `;
+
+    if (tokensSoldFormatted > 0) {
+      message += `Clearing price: $${clearingPriceUSD.toFixed(2)} per token. `;
+      message += `Total tokens sold: ${tokensSoldFormatted.toLocaleString()} out of ${totalSupply.toLocaleString()}. `;
+
+      if (tokensRemainingFormatted > 0) {
+        message += `Remaining ${tokensRemainingFormatted.toLocaleString()} tokens are now available for purchase at $${clearingPriceUSD.toFixed(2)} per token.`;
+      } else {
+        message += `All tokens have been sold!`;
+      }
+    } else {
+      message += `No tokens were sold. The auction did not meet the minimum requirements.`;
+    }
+
+    const announcement = new this.announcementModel({
+      announcementId: uuidv4(),
+      assetId,
+      type: AnnouncementType.AUCTION_ENDED,
+      title: `Auction Ended: ${asset.metadata.invoiceNumber}`,
+      message,
+      status: AnnouncementStatus.ACTIVE,
+      metadata: {
+        invoiceNumber: asset.metadata.invoiceNumber,
+        faceValue: asset.metadata.faceValue,
+        totalSupply: asset.tokenParams.totalSupply,
+        tokensSold,
+        tokensRemaining,
+        clearingPrice,
+        industry: asset.metadata.industry,
+        riskTier: asset.metadata.riskTier,
+      },
+    });
+
+    await announcement.save();
+    this.logger.log(
+      `Created AUCTION_ENDED announcement for asset ${assetId}: ${tokensSoldFormatted} tokens sold at $${clearingPriceUSD.toFixed(2)}`,
+    );
+    return announcement;
+  }
+
   async getAllAnnouncements(filters?: {
     type?: AnnouncementType;
     status?: AnnouncementStatus;

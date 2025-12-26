@@ -223,7 +223,15 @@ export class AssetLifecycleService {
     // Calculate auction start time
     const auctionStartTime = new Date(Date.now() + startDelayMinutes * 60 * 1000);
 
+    // Calculate auction end time (start time + duration)
+    const auctionDuration = asset.listing?.duration || 0; // Duration in seconds
+    const auctionEndTime = new Date(auctionStartTime.getTime() + auctionDuration * 1000);
+
+    // Calculate when to check if auction ended (1 minute after end time)
+    const endCheckTime = new Date(auctionEndTime.getTime() + 60 * 1000);
+
     this.logger.log(`Auction ${assetId} will start at ${auctionStartTime.toISOString()}`);
+    this.logger.log(`Auction ${assetId} will end at ${auctionEndTime.toISOString()}`);
 
     // Create AUCTION_SCHEDULED announcement immediately
     await this.announcementService.createAuctionScheduledAnnouncement(
@@ -247,11 +255,29 @@ export class AssetLifecycleService {
       `Queued auction activation for ${assetId} to run at ${auctionStartTime.toISOString()}`,
     );
 
+    // Queue delayed job to check if auction ended (1 minute after end time)
+    const totalDelayMs = startDelayMinutes * 60 * 1000 + auctionDuration * 1000 + 60 * 1000;
+    await this.auctionStatusQueue.add(
+      'check-auction-end',
+      {
+        assetId,
+        expectedEndTime: auctionEndTime,
+      },
+      {
+        delay: totalDelayMs,
+      },
+    );
+
+    this.logger.log(
+      `Queued auction end check for ${assetId} to run at ${endCheckTime.toISOString()}`,
+    );
+
     return {
       success: true,
       assetId,
       scheduledStartTime: auctionStartTime,
-      message: `Auction scheduled to start in ${startDelayMinutes} minutes`,
+      scheduledEndTime: auctionEndTime,
+      message: `Auction scheduled to start in ${startDelayMinutes} minutes and run for ${auctionDuration / 60} minutes`,
     };
   }
 
