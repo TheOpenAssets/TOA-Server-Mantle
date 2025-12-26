@@ -228,7 +228,7 @@ async function placeBid() {
 
     const MARKETPLACE_ABI = [
       'function submitBid(bytes32 assetId, uint256 tokenAmount, uint256 price) external',
-      'function listings(bytes32) view returns (address tokenAddress, bytes32 assetId, uint8 listingType, uint256 staticPrice, uint256 startPrice, uint256 endPrice, uint256 duration, uint256 startTime, uint256 totalSupply, uint256 sold, bool active, uint256 minInvestment)',
+      'function listings(bytes32) view returns (address tokenAddress, bytes32 assetId, uint8 listingType, uint256 staticPrice, uint256 reservePrice, uint256 endTime, uint256 clearingPrice, uint8 auctionPhase, uint256 totalSupply, uint256 sold, bool active, uint256 minInvestment)',
     ];
 
     const provider = new ethers.JsonRpcProvider('$RPC_URL');
@@ -247,13 +247,12 @@ async function placeBid() {
 
     // Get listing info
     const listing = await marketplaceContract.listings(assetIdBytes32);
-    const listingType = listing[2];
-    const startPrice = listing[4];
-    const endPrice = listing[5];
-    const minInvestment = listing[11];
+    const listingType = listing[2];      // ListingType
+    const reservePrice = listing[4];     // Reserve price (minimum price for auction)
+    const minInvestment = listing[11];   // Minimum investment
 
     console.error('Listing Type: ' + (listingType === 1n ? 'AUCTION' : 'FIXED_PRICE'));
-    console.error('Price Range: ' + ethers.formatUnits(endPrice, 6) + ' - ' + ethers.formatUnits(startPrice, 6) + ' USDC');
+    console.error('Reserve Price: ' + ethers.formatUnits(reservePrice, 6) + ' USDC (minimum)');
     console.error('Min Investment: ' + ethers.formatUnits(minInvestment, 18) + ' tokens');
 
     // Validate
@@ -261,8 +260,9 @@ async function placeBid() {
       throw new Error('Asset is not an auction');
     }
 
-    if (priceWei < endPrice || priceWei > startPrice) {
-      throw new Error('Price ' + '$PRICE_PER_TOKEN' + ' USDC is outside allowed range ' + ethers.formatUnits(endPrice, 6) + ' - ' + ethers.formatUnits(startPrice, 6));
+    // For uniform price auctions, bids must be >= reserve price
+    if (priceWei < reservePrice) {
+      throw new Error('Price ' + '$PRICE_PER_TOKEN' + ' USDC is below reserve price ' + ethers.formatUnits(reservePrice, 6));
     }
 
     if (tokenAmountWei < minInvestment) {

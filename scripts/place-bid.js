@@ -23,7 +23,7 @@ const USDC_ABI = [
 
 const MARKETPLACE_ABI = [
   'function submitBid(bytes32 assetId, uint256 tokenAmount, uint256 price) external',
-  'function listings(bytes32) view returns (address tokenAddress, bytes32 assetId, uint8 listingType, uint256 staticPrice, uint256 startPrice, uint256 endPrice, uint256 duration, uint256 startTime, uint256 totalSupply, uint256 sold, bool active, uint256 minInvestment)',
+  'function listings(bytes32) view returns (address tokenAddress, bytes32 assetId, uint8 listingType, uint256 staticPrice, uint256 reservePrice, uint256 endTime, uint256 clearingPrice, uint8 auctionPhase, uint256 totalSupply, uint256 sold, bool active, uint256 minInvestment)',
   'function getBidCount(bytes32 assetId) view returns (uint256)',
 ];
 
@@ -83,13 +83,12 @@ async function placeBid() {
     const listing = await marketplaceContract.listings(assetIdBytes32);
     const tokenAddress = listing[0];
     const listingType = listing[2];
-    const startPrice = listing[4];
-    const endPrice = listing[5];
+    const reservePrice = listing[4];  // Reserve price (minimum price for auction)
     const minInvestment = listing[11];
 
     console.log(`Token Address: ${tokenAddress}`);
     console.log(`Listing Type: ${listingType === 1 ? 'AUCTION' : 'FIXED_PRICE'}`);
-    console.log(`Price Range: ${ethers.formatUnits(endPrice, 6)} - ${ethers.formatUnits(startPrice, 6)} USDC per token`);
+    console.log(`Reserve Price: ${ethers.formatUnits(reservePrice, 6)} USDC (minimum)`);
     console.log(`Min Investment: ${ethers.formatUnits(minInvestment, 18)} tokens`);
     console.log();
 
@@ -99,10 +98,10 @@ async function placeBid() {
       process.exit(1);
     }
 
-    // Verify price is within range
-    if (priceWei < endPrice || priceWei > startPrice) {
-      console.error(`❌ Error: Price ${pricePerToken} USDC is outside the allowed range`);
-      console.error(`   Allowed range: ${ethers.formatUnits(endPrice, 6)} - ${ethers.formatUnits(startPrice, 6)} USDC`);
+    // Verify price is >= reserve price
+    if (priceWei < reservePrice) {
+      console.error(`❌ Error: Price ${pricePerToken} USDC is below the reserve price`);
+      console.error(`   Reserve price: ${ethers.formatUnits(reservePrice, 6)} USDC`);
       process.exit(1);
     }
 
