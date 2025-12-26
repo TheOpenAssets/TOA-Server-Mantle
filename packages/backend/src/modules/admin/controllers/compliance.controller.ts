@@ -13,6 +13,11 @@ export class RejectAssetDto {
   reason!: string;
 }
 
+export class ScheduleAuctionDto {
+  assetId!: string;
+  startDelayMinutes!: number; // Minutes from now when auction should start
+}
+
 @Controller('admin/compliance')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
 export class ComplianceController {
@@ -26,5 +31,10 @@ export class ComplianceController {
   @Post('reject')
   async rejectAsset(@Body() dto: RejectAssetDto) {
     return this.assetLifecycleService.rejectAsset(dto.assetId, dto.reason);
+  }
+
+  @Post('schedule-auction')
+  async scheduleAuction(@Body() dto: ScheduleAuctionDto) {
+    return this.assetLifecycleService.scheduleAuction(dto.assetId, dto.startDelayMinutes);
   }
 }

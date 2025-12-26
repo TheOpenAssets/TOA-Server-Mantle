@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { RegisterAssetDto } from '../../blockchain/dto/register-asset.dto';
 import { AttestationService } from '../../compliance-engine/services/attestation.service';
+import { AnnouncementService } from '../../announcements/services/announcement.service';
 
 @Injectable()
 export class AssetLifecycleService {
@@ -17,7 +18,10 @@ export class AssetLifecycleService {
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectQueue('asset-processing') private assetQueue: Queue,
+    @InjectQueue('auction-status-check') private auctionStatusQueue: Queue,
     private attestationService: AttestationService,
+    @Inject(forwardRef(() => AnnouncementService))
+    private announcementService: AnnouncementService,
   ) {}
 
   async getRegisterAssetPayload(assetId: string): Promise<RegisterAssetDto> {
@@ -198,6 +202,57 @@ export class AssetLifecycleService {
     this.logger.log(`Asset ${assetId} attested and queued for EigenDA anchoring`);
 
     return { success: true, assetId, status: AssetStatus.ATTESTED };
+  }
+
+  async scheduleAuction(assetId: string, startDelayMinutes: number) {
+    this.logger.log(`Scheduling auction for asset ${assetId} to start in ${startDelayMinutes} minutes`);
+
+    const asset = await this.assetModel.findOne({ assetId });
+    if (!asset) {
+      throw new Error('Asset not found');
+    }
+
+    if (asset.assetType !== 'AUCTION') {
+      throw new Error('Asset is not an auction type');
+    }
+
+    if (asset.status !== AssetStatus.ATTESTED && asset.status !== AssetStatus.REGISTERED) {
+      throw new Error('Asset must be ATTESTED or REGISTERED before scheduling auction');
+    }
+
+    // Calculate auction start time
+    const auctionStartTime = new Date(Date.now() + startDelayMinutes * 60 * 1000);
+
+    this.logger.log(`Auction ${assetId} will start at ${auctionStartTime.toISOString()}`);
+
+    // Create AUCTION_SCHEDULED announcement immediately
+    await this.announcementService.createAuctionScheduledAnnouncement(
+      assetId,
+      auctionStartTime,
+    );
+
+    // Queue delayed job to activate auction at the scheduled time
+    await this.auctionStatusQueue.add(
+      'activate-auction',
+      {
+        assetId,
+        scheduledStartTime: auctionStartTime,
+      },
+      {
+        delay: startDelayMinutes * 60 * 1000, // Convert minutes to milliseconds
+      },
+    );
+
+    this.logger.log(
+      `Queued auction activation for ${assetId} to run at ${auctionStartTime.toISOString()}`,
+    );
+
+    return {
+      success: true,
+      assetId,
+      scheduledStartTime: auctionStartTime,
+      message: `Auction scheduled to start in ${startDelayMinutes} minutes`,
+    };
   }
 
   async rejectAsset(assetId: string, reason: string) {

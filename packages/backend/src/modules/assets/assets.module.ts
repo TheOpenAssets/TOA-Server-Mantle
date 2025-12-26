@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
 import { AssetsController } from './controllers/assets.controller';
@@ -8,6 +8,7 @@ import { AssetProcessor } from './processors/asset.processor';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { AuthModule } from '../auth/auth.module'; // For JwtAuthGuard
 import { ComplianceEngineModule } from '../compliance-engine/compliance-engine.module';
+import { AnnouncementsModule } from '../announcements/announcements.module';
 
 @Module({
   imports: [
@@ -15,8 +16,12 @@ import { ComplianceEngineModule } from '../compliance-engine/compliance-engine.m
     BullModule.registerQueue({
       name: 'asset-processing',
     }),
+    BullModule.registerQueue({
+      name: 'auction-status-check',
+    }),
     AuthModule,
     ComplianceEngineModule,
+    forwardRef(() => AnnouncementsModule),
   ],
   controllers: [AssetsController],
   providers: [AssetLifecycleService, AssetProcessor, EigenDAService],
