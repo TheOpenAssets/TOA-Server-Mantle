@@ -279,7 +279,8 @@ echo ""
 print_header "Step 4: Auction Results"
 
 # Get all bids
-BIDS_RESPONSE=$(curl -s -X GET "$API_BASE_URL/marketplace/auctions/$ASSET_ID/bids")
+BIDS_RESPONSE=$(curl -s -X GET "$API_BASE_URL/marketplace/auctions/$ASSET_ID/bids" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
 
 TOTAL_BIDS=$(echo "$BIDS_RESPONSE" | jq '.bids | length')
 print_cyan "Total Bids: $TOTAL_BIDS"
