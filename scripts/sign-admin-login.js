@@ -12,7 +12,7 @@
 
 import { ethers } from 'ethers';
 
-const ADMIN_PRIVATE_KEY = '4dd8f6b570ebcabdb4c4b8d702b66c6efbaaff1f8f8ba9a79983115a02a38b04';
+const ADMIN_PRIVATE_KEY = '0x1d12932a5c3a7aa8d4f50662caa679bb2e53321e11bc5df2af9298e2ace59305';
 const API_URL = 'http://localhost:3000';
 
 async function adminLogin() {

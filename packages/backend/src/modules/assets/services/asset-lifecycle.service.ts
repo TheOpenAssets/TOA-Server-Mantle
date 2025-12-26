@@ -3,10 +3,12 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { ConfigService } from '@nestjs/config';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { CreateAssetDto } from '../dto/create-asset.dto';
 import { v4 as uuidv4 } from 'uuid';
+import { ethers } from 'ethers';
 
 import { RegisterAssetDto } from '../../blockchain/dto/register-asset.dto';
 import { AttestationService } from '../../compliance-engine/services/attestation.service';
@@ -24,6 +26,7 @@ export class AssetLifecycleService {
     private attestationService: AttestationService,
     @Inject(forwardRef(() => AnnouncementService))
     private announcementService: AnnouncementService,
+    private configService: ConfigService,
   ) {}
 
   async getRegisterAssetPayload(assetId: string): Promise<RegisterAssetDto> {
@@ -422,6 +425,99 @@ export class AssetLifecycleService {
         limit,
         totalPages: Math.ceil(total / limit),
       },
+    };
+  }
+
+  /**
+   * Calculate and payout USDC to originator
+   * Simple: Sum USDC from settled bids, verify balance, transfer to originator
+   */
+  async payoutOriginator(assetId: string) {
+    this.logger.log(`Processing originator payout for asset: ${assetId}`);
+
+    // Get asset
+    const asset = await this.assetModel.findOne({ assetId });
+    if (!asset) {
+      throw new Error('Asset not found');
+    }
+
+    // Calculate total USDC raised from settled bids
+    const settledBids = await this.bidModel.find({
+      assetId,
+      status: { $in: ['SETTLED', 'REFUNDED'] },
+    });
+
+    // Sum up USDC received (only from winning bids - SETTLED status means they got tokens)
+    let totalUsdcRaised = BigInt(0);
+    for (const bid of settledBids) {
+      if (bid.status === 'SETTLED') {
+        totalUsdcRaised += BigInt(bid.usdcDeposited);
+      }
+    }
+
+    if (totalUsdcRaised === BigInt(0)) {
+      throw new Error('No USDC raised yet - no settled bids');
+    }
+
+    this.logger.log(`Total USDC to payout: ${totalUsdcRaised.toString()} (${Number(totalUsdcRaised) / 1e6} USDC)`);
+
+    // Execute transfer on-chain
+    const platformPrivateKey = this.configService.get<string>('PLATFORM_PRIVATE_KEY');
+    const rpcUrl = this.configService.get<string>('blockchain.rpcUrl');
+
+    if (!platformPrivateKey) {
+      throw new Error('PLATFORM_PRIVATE_KEY not configured');
+    }
+
+    // Read deployed contracts for USDC address
+    const fs = require('fs');
+    const path = require('path');
+    const deployedContractsPath = path.join(process.cwd(), '../contracts/deployed_contracts.json');
+    const deployedContracts = JSON.parse(fs.readFileSync(deployedContractsPath, 'utf-8'));
+    const usdcAddress = deployedContracts.contracts.USDC;
+
+    if (!usdcAddress) {
+      throw new Error('USDC address not found in deployed contracts');
+    }
+
+    this.logger.log(`Using USDC contract: ${usdcAddress}`);
+
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const wallet = new ethers.Wallet(platformPrivateKey, provider);
+
+    const USDC_ABI = [
+      'function balanceOf(address) view returns (uint256)',
+      'function transfer(address to, uint256 amount) returns (bool)',
+    ];
+
+    const usdc = new ethers.Contract(usdcAddress, USDC_ABI, wallet);
+
+    // Check platform balance
+    const balance = await usdc.balanceOf(wallet.address);
+    this.logger.log(`Platform USDC balance: ${balance.toString()} (${Number(balance) / 1e6} USDC)`);
+
+    if (balance < totalUsdcRaised) {
+      throw new Error(`Insufficient USDC balance. Have: ${Number(balance) / 1e6}, Need: ${Number(totalUsdcRaised) / 1e6}`);
+    }
+
+    // Execute transfer
+    this.logger.log(`Transferring ${Number(totalUsdcRaised) / 1e6} USDC to ${asset.originator}`);
+    const tx = await usdc.transfer(asset.originator, totalUsdcRaised);
+    this.logger.log(`Transaction submitted: ${tx.hash}`);
+
+    const receipt = await tx.wait();
+    this.logger.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+
+    return {
+      success: true,
+      assetId,
+      originator: asset.originator,
+      totalUsdcRaised: totalUsdcRaised.toString(),
+      totalUsdcRaisedFormatted: `${Number(totalUsdcRaised) / 1e6} USDC`,
+      settledBidsCount: settledBids.filter(b => b.status === 'SETTLED').length,
+      transactionHash: tx.hash,
+      blockNumber: receipt.blockNumber.toString(),
+      message: 'Payout executed successfully!',
     };
   }
 }

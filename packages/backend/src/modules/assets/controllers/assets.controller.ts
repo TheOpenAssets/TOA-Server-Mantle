@@ -17,6 +17,7 @@ import { AssetLifecycleService } from '../services/asset-lifecycle.service';
 import { CreateAssetDto } from '../dto/create-asset.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { OriginatorGuard } from '../guards/originator.guard';
+import { AdminGuard } from '../../admin/guards/admin.guard';
 import { AssetStatus } from '../../../database/schemas/asset.schema';
 
 @Controller('assets')
@@ -74,5 +75,11 @@ export class AssetsController {
   @UseGuards(OriginatorGuard)
   async getMyAssets(@Req() req: any) {
     return this.assetLifecycleService.getAssetsByOriginator(req.user.walletAddress);
+  }
+
+  @Post(':assetId/payout')
+  @UseGuards(AdminGuard)
+  async payoutOriginator(@Param('assetId') assetId: string) {
+    return this.assetLifecycleService.payoutOriginator(assetId);
   }
 }
