@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
-import { CreateAssetDto } from '../../assets/dto/create-asset.dto';
+import { AssetType, CreateAssetDto } from '../../assets/dto/create-asset.dto';
 import { User, UserDocument, UserRole } from '../../../database/schemas/user.schema';
 import { TypeformWebhookDto } from '../dto/typeform-webhook.dto';
 
@@ -120,9 +120,16 @@ export class TypeformWebhookService {
     const industry = getValue(findAnswer('Industry'));
     const riskTier = getValue(findAnswer('Risk Tier'));
     const totalSupply = getValue(findAnswer('Total Supply'));
-    const pricePerToken = getValue(findAnswer('Price Per Token'));
     const minInvestment = getValue(findAnswer('Min Investment'));
     const fileUrl = getValue(findAnswer('Invoice File'));
+
+    // Asset type and listing parameters
+    const assetTypeRaw = getValue(findAnswer('Asset Type'));
+    const assetType = (assetTypeRaw?.toUpperCase() === 'STATIC' ? AssetType.STATIC : AssetType.AUCTION);
+    const minRaisePercentage = getValue(findAnswer('Min Raise Percentage'));
+    const maxRaisePercentage = getValue(findAnswer('Max Raise Percentage'));
+    const pricePerToken = getValue(findAnswer('Price Per Token'));
+    const auctionDuration = getValue(findAnswer('Auction Duration'));
 
     // Validate required fields
     if (!walletAddress) throw new BadRequestException('Missing Wallet Address');
@@ -130,6 +137,7 @@ export class TypeformWebhookService {
     if (!faceValue) throw new BadRequestException('Missing Face Value');
     if (!fileUrl) throw new BadRequestException('Missing Invoice File');
 
+    // Build base DTO
     const dto: CreateAssetDto = {
         invoiceNumber,
         faceValue,
@@ -139,13 +147,27 @@ export class TypeformWebhookService {
         buyerName: buyerName || 'Unknown Buyer',
         industry: industry || 'General',
         riskTier: riskTier || 'B',
-        totalSupply: totalSupply || '1000',
-        pricePerToken: pricePerToken || '1',
+        assetType,
+        totalSupply: totalSupply || '100000',
         minInvestment: minInvestment || '100',
-        assetType: 'INVOICE',
-        minRaisePercentage: 50,
-        auctionDuration: 7 * 24 * 60 * 60, // 7 days in seconds
+        minRaisePercentage: minRaisePercentage || '50', // 50% minimum
     };
+
+    // Add optional max raise percentage
+    if (maxRaisePercentage) {
+        dto.maxRaisePercentage = maxRaisePercentage;
+    }
+
+    // Add type-specific fields
+    if (assetType === AssetType.STATIC) {
+        // For STATIC: optionally include pricePerToken
+        if (pricePerToken) {
+            dto.pricePerToken = pricePerToken;
+        }
+    } else {
+        // For AUCTION: auctionDuration is required
+        dto.auctionDuration = auctionDuration || (7 * 24 * 60 * 60).toString(); // 7 days default
+    }
 
     return { dto, walletAddress, fileUrl };
   }
