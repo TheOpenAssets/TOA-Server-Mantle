@@ -56,23 +56,50 @@ async function faucet() {
   console.log('🚰 Faucet for MockUSDC');
   console.log('━'.repeat(50));
 
-  const rl = createReadlineInterface();
+  const args = process.argv.slice(2);
+  let recipient, amountInUSDC;
 
-  try {
-    // Get recipient address (defaults to wallet address)
-    const recipientInput = await question(rl, 'Enter recipient address (or press enter for your wallet): ');
-    const recipient = recipientInput.trim() === '' ? null : recipientInput.trim();
+  if (args.length >= 2) {
+    // Command line mode
+    recipient = args[0];
+    amountInUSDC = args[1];
+  } else {
+    // Interactive mode
+    const rl = createReadlineInterface();
 
-    // Get amount
-    const amountInput = await question(rl, 'Enter amount in USDC (default 1000): ');
-    const amountInUSDC = amountInput.trim() === '' ? '1000' : amountInput.trim();
+    try {
+      // Get recipient address (defaults to wallet address)
+      const recipientInput = await question(rl, 'Enter recipient address (or press enter for your wallet): ');
+      recipient = recipientInput.trim() === '' ? null : recipientInput.trim();
 
-    // Validate amount
-    if (isNaN(amountInUSDC) || parseFloat(amountInUSDC) <= 0) {
-      console.error('❌ Invalid amount');
+      // Get amount
+      const amountInput = await question(rl, 'Enter amount in USDC (default 1000): ');
+      amountInUSDC = amountInput.trim() === '' ? '1000' : amountInput.trim();
+    } finally {
+      rl.close();
+    }
+  }
+
+  // Validate inputs
+  if (args.length >= 2) {
+    // Command line mode: recipient is required
+    if (!recipient || !ethers.isAddress(recipient)) {
+      console.error('❌ Invalid recipient address');
       process.exit(1);
     }
+  } else {
+    // Interactive mode: recipient can be null (will use wallet)
+    if (recipient && !ethers.isAddress(recipient)) {
+      console.error('❌ Invalid Ethereum address');
+      process.exit(1);
+    }
+  }
+  if (isNaN(amountInUSDC) || parseFloat(amountInUSDC) <= 0) {
+    console.error('❌ Invalid amount');
+    process.exit(1);
+  }
 
+  try {
     console.log('\n🪙 Requesting Mock USDC Tokens from Faucet');
     console.log('━'.repeat(50));
 
@@ -128,7 +155,10 @@ async function faucet() {
     console.error('\n❌ Error:', error.message);
     process.exit(1);
   } finally {
-    rl.close();
+    // Close readline if it was opened
+    if (typeof rl !== 'undefined' && rl) {
+      rl.close();
+    }
   }
 }
 
