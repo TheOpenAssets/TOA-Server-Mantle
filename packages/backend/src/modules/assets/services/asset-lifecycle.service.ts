@@ -6,6 +6,7 @@ import { Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
+import { Payout, PayoutDocument } from '../../../database/schemas/payout.schema';
 import { CreateAssetDto } from '../dto/create-asset.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { ethers } from 'ethers';
@@ -21,6 +22,7 @@ export class AssetLifecycleService {
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
+    @InjectModel(Payout.name) private payoutModel: Model<PayoutDocument>,
     @InjectQueue('asset-processing') private assetQueue: Queue,
     @InjectQueue('auction-status-check') private auctionStatusQueue: Queue,
     private attestationService: AttestationService,
@@ -508,15 +510,33 @@ export class AssetLifecycleService {
     const receipt = await tx.wait();
     this.logger.log(`Transaction confirmed in block ${receipt.blockNumber}`);
 
+    // Create payout record in MongoDB
+    const settledBidsOnly = settledBids.filter(b => b.status === 'SETTLED');
+    const payoutRecord = new this.payoutModel({
+      assetId,
+      originator: asset.originator,
+      amount: totalUsdcRaised.toString(),
+      amountFormatted: `${Number(totalUsdcRaised) / 1e6} USDC`,
+      settledBidIds: settledBidsOnly.map(bid => bid._id.toString()),
+      settledBidsCount: settledBidsOnly.length,
+      transactionHash: tx.hash,
+      blockNumber: Number(receipt.blockNumber),
+      paidAt: new Date(),
+    });
+
+    await payoutRecord.save();
+    this.logger.log(`Payout record saved to MongoDB with ID: ${payoutRecord._id}`);
+
     return {
       success: true,
       assetId,
       originator: asset.originator,
       totalUsdcRaised: totalUsdcRaised.toString(),
       totalUsdcRaisedFormatted: `${Number(totalUsdcRaised) / 1e6} USDC`,
-      settledBidsCount: settledBids.filter(b => b.status === 'SETTLED').length,
+      settledBidsCount: settledBidsOnly.length,
       transactionHash: tx.hash,
       blockNumber: receipt.blockNumber.toString(),
+      payoutId: payoutRecord._id.toString(),
       message: 'Payout executed successfully!',
     };
   }
