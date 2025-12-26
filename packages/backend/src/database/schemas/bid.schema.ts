@@ -45,6 +45,10 @@ export class Bid {
 
   @Prop({ type: Date })
   settledAt?: Date; // When the bid was settled
+
+  // Timestamps added by Mongoose
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const BidSchema = SchemaFactory.createForClass(Bid);

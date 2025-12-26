@@ -142,6 +142,9 @@ export class TypeformWebhookService {
         totalSupply: totalSupply || '1000',
         pricePerToken: pricePerToken || '1',
         minInvestment: minInvestment || '100',
+        assetType: 'INVOICE',
+        minRaisePercentage: 50,
+        auctionDuration: 7 * 24 * 60 * 60, // 7 days in seconds
     };
 
     return { dto, walletAddress, fileUrl };
