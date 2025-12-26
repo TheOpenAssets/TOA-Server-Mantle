@@ -7,6 +7,7 @@ import { PurchaseTrackerService } from '../services/purchase-tracker.service';
 import { BidTrackerService } from '../services/bid-tracker.service';
 import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
 import { NotifyBidDto } from '../dto/notify-bid.dto';
+import { NotifySettlementDto } from '../dto/notify-settlement.dto';
 
 @Controller('marketplace')
 export class MarketplaceController {
@@ -182,5 +183,12 @@ export class MarketplaceController {
   @UseGuards(JwtAuthGuard)
   async getAuctionBids(@Param('assetId') assetId: string) {
     return this.bidTracker.getAuctionBids(assetId);
+  }
+
+  @Post('bids/settle-notify')
+  @UseGuards(JwtAuthGuard)
+  async notifySettlement(@Request() req: any, @Body() dto: NotifySettlementDto) {
+    const investorWallet = req.user.walletAddress;
+    return this.bidTracker.notifySettlement(dto, investorWallet);
   }
 }

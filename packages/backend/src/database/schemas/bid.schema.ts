@@ -7,7 +7,8 @@ export enum BidStatus {
   PENDING = 'PENDING',
   WON = 'WON',
   LOST = 'LOST',
-  SETTLED = 'SETTLED',
+  SETTLED = 'SETTLED', // Won and received tokens
+  REFUNDED = 'REFUNDED', // Lost and received full refund
 }
 
 @Schema({ timestamps: true })
@@ -38,6 +39,12 @@ export class Bid {
 
   @Prop({ type: Number })
   blockNumber!: number;
+
+  @Prop({ type: String })
+  settlementTxHash?: string; // Transaction hash for settlement
+
+  @Prop({ type: Date })
+  settledAt?: Date; // When the bid was settled
 }
 
 export const BidSchema = SchemaFactory.createForClass(Bid);
