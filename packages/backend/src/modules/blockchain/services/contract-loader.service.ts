@@ -49,7 +49,8 @@ export class ContractLoaderService implements OnModuleInit {
       TokenFactory: 'core/TokenFactory.sol/TokenFactory.json',
       YieldVault: 'core/YieldVault.sol/YieldVault.json',
       PrimaryMarketplace: 'marketplace/PrimaryMarket.sol/PrimaryMarket.json',
-      RWAToken: 'core/RWAToken.sol/RWAToken.json'
+      RWAToken: 'core/RWAToken.sol/RWAToken.json',
+      USDC: 'test/MockUSDC.sol/MockUSDC.json'
     };
 
     for (const [name, relPath] of Object.entries(mapping)) {

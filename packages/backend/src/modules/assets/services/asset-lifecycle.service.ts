@@ -527,6 +527,19 @@ export class AssetLifecycleService {
     await payoutRecord.save();
     this.logger.log(`Payout record saved to MongoDB with ID: ${payoutRecord._id}`);
 
+    // Update asset with amountRaised and status
+    await this.assetModel.updateOne(
+      { assetId },
+      {
+        $set: {
+          'listing.amountRaised': totalUsdcRaised.toString(),
+          status: AssetStatus.PAYOUT_COMPLETE,
+          'checkpoints.payoutComplete': true,
+        },
+      },
+    );
+    this.logger.log(`Asset ${assetId} updated: amountRaised=${Number(totalUsdcRaised) / 1e6} USDC, status=PAYOUT_COMPLETE`);
+
     return {
       success: true,
       assetId,

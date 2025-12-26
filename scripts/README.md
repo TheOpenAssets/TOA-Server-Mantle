@@ -1,6 +1,6 @@
 # RWA Platform Scripts
 
-This directory contains scripts for testing the RWA platform auction flow.
+This directory contains scripts for testing the RWA platform auction flow and yield settlement.
 
 ## Prerequisites
 
@@ -168,6 +168,122 @@ INVESTOR_PRIVATE_KEY=0x1d12932a5c3a7aa8d4f50662caa679bb2e53321e11bc5df2af9298e2a
 
 **This is the recommended way to place bids** - it handles the entire flow automatically.
 
+### 8. Admin End Auction
+
+**Script**: `admin-end-auction.sh`
+
+Ends an auction by setting the clearing price and creating the final announcement.
+
+```bash
+ADMIN_PRIVATE_KEY=0x... ./admin-end-auction.sh <asset-id> <clearing-price>
+```
+
+**Parameters**:
+- `asset-id`: UUID of the auction
+- `clearing-price`: Final clearing price in USDC (e.g., 0.86)
+
+**Example**:
+```bash
+ADMIN_PRIVATE_KEY=0x... ./admin-end-auction.sh b6796e6c-68fa-46a6-bfeb-a661dac528a3 0.86
+```
+
+**What it does**:
+1. Admin authentication
+2. End auction on-chain via PrimaryMarketplace contract
+3. Create AUCTION_ENDED announcement
+4. Display bid results
+
+### 9. Investor Settle Bid
+
+**Script**: `investor-settle-bid.sh`
+
+Allows investors to settle their bids after auction ends - receives tokens + refund for winning bids, or full refund for losing bids.
+
+```bash
+INVESTOR_PRIVATE_KEY=0x... ./investor-settle-bid.sh <asset-id> <bid-index>
+```
+
+### 10. Admin Settle Yield (Complete Flow)
+
+**Script**: `admin-settle-yield.sh`
+
+Complete yield settlement flow after asset lifecycle completes: record settlement → confirm USDC → distribute on-chain with time-weighted token-days calculation.
+
+```bash
+ADMIN_PRIVATE_KEY=0x... ./admin-settle-yield.sh <asset-id> <settlement-amount>
+```
+
+**Parameters**:
+- `asset-id`: UUID of the asset (must be in PAYOUT_COMPLETE status)
+- `settlement-amount`: Face value paid by originator in USD (e.g., 100000 for $100k)
+
+**Example**:
+```bash
+# Settle yield for $100,000 face value asset
+ADMIN_PRIVATE_KEY=0x... ./admin-settle-yield.sh b6796e6c-68fa-46a6-bfeb-a661dac528a3 100000
+```
+
+**What it does**:
+1. Admin authentication
+2. Verify asset is in PAYOUT_COMPLETE status
+3. **Record Settlement**: Creates settlement record with 1.5% platform fee
+4. **Confirm USDC**: Converts net distribution to USDC amount
+5. **Distribute Yield On-Chain**:
+   - Approves USDC to YieldVault
+   - Deposits USDC to vault
+   - Distributes to holders using **time-weighted token-days** calculation
+   - Processes in batches of 50 holders
+6. Display distribution results with effective yield
+
+**Time-Weighted Distribution**:
+- Uses token-days: `balance × days_held`
+- Rewards long-term holders proportionally
+- Example: Holder with 100 tokens for 7 days gets 2.3× more yield than holder with 100 tokens for 3 days
+
+**Output Example**:
+```
+Settlement Summary:
+  Settlement Amount:     $100000 USD
+  Platform Fee (1.5%):   $1500 USD
+  Net Distribution:      $98500 USD
+  USDC Distributed:      98500.000000 USDC
+
+Distribution Summary:
+  Holders:               5
+  Total Token-Days:      450000000000000000000000
+  Effective Yield:       5.39%
+```
+
+### 11. Investor Claim Yield
+
+**Script**: `investor-claim-yield.sh`
+
+Allows token holders to claim their USDC yield from YieldVault after distribution.
+
+```bash
+INVESTOR_PRIVATE_KEY=0x... ./investor-claim-yield.sh
+```
+
+**Example**:
+```bash
+INVESTOR_PRIVATE_KEY=0x... ./investor-claim-yield.sh
+```
+
+**What it does**:
+1. Check claimable yield amount on YieldVault
+2. Call `claimAllYield()` on YieldVault contract
+3. Verify USDC balance increased
+4. Display transaction details
+
+**Output Example**:
+```
+Claimable Yield: 23.456789 USDC
+
+Yield Claimed Successfully! 🎉
+Claimed: 23.456789 USDC
+TX Hash: 0xabc123...
+```
+
 ## Complete E2E Flow
 
 ### Step 1: Upload Asset (Originator)
@@ -227,11 +343,49 @@ INVESTOR_PRIVATE_KEY=0x... ./investor-place-bid.sh $ASSET_ID 500 0.98
 INVESTOR_PRIVATE_KEY=0x<another_key> ./investor-place-bid.sh $ASSET_ID 2000 0.93
 ```
 
-### Step 5: Monitor Auction End
+### Step 5: End Auction (Admin)
 ```bash
-# Wait for auction to end (duration + 1 minute)
+# End the auction with clearing price
+ADMIN_PRIVATE_KEY=0x... ./admin-end-auction.sh $ASSET_ID 0.86
+
 # Check for AUCTION_ENDED announcement
 ./check-announcements.sh $ASSET_ID
+```
+
+### Step 6: Investors Settle Bids
+```bash
+# Each investor settles their bid
+INVESTOR_PRIVATE_KEY=0x... ./investor-settle-bid.sh $ASSET_ID 0
+
+# Winners receive tokens + refund
+# Losers receive full USDC refund
+```
+
+### Step 7: Originator Payout (Automatic)
+After all bids are settled, the backend automatically:
+- Transfers raised USDC to originator
+- Updates asset status to `PAYOUT_COMPLETE`
+
+### Step 8: Yield Settlement (After Invoice Paid)
+Once originator has settled the invoice with the debtor:
+
+```bash
+# Admin settles yield with time-weighted distribution
+ADMIN_PRIVATE_KEY=0x... ./admin-settle-yield.sh $ASSET_ID 100000
+
+# This will:
+# - Record settlement ($100k face value)
+# - Calculate platform fee (1.5% = $1,500)
+# - Convert to USDC ($98,500)
+# - Distribute to holders based on token-days
+```
+
+### Step 9: Investors Claim Yield
+```bash
+# Each investor claims their USDC yield
+INVESTOR_PRIVATE_KEY=0x... ./investor-claim-yield.sh
+
+# USDC transferred to investor wallet
 ```
 
 ## Expected Timeline
@@ -264,8 +418,8 @@ T+6:06  [Job checks status] → AUCTION_LIVE announcement
 | Variable | Description | Required For |
 |----------|-------------|--------------|
 | `ORIGINATOR_PRIVATE_KEY` | Originator wallet private key | upload-auction-asset.sh |
-| `ADMIN_PRIVATE_KEY` | Admin wallet private key | admin-approve-and-schedule.sh |
-| `INVESTOR_PRIVATE_KEY` | Investor wallet private key | investor-place-bid.sh, place-bid.js, sign-investor-login.js |
+| `ADMIN_PRIVATE_KEY` | Admin wallet private key | admin-approve-and-schedule.sh, admin-end-auction.sh, admin-settle-yield.sh |
+| `INVESTOR_PRIVATE_KEY` | Investor wallet private key | investor-place-bid.sh, investor-settle-bid.sh, investor-claim-yield.sh |
 | `API_BASE_URL` | Backend API URL (default: http://localhost:3000) | All (optional) |
 
 ## Troubleshooting
@@ -301,7 +455,7 @@ npm install ethers
 ## Quick Reference
 
 ```bash
-# Full auction flow (simplified)
+# Full auction + yield flow (simplified)
 
 # 1. Upload asset (Originator)
 ORIGINATOR_PRIVATE_KEY=0x... ./upload-auction-asset.sh invoice.pdf
@@ -319,7 +473,15 @@ INVESTOR_PRIVATE_KEY=0x... ./investor-place-bid.sh <ASSET_ID> 1000 0.95
 INVESTOR_PRIVATE_KEY=0x... ./investor-place-bid.sh <ASSET_ID> 500 0.98
 INVESTOR_PRIVATE_KEY=0x<other> ./investor-place-bid.sh <ASSET_ID> 2000 0.93
 
-# 5. Wait for auction to end (depends on duration set)
-# Check final announcement with clearing price
-./check-announcements.sh <ASSET_ID>  # Should see AUCTION_ENDED
+# 5. End auction (Admin)
+ADMIN_PRIVATE_KEY=0x... ./admin-end-auction.sh <ASSET_ID> 0.86
+
+# 6. Settle bids (Investors)
+INVESTOR_PRIVATE_KEY=0x... ./investor-settle-bid.sh <ASSET_ID> 0
+
+# 7. Yield settlement (Admin) - after originator pays face value
+ADMIN_PRIVATE_KEY=0x... ./admin-settle-yield.sh <ASSET_ID> 100000
+
+# 8. Claim yield (Investors)
+INVESTOR_PRIVATE_KEY=0x... ./investor-claim-yield.sh
 ```

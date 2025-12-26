@@ -1,10 +1,14 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { ConfigService } from '@nestjs/config';
+import { createPublicClient, http, type Address } from 'viem';
+import { mantleSepolia } from '../../../config/mantle-chain';
 import { Settlement, SettlementDocument, SettlementStatus } from '../../../database/schemas/settlement.schema';
 import { DistributionHistory, DistributionHistoryDocument } from '../../../database/schemas/distribution-history.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { TokenHolderTrackingService } from './token-holder-tracking.service';
+import { TransferEventBackfillService } from './transfer-event-backfill.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { RecordSettlementDto } from '../dto/yield-ops.dto';
 
@@ -17,7 +21,9 @@ export class YieldDistributionService {
     @InjectModel(DistributionHistory.name) private historyModel: Model<DistributionHistoryDocument>,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     private holderTrackingService: TokenHolderTrackingService,
+    private backfillService: TransferEventBackfillService,
     private blockchainService: BlockchainService,
+    private configService: ConfigService,
   ) {}
 
   async recordSettlement(dto: RecordSettlementDto) {
@@ -99,46 +105,97 @@ export class YieldDistributionService {
       throw new Error('Asset or token deployment date not found');
     }
 
-    // Calculate time-weighted distributions using token-days
     // Period: from token deployment (or last distribution) to now
     const fromDate = asset.token.deployedAt; // TODO: Use last distribution date if available
     const toDate = new Date();
 
     this.logger.log(
-      `Calculating time-weighted yield distribution for ${tokenAddress} ` +
+      `Calculating yield distribution for ${tokenAddress} ` +
       `from ${fromDate.toISOString()} to ${toDate.toISOString()}`,
     );
 
-    const holderTokenDays = await this.holderTrackingService.calculateTokenDays(
+    // Try time-weighted distribution first
+    let holderTokenDays = await this.holderTrackingService.calculateTokenDays(
       tokenAddress,
       fromDate,
       toDate,
     );
 
+    let distributions: Array<{ address: string; tokenDays: bigint; amount: bigint }>;
+    let totalTokenDays = 0n;
+    let isTimeWeighted = true;
+
+    // FALLBACK: If no transfer events available, use current holder balances
     if (holderTokenDays.size === 0) {
-      throw new Error('No holders with token-days found for distribution');
+      this.logger.warn(
+        `⚠️  No transfer events found for time-weighted distribution. ` +
+        `Falling back to current holder balances (pro-rata distribution).`,
+      );
+      isTimeWeighted = false;
+
+      // Try getting holders from database first
+      let currentHolders: Array<{ holderAddress: string; balance: string }> = (
+        await this.holderTrackingService.getHoldersAboveThreshold(tokenAddress, 0n)
+      ).map(h => ({
+        holderAddress: h.holderAddress,
+        balance: h.balance,
+      }));
+
+      // FALLBACK LEVEL 2: If database is also empty, query blockchain directly
+      if (currentHolders.length === 0) {
+        this.logger.warn(
+          `⚠️  No holders in database. Querying blockchain for current token holders...`,
+        );
+        currentHolders = await this.getHoldersFromBlockchain(tokenAddress);
+      }
+
+      if (currentHolders.length === 0) {
+        throw new Error('No current holders found for distribution (checked DB and blockchain)');
+      }
+
+      this.logger.log(`Found ${currentHolders.length} current holders for pro-rata distribution`);
+
+      // Calculate total balance across all holders
+      const totalBalance = currentHolders.reduce(
+        (sum, holder) => sum + BigInt(holder.balance),
+        0n,
+      );
+
+      if (totalBalance === 0n) {
+        throw new Error('Total holder balance is zero - cannot distribute');
+      }
+
+      // Create distributions based on current balance (pro-rata)
+      distributions = currentHolders
+        .map(holder => ({
+          address: holder.holderAddress,
+          tokenDays: BigInt(holder.balance), // Use balance instead of token-days
+          amount: (BigInt(holder.balance) * usdcTotal) / totalBalance,
+        }))
+        .filter(d => d.amount > 0n);
+
+      totalTokenDays = totalBalance; // For logging consistency
+    } else {
+      // Time-weighted distribution using token-days
+      totalTokenDays = Array.from(holderTokenDays.values()).reduce((a, b) => a + b, 0n);
+
+      if (totalTokenDays === 0n) {
+        throw new Error('Total token-days is zero - cannot distribute');
+      }
+
+      distributions = Array.from(holderTokenDays.entries())
+        .map(([address, tokenDays]) => ({
+          address,
+          tokenDays,
+          amount: (tokenDays * usdcTotal) / totalTokenDays,
+        }))
+        .filter(d => d.amount > 0n);
     }
-
-    // Calculate total token-days across all holders
-    const totalTokenDays = Array.from(holderTokenDays.values()).reduce((a, b) => a + b, 0n);
-
-    if (totalTokenDays === 0n) {
-      throw new Error('Total token-days is zero - cannot distribute');
-    }
-
-    // Calculate proportional distributions based on token-days
-    const distributions = Array.from(holderTokenDays.entries())
-      .map(([address, tokenDays]) => ({
-        address,
-        tokenDays,
-        amount: (tokenDays * usdcTotal) / totalTokenDays,
-      }))
-      .filter(d => d.amount > 0n); // Filter out zero amounts
 
     this.logger.log(
-      `Starting time-weighted distribution for ${tokenAddress}. ` +
+      `Starting ${isTimeWeighted ? 'time-weighted' : 'pro-rata'} distribution for ${tokenAddress}. ` +
       `Total holders: ${distributions.length}, ` +
-      `Total token-days: ${totalTokenDays}, ` +
+      `Total ${isTimeWeighted ? 'token-days' : 'balance'}: ${totalTokenDays}, ` +
       `Distributing: ${settlement.usdcAmount} USDC, ` +
       `Amount originally raised: ${settlement.amountRaised}`,
     );
@@ -190,7 +247,7 @@ export class YieldDistributionService {
     await settlement.save();
 
     return {
-      message: 'Time-weighted distribution completed',
+      message: `${isTimeWeighted ? 'Time-weighted' : 'Pro-rata'} distribution completed`,
       totalDistributed: settlement.usdcAmount,
       holders: distributions.length,
       totalTokenDays: totalTokenDays.toString(),
@@ -198,6 +255,114 @@ export class YieldDistributionService {
         ? `${(((settlement.netDistribution - settlement.amountRaised) / settlement.amountRaised) * 100).toFixed(2)}%`
         : 'N/A',
     };
+  }
+
+  /**
+   * Query blockchain directly to get current token holders and their balances
+   * This is a fallback when database tracking is not available
+   */
+  private async getHoldersFromBlockchain(tokenAddress: string): Promise<Array<{ holderAddress: string; balance: string }>> {
+    const publicClient = createPublicClient({
+      chain: mantleSepolia,
+      transport: http(this.configService.get('blockchain.rpcUrl')),
+    });
+
+    // ERC20 Transfer event ABI
+    const transferEventAbi = {
+      type: 'event',
+      name: 'Transfer',
+      inputs: [
+        { name: 'from', type: 'address', indexed: true },
+        { name: 'to', type: 'address', indexed: true },
+        { name: 'value', type: 'uint256', indexed: false },
+      ],
+    } as const;
+
+    // ERC20 balanceOf function
+    const erc20Abi = [
+      {
+        type: 'function',
+        name: 'balanceOf',
+        stateMutability: 'view',
+        inputs: [{ name: 'account', type: 'address' }],
+        outputs: [{ type: 'uint256' }],
+      },
+    ] as const;
+
+    try {
+      this.logger.log(`Querying blockchain for Transfer events to find holders...`);
+
+      // Get asset to find deployment block
+      const asset = await this.assetModel.findOne({ 'token.address': tokenAddress });
+      const deploymentBlock = asset?.registry?.blockNumber;
+
+      const currentBlock = await publicClient.getBlockNumber();
+      const startBlock = deploymentBlock ? BigInt(deploymentBlock) : currentBlock - 10000n;
+
+      this.logger.log(`Querying from block ${startBlock} to ${currentBlock} (${currentBlock - startBlock} blocks)`);
+
+      // Query in chunks to avoid RPC 10k block limit
+      const CHUNK_SIZE = 10000n;
+      const allLogs: any[] = [];
+
+      for (let from = startBlock; from <= currentBlock; from += CHUNK_SIZE) {
+        const to = from + CHUNK_SIZE - 1n > currentBlock ? currentBlock : from + CHUNK_SIZE - 1n;
+
+        this.logger.log(`Querying chunk: blocks ${from} to ${to}`);
+
+        const chunkLogs = await publicClient.getLogs({
+          address: tokenAddress as Address,
+          event: transferEventAbi,
+          fromBlock: from,
+          toBlock: to,
+        });
+
+        allLogs.push(...chunkLogs);
+        this.logger.log(`Found ${chunkLogs.length} events in this chunk (total: ${allLogs.length})`);
+      }
+
+      this.logger.log(`Found ${allLogs.length} Transfer events total`);
+
+      // Extract unique addresses that have received tokens
+      const uniqueAddresses = new Set<string>();
+      const zeroAddress = '0x0000000000000000000000000000000000000000';
+
+      for (const log of allLogs) {
+        if (log.args.to && log.args.to.toLowerCase() !== zeroAddress) {
+          uniqueAddresses.add(log.args.to.toLowerCase());
+        }
+        if (log.args.from && log.args.from.toLowerCase() !== zeroAddress) {
+          uniqueAddresses.add(log.args.from.toLowerCase());
+        }
+      }
+
+      this.logger.log(`Found ${uniqueAddresses.size} unique addresses, querying balances...`);
+
+      // Query current balance for each unique address
+      const holders: Array<{ holderAddress: string; balance: string }> = [];
+
+      for (const address of uniqueAddresses) {
+        const balance = await publicClient.readContract({
+          address: tokenAddress as Address,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [address as Address],
+        }) as bigint;
+
+        if (balance > 0n) {
+          holders.push({
+            holderAddress: address,
+            balance: balance.toString(),
+          });
+        }
+      }
+
+      this.logger.log(`Found ${holders.length} holders with non-zero balances on-chain`);
+      return holders;
+    } catch (error: any) {
+      this.logger.error(`Failed to query blockchain for holders: ${error?.message || error}`);
+      throw new Error(`Could not fetch holders from blockchain: ${error?.message || error}`);
+    }
   }
 
   // Helper placeholder - in prod add to BlockchainService

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { YieldDistributionService } from './services/yield-distribution.service';
 import { TokenHolderTrackingService } from './services/token-holder-tracking.service';
+import { TransferEventBackfillService } from './services/transfer-event-backfill.service';
 import { TokenHolder, TokenHolderSchema } from '../../database/schemas/token-holder.schema';
 import { TokenTransferEvent, TokenTransferEventSchema } from '../../database/schemas/token-transfer-event.schema';
 import { Settlement, SettlementSchema } from '../../database/schemas/settlement.schema';
@@ -21,7 +22,7 @@ import { forwardRef } from '@nestjs/common';
     ]),
     forwardRef(() => BlockchainModule),
   ],
-  providers: [YieldDistributionService, TokenHolderTrackingService],
-  exports: [YieldDistributionService, TokenHolderTrackingService],
+  providers: [YieldDistributionService, TokenHolderTrackingService, TransferEventBackfillService],
+  exports: [YieldDistributionService, TokenHolderTrackingService, TransferEventBackfillService],
 })
 export class YieldModule {}
