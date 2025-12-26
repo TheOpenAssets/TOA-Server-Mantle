@@ -4,13 +4,16 @@ import { Model } from 'mongoose';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PurchaseTrackerService } from '../services/purchase-tracker.service';
+import { BidTrackerService } from '../services/bid-tracker.service';
 import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
+import { NotifyBidDto } from '../dto/notify-bid.dto';
 
 @Controller('marketplace')
 export class MarketplaceController {
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     private purchaseTracker: PurchaseTrackerService,
+    private bidTracker: BidTrackerService,
   ) {}
 
   @Get('listings')
@@ -159,5 +162,25 @@ export class MarketplaceController {
     const investorWallet = req.user.walletAddress;
     const limitNum = limit ? parseInt(limit) : 50;
     return this.purchaseTracker.getPurchaseHistory(investorWallet, limitNum);
+  }
+
+  @Post('bids/notify')
+  @UseGuards(JwtAuthGuard)
+  async notifyBid(@Request() req: any, @Body() dto: NotifyBidDto) {
+    const investorWallet = req.user.walletAddress;
+    return this.bidTracker.notifyBid(dto, investorWallet);
+  }
+
+  @Get('bids/my-bids')
+  @UseGuards(JwtAuthGuard)
+  async getMyBids(@Request() req: any, @Query('assetId') assetId?: string) {
+    const investorWallet = req.user.walletAddress;
+    return this.bidTracker.getInvestorBids(investorWallet, assetId);
+  }
+
+  @Get('auctions/:assetId/bids')
+  @UseGuards(JwtAuthGuard)
+  async getAuctionBids(@Param('assetId') assetId: string) {
+    return this.bidTracker.getAuctionBids(assetId);
   }
 }
