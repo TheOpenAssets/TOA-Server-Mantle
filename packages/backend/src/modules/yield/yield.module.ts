@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { YieldDistributionService } from './services/yield-distribution.service';
 import { TokenHolderTrackingService } from './services/token-holder-tracking.service';
 import { TokenHolder, TokenHolderSchema } from '../../database/schemas/token-holder.schema';
+import { TokenTransferEvent, TokenTransferEventSchema } from '../../database/schemas/token-transfer-event.schema';
 import { Settlement, SettlementSchema } from '../../database/schemas/settlement.schema';
 import { DistributionHistory, DistributionHistorySchema } from '../../database/schemas/distribution-history.schema';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
@@ -13,6 +14,7 @@ import { forwardRef } from '@nestjs/common';
   imports: [
     MongooseModule.forFeature([
       { name: TokenHolder.name, schema: TokenHolderSchema },
+      { name: TokenTransferEvent.name, schema: TokenTransferEventSchema },
       { name: Settlement.name, schema: SettlementSchema },
       { name: DistributionHistory.name, schema: DistributionHistorySchema },
       { name: Asset.name, schema: AssetSchema },

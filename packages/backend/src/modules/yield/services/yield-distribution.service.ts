@@ -91,34 +91,54 @@ export class YieldDistributionService {
     }
 
     const tokenAddress = settlement.tokenAddress;
+    const usdcTotal = BigInt(settlement.usdcAmount!);
 
-    // 1. Get Holders
-    // Example threshold: 1 token (1e18)
-    const holders = await this.holderTrackingService.getHoldersAboveThreshold(
-      tokenAddress,
-      BigInt(1e18),
-    );
-
-    if (holders.length === 0) {
-        throw new Error('No holders found for distribution');
+    // Get asset to determine token deployment date (start of yield calculation period)
+    const asset = await this.assetModel.findOne({ 'token.address': tokenAddress });
+    if (!asset || !asset.token?.deployedAt) {
+      throw new Error('Asset or token deployment date not found');
     }
 
-    // 2. Get Total Supply (from DB asset or blockchain)
-    const totalSupply = await this.getTotalSupply(tokenAddress);
-
-    // 3. Calculate Amounts
-    // CRITICAL: Distribute the FULL netDistribution amount (settlement - platform fee)
-    // This is NOT just "yield" - it's the entire investor payout (principal + yield)
-    const usdcTotal = BigInt(settlement.usdcAmount!); // This should be netDistribution in USDC
-
-    const distributions = holders.map((holder) => ({
-      address: holder.holderAddress,
-      amount: (BigInt(holder.balance) * usdcTotal) / totalSupply,
-    }));
+    // Calculate time-weighted distributions using token-days
+    // Period: from token deployment (or last distribution) to now
+    const fromDate = asset.token.deployedAt; // TODO: Use last distribution date if available
+    const toDate = new Date();
 
     this.logger.log(
-      `Starting distribution for ${tokenAddress}. ` +
-      `Total holders: ${holders.length}, ` +
+      `Calculating time-weighted yield distribution for ${tokenAddress} ` +
+      `from ${fromDate.toISOString()} to ${toDate.toISOString()}`,
+    );
+
+    const holderTokenDays = await this.holderTrackingService.calculateTokenDays(
+      tokenAddress,
+      fromDate,
+      toDate,
+    );
+
+    if (holderTokenDays.size === 0) {
+      throw new Error('No holders with token-days found for distribution');
+    }
+
+    // Calculate total token-days across all holders
+    const totalTokenDays = Array.from(holderTokenDays.values()).reduce((a, b) => a + b, 0n);
+
+    if (totalTokenDays === 0n) {
+      throw new Error('Total token-days is zero - cannot distribute');
+    }
+
+    // Calculate proportional distributions based on token-days
+    const distributions = Array.from(holderTokenDays.entries())
+      .map(([address, tokenDays]) => ({
+        address,
+        tokenDays,
+        amount: (tokenDays * usdcTotal) / totalTokenDays,
+      }))
+      .filter(d => d.amount > 0n); // Filter out zero amounts
+
+    this.logger.log(
+      `Starting time-weighted distribution for ${tokenAddress}. ` +
+      `Total holders: ${distributions.length}, ` +
+      `Total token-days: ${totalTokenDays}, ` +
       `Distributing: ${settlement.usdcAmount} USDC, ` +
       `Amount originally raised: ${settlement.amountRaised}`,
     );
@@ -170,9 +190,10 @@ export class YieldDistributionService {
     await settlement.save();
 
     return {
-      message: 'Distribution completed',
+      message: 'Time-weighted distribution completed',
       totalDistributed: settlement.usdcAmount,
-      holders: holders.length,
+      holders: distributions.length,
+      totalTokenDays: totalTokenDays.toString(),
       effectiveYield: settlement.amountRaised > 0
         ? `${(((settlement.netDistribution - settlement.amountRaised) / settlement.amountRaised) * 100).toFixed(2)}%`
         : 'N/A',

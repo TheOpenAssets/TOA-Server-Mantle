@@ -183,21 +183,37 @@ export class BlockchainService {
 
   async depositYield(tokenAddress: string, amount: string): Promise<Hash> {
     const wallet = this.walletService.getPlatformWallet();
-    const address = this.contractLoader.getContractAddress('YieldVault');
-    const abi = this.contractLoader.getContractAbi('YieldVault');
-    
-    // First approve USDC
-    // This assumes Platform Wallet holds the USDC. 
-    // Implementation of USDC approval skipped for brevity but required in prod.
+    const yieldVaultAddress = this.contractLoader.getContractAddress('YieldVault');
+    const yieldVaultAbi = this.contractLoader.getContractAbi('YieldVault');
+
+    // Step 1: Approve USDC for YieldVault to spend
+    const usdcAddress = this.contractLoader.getContractAddress('USDC');
+    const usdcAbi = this.contractLoader.getContractAbi('USDC');
+
+    this.logger.log(`Approving YieldVault to spend ${amount} USDC...`);
+
+    const approvalHash = await wallet.writeContract({
+      address: usdcAddress as Address,
+      abi: usdcAbi,
+      functionName: 'approve',
+      args: [yieldVaultAddress, BigInt(amount)],
+    });
+
+    await this.publicClient.waitForTransactionReceipt({ hash: approvalHash });
+    this.logger.log(`USDC approved in tx: ${approvalHash}`);
+
+    // Step 2: Deposit yield to vault
+    this.logger.log(`Depositing ${amount} USDC to YieldVault for token ${tokenAddress}...`);
 
     const hash = await wallet.writeContract({
-      address: address as Address,
-      abi,
+      address: yieldVaultAddress as Address,
+      abi: yieldVaultAbi,
       functionName: 'depositYield',
       args: [tokenAddress, BigInt(amount)],
     });
 
     await this.publicClient.waitForTransactionReceipt({ hash });
+    this.logger.log(`Yield deposited in tx: ${hash}`);
     return hash;
   }
 
