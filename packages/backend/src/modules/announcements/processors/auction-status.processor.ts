@@ -7,6 +7,7 @@ import { Model } from 'mongoose';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { AnnouncementService } from '../services/announcement.service';
+import { BlockchainService } from '../../blockchain/services/blockchain.service';
 
 interface ActivateAuctionJob {
   assetId: string;
@@ -35,6 +36,7 @@ export class AuctionStatusProcessor extends WorkerHost {
     @InjectQueue('auction-status-check')
     private auctionStatusQueue: Queue,
     private announcementService: AnnouncementService,
+    private blockchainService: BlockchainService,
   ) {
     super();
   }
@@ -71,7 +73,34 @@ export class AuctionStatusProcessor extends WorkerHost {
         return;
       }
 
-      // Activate the auction
+      // Verify token is deployed
+      if (!asset.token?.address) {
+        this.logger.error(`Asset ${assetId} does not have a deployed token`);
+        return;
+      }
+
+      // Extract auction parameters
+      const tokenAddress = asset.token.address;
+      const reservePrice = asset.listing?.reservePrice || '0';
+      const duration = asset.listing?.duration || 3600; // Default 1 hour
+      const minInvestment = asset.tokenParams?.minInvestment || '1000000000000000000'; // Default 1 token
+
+      this.logger.log(
+        `Creating on-chain auction listing for ${assetId}: token=${tokenAddress}, reserve=${reservePrice}, duration=${duration}s`,
+      );
+
+      // Create the auction listing on-chain
+      const txHash = await this.blockchainService.listOnMarketplace(
+        tokenAddress,
+        'AUCTION',
+        reservePrice,
+        minInvestment,
+        duration.toString(),
+      );
+
+      this.logger.log(`Auction listing created on-chain in tx: ${txHash}`);
+
+      // Activate the auction in database
       const actualStartTime = new Date();
       await this.assetModel.updateOne(
         { assetId },
@@ -79,6 +108,7 @@ export class AuctionStatusProcessor extends WorkerHost {
           $set: {
             'listing.active': true,
             'listing.listedAt': actualStartTime,
+            'listing.transactionHash': txHash,
           },
         },
       );

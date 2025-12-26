@@ -172,7 +172,7 @@ MIN_RAISE_PERCENTAGE="80"  # Minimum 80% of face value must be raised (80,000 US
 MAX_RAISE_PERCENTAGE="95"  # Maximum 95% of face value (95,000 USD, leaving room for yield)
 
 # Auction Duration
-AUCTION_DURATION="86400"  # 24 hours in seconds
+AUCTION_DURATION="900"  # 15 minutes in seconds
 
 print_info "Pricing Calculation:"
 print_info "  Face Value: $FACE_VALUE USD"
@@ -250,7 +250,7 @@ echo "  • Min Price/Token: \$${MIN_PRICE_USD} USD (reserve price)"
 echo "  • Max Price/Token: \$${MAX_PRICE_USD} USD"
 echo "  • Yield Margin: ~5% (includes platform fee 1.5%)"
 echo "  • Min Investment: 1,000 USDC"
-echo "  • Duration: 24 hours"
+echo "  • Duration:  '$((AUCTION_DURATION / 60)) minutes'"
 echo ""
 print_info "Next Steps:"
 echo "1. Wait for asset processing (hash computation, merkle tree)"

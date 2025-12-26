@@ -225,6 +225,93 @@ fi
 print_success "Asset approved successfully!"
 print_info "New Status: $NEW_STATUS"
 
+# Wait for processing
+sleep 2
+
+# =============================================================================
+# STEP 5.5: Register Asset On-Chain
+# =============================================================================
+print_header "Step 5.5: Register Asset On-Chain"
+print_info "Registering asset with attestation..."
+
+REGISTER_RESPONSE=$(curl -s -X POST "$API_BASE_URL/admin/assets/$ASSET_ID/register" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+
+REGISTER_SUCCESS=$(echo "$REGISTER_RESPONSE" | jq -r '.success')
+REGISTER_TX_HASH=$(echo "$REGISTER_RESPONSE" | jq -r '.transactionHash')
+
+if [ "$REGISTER_SUCCESS" == "true" ]; then
+  print_success "Asset registered on-chain!"
+  print_info "Transaction Hash: $REGISTER_TX_HASH"
+else
+  ERROR_MSG=$(echo "$REGISTER_RESPONSE" | jq -r '.error // .message // "Unknown error"')
+  if [[ "$ERROR_MSG" == *"already registered"* ]]; then
+    print_info "Asset was already registered, continuing..."
+  else
+    print_error "Asset registration failed: $ERROR_MSG"
+    echo "$REGISTER_RESPONSE"
+    exit 1
+  fi
+fi
+
+# Wait for transaction confirmation
+print_info "Waiting 10 seconds for transaction confirmation..."
+sleep 10
+
+# =============================================================================
+# STEP 5.75: Deploy Token
+# =============================================================================
+print_header "Step 5.75: Deploy RWA Token"
+print_info "Deploying ERC-20 token contract..."
+
+# Extract token details from asset
+TOKEN_NAME=$(echo "$ASSET_RESPONSE" | jq -r '.metadata.invoiceNumber // "Auction Token"' | sed 's/^/Auction RWA Token - /')
+TOKEN_SYMBOL="ARWA"
+
+print_info "Token Name: $TOKEN_NAME"
+print_info "Token Symbol: $TOKEN_SYMBOL"
+
+DEPLOY_PAYLOAD=$(jq -n \
+  --arg assetId "$ASSET_ID" \
+  --arg name "$TOKEN_NAME" \
+  --arg symbol "$TOKEN_SYMBOL" \
+  '{assetId: $assetId, name: $name, symbol: $symbol}')
+
+DEPLOY_RESPONSE=$(curl -s -X POST "$API_BASE_URL/admin/assets/deploy-token" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "$DEPLOY_PAYLOAD")
+
+DEPLOY_SUCCESS=$(echo "$DEPLOY_RESPONSE" | jq -r '.success')
+TOKEN_ADDRESS=$(echo "$DEPLOY_RESPONSE" | jq -r '.tokenAddress')
+DEPLOY_TX_HASH=$(echo "$DEPLOY_RESPONSE" | jq -r '.transactionHash')
+
+if [ "$DEPLOY_SUCCESS" == "true" ]; then
+  print_success "Token deployed successfully!"
+  print_info "Token Address: $TOKEN_ADDRESS"
+  print_info "Transaction Hash: $DEPLOY_TX_HASH"
+else
+  ERROR_MSG=$(echo "$DEPLOY_RESPONSE" | jq -r '.error // .message // "Unknown error"')
+  if [[ "$ERROR_MSG" == *"already deployed"* ]] || [[ "$ERROR_MSG" == *"already tokenized"* ]]; then
+    print_info "Token was already deployed for this asset"
+    # Get token address from asset data
+    ASSET_REFRESH=$(curl -s -X GET "$API_BASE_URL/assets/$ASSET_ID" \
+      -H "Authorization: Bearer $ACCESS_TOKEN")
+    TOKEN_ADDRESS=$(echo "$ASSET_REFRESH" | jq -r '.token.address // empty')
+    if [ ! -z "$TOKEN_ADDRESS" ]; then
+      print_info "Found existing token address: $TOKEN_ADDRESS"
+    fi
+  else
+    print_error "Token deployment failed: $ERROR_MSG"
+    echo "$DEPLOY_RESPONSE"
+    exit 1
+  fi
+fi
+
+# Wait for transaction to settle
+print_info "Waiting 10 seconds for token deployment to settle..."
+sleep 10
+
 # =============================================================================
 # STEP 6: Schedule Auction
 # =============================================================================
@@ -287,19 +374,24 @@ fi
 # =============================================================================
 print_header "Complete! 🎉"
 print_success "Asset ID: $ASSET_ID"
-print_success "Status: APPROVED & SCHEDULED"
+print_success "Token Address: $TOKEN_ADDRESS"
+print_success "Status: TOKENIZED & SCHEDULED"
 echo ""
 print_cyan "Timeline:"
 echo "  1. ✓ Asset approved (status: $NEW_STATUS)"
-echo "  2. ✓ Auction scheduled for: $SCHEDULED_START"
-echo "  3. ⏳ Auction will activate in $START_DELAY_MINUTES minutes"
-echo "  4. ⏳ Status check will run 1 minute after activation"
+echo "  2. ✓ Asset registered on-chain"
+echo "  3. ✓ Token deployed at: $TOKEN_ADDRESS"
+echo "  4. ✓ Auction scheduled for: $SCHEDULED_START"
+echo "  5. ⏳ Auction will activate in $START_DELAY_MINUTES minutes"
+echo "  6. ⏳ Status check will run 1 minute after activation"
 echo ""
 print_cyan "What happens next:"
-echo "  • In $START_DELAY_MINUTES min: Auction activates (listing.active = true)"
+echo "  • In $START_DELAY_MINUTES min: Auction activates"
+echo "    - Creates on-chain listing in PrimaryMarketplace contract"
+echo "    - Updates database (listing.active = true)"
 echo "  • In $((START_DELAY_MINUTES + 1)) min: System checks if auction is live"
 echo "  • If successful: AUCTION_LIVE announcement created"
-echo "  • If failed: AUCTION_FAILED announcement created"
+echo "  • If failed: AUCTION_FAILED announcement created with reason"
 echo ""
 print_info "Monitor announcements:"
 echo "  curl -X GET \"$API_BASE_URL/announcements/asset/$ASSET_ID\" | jq"

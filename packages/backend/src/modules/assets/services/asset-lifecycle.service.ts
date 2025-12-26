@@ -216,8 +216,8 @@ export class AssetLifecycleService {
       throw new Error('Asset is not an auction type');
     }
 
-    if (asset.status !== AssetStatus.ATTESTED && asset.status !== AssetStatus.REGISTERED) {
-      throw new Error('Asset must be ATTESTED or REGISTERED before scheduling auction');
+    if ( asset.status !== AssetStatus.TOKENIZED) {
+      throw new Error('Asset must be TOKENIZED before scheduling auction');
     }
 
     // Calculate auction start time

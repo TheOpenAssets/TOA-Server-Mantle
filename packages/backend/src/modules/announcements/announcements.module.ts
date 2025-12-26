@@ -7,6 +7,7 @@ import { AuctionStatusProcessor } from './processors/auction-status.processor';
 import { Announcement, AnnouncementSchema } from '../../database/schemas/announcement.schema';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { Bid, BidSchema } from '../../database/schemas/bid.schema';
+import { BlockchainModule } from '../blockchain/blockchain.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { Bid, BidSchema } from '../../database/schemas/bid.schema';
     BullModule.registerQueue({
       name: 'auction-status-check',
     }),
+    BlockchainModule,
   ],
   controllers: [AnnouncementController],
   providers: [AnnouncementService, AuctionStatusProcessor],
