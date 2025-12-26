@@ -492,10 +492,10 @@ export class AssetLifecycleService {
       'function transfer(address to, uint256 amount) returns (bool)',
     ];
 
-    const usdc = new ethers.Contract(usdcAddress, USDC_ABI, wallet);
+    const usdc = new ethers.Contract(usdcAddress, USDC_ABI, wallet) as any;
 
     // Check platform balance
-    const balance = await usdc.balanceOf(wallet.address);
+    const balance = await usdc.balanceOf(wallet.address) as bigint;
     this.logger.log(`Platform USDC balance: ${balance.toString()} (${Number(balance) / 1e6} USDC)`);
 
     if (balance < totalUsdcRaised) {
@@ -504,7 +504,7 @@ export class AssetLifecycleService {
 
     // Execute transfer
     this.logger.log(`Transferring ${Number(totalUsdcRaised) / 1e6} USDC to ${asset.originator}`);
-    const tx = await usdc.transfer(asset.originator, totalUsdcRaised);
+    const tx = await usdc.transfer(asset.originator, totalUsdcRaised) as any;
     this.logger.log(`Transaction submitted: ${tx.hash}`);
 
     const receipt = await tx.wait();

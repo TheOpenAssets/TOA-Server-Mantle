@@ -137,7 +137,7 @@ export class TypeformWebhookService {
     if (!faceValue) throw new BadRequestException('Missing Face Value');
     if (!fileUrl) throw new BadRequestException('Missing Invoice File');
 
-    // Build base DTO
+    // Build base DTO with all required fields
     const dto: CreateAssetDto = {
         invoiceNumber,
         faceValue,
@@ -151,6 +151,7 @@ export class TypeformWebhookService {
         totalSupply: totalSupply || '100000',
         minInvestment: minInvestment || '100',
         minRaisePercentage: minRaisePercentage || '50', // 50% minimum
+        auctionDuration: auctionDuration || (7 * 24 * 60 * 60).toString(), // Default 7 days
     };
 
     // Add optional max raise percentage
@@ -164,9 +165,6 @@ export class TypeformWebhookService {
         if (pricePerToken) {
             dto.pricePerToken = pricePerToken;
         }
-    } else {
-        // For AUCTION: auctionDuration is required
-        dto.auctionDuration = auctionDuration || (7 * 24 * 60 * 60).toString(); // 7 days default
     }
 
     return { dto, walletAddress, fileUrl };
