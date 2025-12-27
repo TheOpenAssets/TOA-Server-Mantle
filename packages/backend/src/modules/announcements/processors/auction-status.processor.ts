@@ -106,6 +106,7 @@ export class AuctionStatusProcessor extends WorkerHost {
         { assetId },
         {
           $set: {
+            status: 'LISTED',
             'listing.active': true,
             'listing.listedAt': actualStartTime,
             'listing.transactionHash': txHash,

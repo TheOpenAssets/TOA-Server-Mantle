@@ -1,7 +1,7 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { CreateAuctionDto } from '../dto/create-auction.dto';
@@ -35,6 +35,7 @@ export class AuctionService {
       { assetId: dto.assetId },
       {
         $set: {
+          status: AssetStatus.LISTED,
           'listing.type': 'AUCTION',
           'listing.reservePrice': dto.reservePrice,
           'listing.active': true,

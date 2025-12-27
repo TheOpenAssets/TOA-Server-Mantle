@@ -227,6 +227,7 @@ export class AssetOpsController {
         { assetId: dto.assetId },
         {
           $set: {
+            status: AssetStatus.LISTED,
             'listing.type': dto.type,
             'listing.price': dto.price,
             'listing.active': true,
