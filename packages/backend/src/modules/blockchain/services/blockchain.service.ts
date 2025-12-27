@@ -118,10 +118,11 @@ export class BlockchainService {
     this.logger.log(`Token deployment submitted in tx: ${hash}`);
     this.logger.log(`Waiting for transaction confirmation...`);
 
-    // Wait for transaction receipt
+    // Wait for transaction receipt (increased timeout for Mantle RPC)
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 60_000, // 60 second timeout
+      timeout: 180_000, // 3 minute timeout (Mantle RPC can be slow)
+      pollingInterval: 2_000, // Check every 2 seconds
     });
 
     this.logger.log(`Transaction confirmed in block ${receipt.blockNumber}`);

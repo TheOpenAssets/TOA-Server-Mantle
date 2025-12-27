@@ -47,18 +47,32 @@ export class AssetOpsController {
     try {
       const payload = await this.assetLifecycleService.getRegisterAssetPayload(assetId);
       const txHash = await this.blockchainService.registerAsset(payload);
-      
+
+      // Update MongoDB status to REGISTERED (atomic operation)
+      await this.assetModel.updateOne(
+        { assetId },
+        {
+          $set: {
+            status: AssetStatus.REGISTERED,
+            'registry.transactionHash': txHash,
+            'registry.registeredAt': new Date(),
+            'checkpoints.registered': true,
+          },
+        },
+      );
+
       return {
         success: true,
-        message: 'Asset successfully registered on-chain',
+        message: 'Asset successfully registered on-chain and database updated',
         assetId,
+        status: AssetStatus.REGISTERED,
         transactionHash: txHash,
         explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
       };
     } catch (error: any) {
       // Parse blockchain errors
       const errorMessage = error.message || 'Unknown error';
-      
+
       // Check for common contract revert reasons
       if (errorMessage.includes('Asset already registered')) {
         throw new HttpException(
@@ -72,7 +86,7 @@ export class AssetOpsController {
           HttpStatus.CONFLICT,
         );
       }
-      
+
       if (errorMessage.includes('Invalid signature')) {
         throw new HttpException(
           {
@@ -84,7 +98,7 @@ export class AssetOpsController {
           HttpStatus.BAD_REQUEST,
         );
       }
-      
+
       // Generic blockchain error
       throw new HttpException(
         {
@@ -104,19 +118,34 @@ export class AssetOpsController {
     try {
       const result = await this.blockchainService.deployToken(dto);
 
+      // Update MongoDB status to TOKENIZED (atomic operation)
+      await this.assetModel.updateOne(
+        { assetId: dto.assetId },
+        {
+          $set: {
+            status: AssetStatus.TOKENIZED,
+            'token.address': result.tokenAddress,
+            'token.deployedAt': new Date(),
+            'token.transactionHash': result.hash,
+            'token.supply': dto.totalSupply,
+            'checkpoints.tokenized': true,
+          },
+        },
+      );
+
       return {
         success: true,
-        message: 'Token deployed successfully',
+        message: 'Token deployed successfully and database updated',
         assetId: dto.assetId,
+        status: AssetStatus.TOKENIZED,
         tokenAddress: result.tokenAddress,
         complianceAddress: result.complianceAddress,
         transactionHash: result.hash,
         explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${result.hash}`,
-        status: 'TOKENIZED',
       };
     } catch (error: any) {
       const errorMessage = error.message || 'Unknown error';
-      
+
       // Check for common token deployment errors
       if (errorMessage.includes('Asset not registered')) {
         throw new HttpException(
@@ -130,7 +159,7 @@ export class AssetOpsController {
           HttpStatus.BAD_REQUEST,
         );
       }
-      
+
       if (errorMessage.includes('Token already deployed')) {
         throw new HttpException(
           {

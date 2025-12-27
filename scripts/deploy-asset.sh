@@ -119,37 +119,8 @@ else
     fi
 fi
 
-# Wait for transaction to be mined
-print_info "Waiting 10 seconds for transaction confirmation..."
-sleep 10
-
-# Step 3: Update Status to REGISTERED (Manual Sync)
-print_header "Step 3: Sync Registration Status"
-print_info "Updating asset status in database..."
-
-if [ ! -z "$TX_HASH" ]; then
-    SYNC_RESPONSE=$(curl -s -X POST "$API_BASE_URL/admin/sync/update-status" \
-      --header "Authorization: Bearer $ADMIN_TOKEN" \
-      --header 'Content-Type: application/json' \
-      --data "{
-        \"assetId\": \"$ASSET_ID\",
-        \"txHash\": \"$TX_HASH\",
-        \"status\": \"REGISTERED\"
-      }")
-    
-    echo "Response:"
-    echo "$SYNC_RESPONSE" | jq '.' 2>/dev/null || echo "$SYNC_RESPONSE"
-    echo ""
-    
-    if echo "$SYNC_RESPONSE" | jq -e '.success' > /dev/null 2>&1; then
-        print_success "Status updated to REGISTERED"
-    else
-        print_info "Status sync skipped or failed (may already be updated)"
-    fi
-fi
-
-# Step 4: Deploy Token
-print_header "Step 4: Deploy RWA Token"
+# Step 3: Deploy Token
+print_header "Step 3: Deploy RWA Token"
 print_info "Deploying ERC-20 token contract..."
 
 # Get token name and symbol (can be customized)
