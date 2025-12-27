@@ -556,7 +556,7 @@ export class AssetLifecycleService {
     this.logger.log(`Payout record saved to MongoDB with ID: ${payoutRecord._id}`);
 
     // Update asset with amountRaised and status
-    await this.assetModel.updateOne(
+    const updateResult = await this.assetModel.updateOne(
       { assetId },
       {
         $set: {
@@ -566,7 +566,41 @@ export class AssetLifecycleService {
         },
       },
     );
-    this.logger.log(`Asset ${assetId} updated: amountRaised=${Number(totalUsdcRaised) / 1e6} USDC, status=PAYOUT_COMPLETE`);
+
+    this.logger.log(`Asset ${assetId} update result: matched=${updateResult.matchedCount}, modified=${updateResult.modifiedCount}`);
+
+    if (updateResult.matchedCount === 0) {
+      this.logger.error(`Failed to update asset ${assetId} - asset not found in database`);
+      throw new Error(`Asset ${assetId} not found for status update`);
+    }
+
+    if (updateResult.modifiedCount === 0) {
+      this.logger.warn(`Asset ${assetId} matched but not modified - may already be in PAYOUT_COMPLETE status`);
+    } else {
+      this.logger.log(`Asset ${assetId} updated: amountRaised=${Number(totalUsdcRaised) / 1e6} USDC, status=PAYOUT_COMPLETE`);
+    }
+
+    // Send notification to originator about payout
+    try {
+      await this.notificationService.create({
+        userId: asset.originator,
+        walletAddress: asset.originator,
+        header: 'Payout Complete',
+        detail: `Your payout of ${Number(totalUsdcRaised) / 1e6} USDC for asset ${asset.metadata.invoiceNumber} has been successfully transferred to your wallet.`,
+        type: NotificationType.YIELD_DISTRIBUTED,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_PORTFOLIO,
+        actionMetadata: {
+          assetId,
+          amount: totalUsdcRaised.toString(),
+          transactionHash: tx.hash,
+        },
+      });
+      this.logger.log(`Payout notification sent to originator ${asset.originator}`);
+    } catch (error) {
+      this.logger.error(`Failed to send payout notification: ${error.message}`);
+      // Don't throw - notification failure shouldn't fail the payout
+    }
 
     return {
       success: true,
