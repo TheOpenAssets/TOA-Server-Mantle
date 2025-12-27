@@ -148,9 +148,9 @@ export class TypeformWebhookService {
         industry: industry || 'General',
         riskTier: riskTier || 'B',
         assetType,
-        totalSupply: totalSupply || '100000',
-        minInvestment: minInvestment || '100',
-        minRaisePercentage: minRaisePercentage || '50', // 50% minimum
+        totalSupply: totalSupply || '100000000000000000000000', // 100,000 tokens in wei (18 decimals)
+        minInvestment: minInvestment || '1000000000000000000000', // 1,000 tokens in wei (18 decimals)
+        minRaisePercentage: minRaisePercentage || '75', // 75% minimum raise
         auctionDuration: auctionDuration || (7 * 24 * 60 * 60).toString(), // Default 7 days
     };
 
@@ -161,7 +161,8 @@ export class TypeformWebhookService {
 
     // Add type-specific fields
     if (assetType === AssetType.STATIC) {
-        // For STATIC: optionally include pricePerToken
+        // For STATIC: optionally include pricePerToken (if not provided, auto-calculated from minRaise)
+        // Price will be calculated as: (minRaise / totalSupply)
         if (pricePerToken) {
             dto.pricePerToken = pricePerToken;
         }

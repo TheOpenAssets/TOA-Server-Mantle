@@ -89,8 +89,8 @@ export class AssetLifecycleService {
         }
         finalPricePerToken = dto.pricePerToken;
       } else {
-        // Use max price by default for static listings
-        finalPricePerToken = maxPricePerToken.toString();
+        // Use min price by default for static listings (based on minimum raise requirement)
+        finalPricePerToken = minPricePerToken.toString();
       }
     }
 

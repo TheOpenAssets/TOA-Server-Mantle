@@ -168,19 +168,19 @@ MIN_INVESTMENT="1000000000000000000000"  # 1,000 tokens minimum investment (18 d
 
 # Raise Parameters (as percentage of face value)
 # Platform fee is 1.5%, we want 5% margin for yield = 95% max
-MIN_RAISE_PERCENTAGE="80"  # Minimum 80% of face value must be raised (80,000 USD)
+MIN_RAISE_PERCENTAGE="75"  # Minimum 75% of face value must be raised (75,000 USD)
 MAX_RAISE_PERCENTAGE="95"  # Maximum 95% of face value (95,000 USD, leaving room for yield)
 
-# Static Listing: Price per token (optional - if not provided, uses maxRaise / totalSupply)
-# Let's set it to 0.95 USDC per token (95 cents) = 95,000 USDC for 100,000 tokens
-PRICE_PER_TOKEN="950000"  # 0.95 USDC (6 decimals for USDC)
+# Price per token will be automatically calculated from minimum raise
+# Formula: (minRaise / totalSupply)
+# Example: 75% of 100,000 = 75,000 / 100,000 tokens = 0.75 USDC per token
 
 print_info "Pricing Calculation:"
 print_info "  Face Value: $FACE_VALUE USD"
 print_info "  Min Raise: ${MIN_RAISE_PERCENTAGE}% = $((FACE_VALUE * MIN_RAISE_PERCENTAGE / 100)) USD"
 print_info "  Max Raise: ${MAX_RAISE_PERCENTAGE}% = $((FACE_VALUE * MAX_RAISE_PERCENTAGE / 100)) USD"
-print_info "  Price/Token: \$0.95 USDC"
-print_info "  This leaves ~5% margin for platform fees (1.5%) and investor yield"
+print_info "  Price/Token will be auto-calculated: \$0.75 USDC (minRaise / totalSupply)"
+print_info "  This leaves room for platform fees (1.5%) and investor yield"
 echo ""
 
 UPLOAD_RESPONSE=$(curl -s -X POST "$API_BASE_URL/assets/upload" \
@@ -198,8 +198,7 @@ UPLOAD_RESPONSE=$(curl -s -X POST "$API_BASE_URL/assets/upload" \
   -F "totalSupply=$TOTAL_SUPPLY" \
   -F "minInvestment=$MIN_INVESTMENT" \
   -F "minRaisePercentage=$MIN_RAISE_PERCENTAGE" \
-  -F "maxRaisePercentage=$MAX_RAISE_PERCENTAGE" \
-  -F "pricePerToken=$PRICE_PER_TOKEN")
+  -F "maxRaisePercentage=$MAX_RAISE_PERCENTAGE")
 
 ASSET_ID=$(echo "$UPLOAD_RESPONSE" | jq -r '.assetId')
 STATUS=$(echo "$UPLOAD_RESPONSE" | jq -r '.status')
@@ -249,8 +248,8 @@ echo "  • Min Raise: ${MIN_RAISE_PERCENTAGE}% ($MIN_RAISE_USD USD)"
 echo "  • Max Raise: ${MAX_RAISE_PERCENTAGE}% ($MAX_RAISE_USD USD)"
 echo "  • Min Price/Token: \$${MIN_PRICE_USD} USD"
 echo "  • Max Price/Token: \$${MAX_PRICE_USD} USD"
-echo "  • Set Price/Token: \$0.95 USD (static)"
-echo "  • Yield Margin: ~5% (includes platform fee 1.5%)"
+echo "  • Actual Price/Token: \$${MIN_PRICE_USD} USD (auto-calculated from minRaise)"
+echo "  • Yield Margin: Based on actual raise vs face value"
 echo "  • Min Investment: 1,000 tokens"
 echo ""
 print_info "Next Steps:"

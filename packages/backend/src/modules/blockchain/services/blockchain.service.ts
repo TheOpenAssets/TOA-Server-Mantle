@@ -8,7 +8,7 @@ import { RegisterAssetDto } from '../dto/register-asset.dto';
 import { DeployTokenDto } from '../dto/deploy-token.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 
 @Injectable()
 export class BlockchainService {
@@ -75,38 +75,30 @@ export class BlockchainService {
     // Convert UUID to bytes32 for on-chain usage
     const assetIdBytes32 = '0x' + dto.assetId.replace(/-/g, '').padEnd(64, '0');
 
-    // Calculate total supply if not provided
-    let totalSupplyRaw: string;
+    // Get total supply from asset or DTO
+    let totalSupplyWei: bigint;
 
     if (dto.totalSupply) {
-      // Use provided value
-      totalSupplyRaw = dto.totalSupply;
+      // Use provided value (already in wei format)
+      totalSupplyWei = BigInt(dto.totalSupply);
+      this.logger.log(`Using provided totalSupply: ${dto.totalSupply} wei`);
     } else {
-      // Calculate from asset's faceValue and pricePerToken
+      // Get from asset's tokenParams (already stored in wei format during upload)
       const asset = await this.assetModel.findOne({ assetId: dto.assetId });
       if (!asset) {
         throw new Error(`Asset ${dto.assetId} not found`);
       }
 
-      const faceValue = parseFloat(asset.metadata?.faceValue || '0');
-      const pricePerToken = parseFloat(asset.tokenParams?.pricePerToken || '1');
-
-      if (faceValue === 0 || pricePerToken === 0) {
-        throw new Error(`Asset ${dto.assetId} missing faceValue or pricePerToken`);
+      if (!asset.tokenParams?.totalSupply) {
+        throw new Error(`Asset ${dto.assetId} missing tokenParams.totalSupply`);
       }
 
-      // Calculate total tokens: faceValue / pricePerToken
-      const totalTokens = Math.floor(faceValue / pricePerToken);
-      totalSupplyRaw = totalTokens.toString();
-
-      this.logger.log(`Calculated totalSupply from asset: faceValue=${faceValue}, pricePerToken=${pricePerToken}, totalTokens=${totalTokens}`);
+      totalSupplyWei = BigInt(asset.tokenParams.totalSupply);
+      this.logger.log(`Using asset's totalSupply: ${asset.tokenParams.totalSupply} wei (${Number(totalSupplyWei) / 1e18} tokens)`);
     }
-
-    // Convert to wei (18 decimals)
-    const totalSupplyWei = BigInt(totalSupplyRaw) * BigInt(10 ** 18);
     const issuer = dto.issuer || wallet.account.address; // Default to admin wallet
 
-    this.logger.log(`Token params: supply=${totalSupplyRaw} tokens (${totalSupplyWei} wei), name=${dto.name}, symbol=${dto.symbol}, issuer=${issuer}`);
+    this.logger.log(`Token params: supply=${Number(totalSupplyWei) / 1e18} tokens (${totalSupplyWei} wei), name=${dto.name}, symbol=${dto.symbol}, issuer=${issuer}`);
 
     const hash = await wallet.writeContract({
       address: address as Address,
@@ -159,25 +151,7 @@ export class BlockchainService {
       return { hash };
     }
 
-    // Update MongoDB with token info and status
-    this.logger.log(`Updating asset ${dto.assetId} status to TOKENIZED`);
-
-    await this.assetModel.updateOne(
-      { assetId: dto.assetId },
-      {
-        $set: {
-          'token.address': tokenAddress,
-          'token.compliance': complianceAddress,
-          'token.supply': totalSupplyWei.toString(), // ✅ FIX: Save wei amount, not token count
-          'token.deployedAt': new Date(),
-          'token.transactionHash': hash,
-          status: AssetStatus.TOKENIZED,
-          'checkpoints.tokenized': true,
-        },
-      }
-    );
-
-    this.logger.log(`Asset ${dto.assetId} updated to TOKENIZED status`);
+    this.logger.log(`Token deployed successfully - Address: ${tokenAddress}, Compliance: ${complianceAddress}`);
 
     return { hash, tokenAddress, complianceAddress };
   }

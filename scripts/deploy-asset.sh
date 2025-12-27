@@ -119,6 +119,10 @@ else
     fi
 fi
 
+# Wait for registration transaction to be confirmed on-chain
+print_info "Waiting 15 seconds for registration transaction to confirm..."
+sleep 15
+
 # Step 3: Deploy Token
 print_header "Step 3: Deploy RWA Token"
 print_info "Deploying ERC-20 token contract..."
