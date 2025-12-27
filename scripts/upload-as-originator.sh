@@ -147,30 +147,68 @@ print_info "User ID: $USER_ID"
 print_info "Role: $USER_ROLE"
 print_info "KYC Status: $KYC_STATUS"
 
-# Step 4: Upload Asset
-print_header "Step 4: Upload Invoice Asset"
-print_info "Uploading asset..."
+# Step 4: Upload Static Asset
+print_header "Step 4: Upload Static Listing Asset"
+print_info "Uploading asset with static listing parameters..."
 
-INVOICE_NUMBER="INV-2025-$(date +%s | tail -c 7)"
+INVOICE_NUMBER="INV-STATIC-$(date +%s | tail -c 7)"
+
+# Invoice Details
+FACE_VALUE="100000"  # Face value in USD (no decimals)
+CURRENCY="USD"
+ISSUE_DATE="2025-01-01"
+DUE_DATE="2025-07-01"
+BUYER_NAME="Tech Solutions Inc"
+INDUSTRY="Technology"
+RISK_TIER="A"
+
+# Token Parameters
+TOTAL_SUPPLY="100000000000000000000000"  # 100,000 tokens (18 decimals)
+MIN_INVESTMENT="1000000000000000000000"  # 1,000 tokens minimum investment (18 decimals)
+
+# Raise Parameters (as percentage of face value)
+# Platform fee is 1.5%, we want 5% margin for yield = 95% max
+MIN_RAISE_PERCENTAGE="80"  # Minimum 80% of face value must be raised (80,000 USD)
+MAX_RAISE_PERCENTAGE="95"  # Maximum 95% of face value (95,000 USD, leaving room for yield)
+
+# Static Listing: Price per token (optional - if not provided, uses maxRaise / totalSupply)
+# Let's set it to 0.95 USDC per token (95 cents) = 95,000 USDC for 100,000 tokens
+PRICE_PER_TOKEN="950000"  # 0.95 USDC (6 decimals for USDC)
+
+print_info "Pricing Calculation:"
+print_info "  Face Value: $FACE_VALUE USD"
+print_info "  Min Raise: ${MIN_RAISE_PERCENTAGE}% = $((FACE_VALUE * MIN_RAISE_PERCENTAGE / 100)) USD"
+print_info "  Max Raise: ${MAX_RAISE_PERCENTAGE}% = $((FACE_VALUE * MAX_RAISE_PERCENTAGE / 100)) USD"
+print_info "  Price/Token: \$0.95 USDC"
+print_info "  This leaves ~5% margin for platform fees (1.5%) and investor yield"
+echo ""
 
 UPLOAD_RESPONSE=$(curl -s -X POST "$API_BASE_URL/assets/upload" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -F "file=@$INVOICE_FILE" \
   -F "invoiceNumber=$INVOICE_NUMBER" \
-  -F "faceValue=100000" \
-  -F "currency=USD" \
-  -F "issueDate=2025-01-01" \
-  -F "dueDate=2025-07-01" \
-  -F "buyerName=Tech Solutions Inc" \
-  -F "industry=Technology" \
-  -F "riskTier=A" \
-  -F "totalSupply=100000" \
-  -F "pricePerToken=1" \
-  -F "minInvestment=1000")
+  -F "faceValue=$FACE_VALUE" \
+  -F "currency=$CURRENCY" \
+  -F "issueDate=$ISSUE_DATE" \
+  -F "dueDate=$DUE_DATE" \
+  -F "buyerName=$BUYER_NAME" \
+  -F "industry=$INDUSTRY" \
+  -F "riskTier=$RISK_TIER" \
+  -F "assetType=STATIC" \
+  -F "totalSupply=$TOTAL_SUPPLY" \
+  -F "minInvestment=$MIN_INVESTMENT" \
+  -F "minRaisePercentage=$MIN_RAISE_PERCENTAGE" \
+  -F "maxRaisePercentage=$MAX_RAISE_PERCENTAGE" \
+  -F "pricePerToken=$PRICE_PER_TOKEN")
 
 ASSET_ID=$(echo "$UPLOAD_RESPONSE" | jq -r '.assetId')
 STATUS=$(echo "$UPLOAD_RESPONSE" | jq -r '.status')
+ASSET_TYPE=$(echo "$UPLOAD_RESPONSE" | jq -r '.assetType')
 MESSAGE_TEXT=$(echo "$UPLOAD_RESPONSE" | jq -r '.message')
+MIN_PRICE_WEI=$(echo "$UPLOAD_RESPONSE" | jq -r '.priceRange.min')
+MAX_PRICE_WEI=$(echo "$UPLOAD_RESPONSE" | jq -r '.priceRange.max')
+MIN_RAISE_WEI=$(echo "$UPLOAD_RESPONSE" | jq -r '.priceRange.minRaise')
+MAX_RAISE_WEI=$(echo "$UPLOAD_RESPONSE" | jq -r '.priceRange.maxRaise')
 
 if [ -z "$ASSET_ID" ] || [ "$ASSET_ID" == "null" ]; then
     print_error "Upload failed"
@@ -178,7 +216,13 @@ if [ -z "$ASSET_ID" ] || [ "$ASSET_ID" == "null" ]; then
     exit 1
 fi
 
-print_success "Asset uploaded successfully!"
+# Convert USDC wei to human readable (divide by 10^6 for USDC)
+MIN_PRICE_USD=$(node -e "console.log((Number('$MIN_PRICE_WEI') / 1000000).toFixed(2))")
+MAX_PRICE_USD=$(node -e "console.log((Number('$MAX_PRICE_WEI') / 1000000).toFixed(2))")
+MIN_RAISE_USD=$(node -e "console.log((Number('$MIN_RAISE_WEI') / 1000000).toFixed(0))")
+MAX_RAISE_USD=$(node -e "console.log((Number('$MAX_RAISE_WEI') / 1000000).toFixed(0))")
+
+print_success "Static listing asset uploaded successfully!"
 echo ""
 echo "Response:"
 echo "$UPLOAD_RESPONSE" | jq '.'
@@ -187,14 +231,34 @@ echo "$UPLOAD_RESPONSE" | jq '.'
 print_header "Upload Complete! 🎉"
 print_success "Asset ID: $ASSET_ID"
 print_success "Status: $STATUS"
+print_success "Asset Type: $ASSET_TYPE"
 print_success "Message: $MESSAGE_TEXT"
+echo ""
+print_info "Invoice Details:"
+echo "  • Invoice Number: $INVOICE_NUMBER"
+echo "  • Face Value: $FACE_VALUE $CURRENCY"
+echo "  • Buyer: $BUYER_NAME"
+echo "  • Industry: $INDUSTRY"
+echo "  • Risk Tier: $RISK_TIER"
+echo "  • Issue Date: $ISSUE_DATE"
+echo "  • Due Date: $DUE_DATE"
+echo ""
+print_info "Calculated Static Listing Parameters:"
+echo "  • Total Supply: 100,000 tokens"
+echo "  • Min Raise: ${MIN_RAISE_PERCENTAGE}% ($MIN_RAISE_USD USD)"
+echo "  • Max Raise: ${MAX_RAISE_PERCENTAGE}% ($MAX_RAISE_USD USD)"
+echo "  • Min Price/Token: \$${MIN_PRICE_USD} USD"
+echo "  • Max Price/Token: \$${MAX_PRICE_USD} USD"
+echo "  • Set Price/Token: \$0.95 USD (static)"
+echo "  • Yield Margin: ~5% (includes platform fee 1.5%)"
+echo "  • Min Investment: 1,000 tokens"
 echo ""
 print_info "Next Steps:"
 echo "1. Wait for asset processing (hash computation, merkle tree)"
-echo "2. Admin approves the asset"
+echo "2. Admin approves and lists the asset"
 echo "3. Asset gets registered on-chain"
 echo "4. Token gets deployed"
-echo "5. Asset is listed on marketplace"
+echo "5. Static listing is created on marketplace"
 echo ""
 print_info "To check asset status:"
 echo "curl -X GET \"$API_BASE_URL/assets/$ASSET_ID\" \\"
@@ -202,8 +266,4 @@ echo "  --header \"Authorization: Bearer $ACCESS_TOKEN\" | jq"
 echo ""
 print_info "Save this Asset ID:"
 echo "export ASSET_ID=\"$ASSET_ID\""
-echo ""
-print_info "To deploy this asset:"
-echo "export ADMIN_TOKEN=\"your_admin_token\""
-echo "./scripts/deploy-asset.sh $ASSET_ID"
 echo ""
