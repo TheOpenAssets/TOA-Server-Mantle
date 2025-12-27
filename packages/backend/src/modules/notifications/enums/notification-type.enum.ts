@@ -6,6 +6,9 @@ export enum NotificationType {
   TOKEN_DEPLOYED = 'TOKEN_DEPLOYED',
   SYSTEM_ALERT = 'SYSTEM_ALERT',
   MARKETPLACE_LISTING = 'MARKETPLACE_LISTING',
+  BID_PLACED = 'BID_PLACED',
+  AUCTION_WON = 'AUCTION_WON',
+  BID_REFUNDED = 'BID_REFUNDED',
 }
 
 export enum NotificationSeverity {

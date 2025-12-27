@@ -11,6 +11,7 @@ import { Payout, PayoutSchema } from '../../database/schemas/payout.schema';
 import { AuthModule } from '../auth/auth.module'; // For JwtAuthGuard
 import { ComplianceEngineModule } from '../compliance-engine/compliance-engine.module';
 import { AnnouncementsModule } from '../announcements/announcements.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { AnnouncementsModule } from '../announcements/announcements.module';
     AuthModule,
     ComplianceEngineModule,
     forwardRef(() => AnnouncementsModule),
+    NotificationsModule,
   ],
   controllers: [AssetsController],
   providers: [AssetLifecycleService, AssetProcessor, EigenDAService],

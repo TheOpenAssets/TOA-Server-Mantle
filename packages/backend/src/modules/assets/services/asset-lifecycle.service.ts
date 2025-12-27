@@ -14,6 +14,9 @@ import { ethers } from 'ethers';
 import { RegisterAssetDto } from '../../blockchain/dto/register-asset.dto';
 import { AttestationService } from '../../compliance-engine/services/attestation.service';
 import { AnnouncementService } from '../../announcements/services/announcement.service';
+import { NotificationService } from '../../notifications/services/notification.service';
+import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
+import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 
 @Injectable()
 export class AssetLifecycleService {
@@ -29,6 +32,7 @@ export class AssetLifecycleService {
     @Inject(forwardRef(() => AnnouncementService))
     private announcementService: AnnouncementService,
     private configService: ConfigService,
+    private notificationService: NotificationService,
   ) {}
 
   async getRegisterAssetPayload(assetId: string): Promise<RegisterAssetDto> {
@@ -153,6 +157,18 @@ export class AssetLifecycleService {
       filePath: file.path,
     });
 
+    // Send notification for asset upload
+    await this.notificationService.create({
+      userId: userWallet,
+      walletAddress: userWallet,
+      header: 'Asset Upload Successful',
+      detail: `Your asset ${dto.invoiceNumber} has been uploaded and is being processed.`,
+      type: NotificationType.ASSET_STATUS,
+      severity: NotificationSeverity.SUCCESS,
+      action: NotificationAction.VIEW_ASSET,
+      actionMetadata: { assetId },
+    });
+
     return {
       assetId,
       status: AssetStatus.UPLOADED,
@@ -207,6 +223,18 @@ export class AssetLifecycleService {
     await this.assetQueue.add('eigenda-anchoring', { assetId });
 
     this.logger.log(`Asset ${assetId} attested and queued for EigenDA anchoring`);
+
+    // Send notification for attestation
+    await this.notificationService.create({
+      userId: asset.originator,
+      walletAddress: asset.originator,
+      header: 'Asset Approved by Compliance',
+      detail: `Your asset ${asset.metadata.invoiceNumber} has been approved and is ready for registration.`,
+      type: NotificationType.ASSET_STATUS,
+      severity: NotificationSeverity.SUCCESS,
+      action: NotificationAction.VIEW_ASSET,
+      actionMetadata: { assetId },
+    });
 
     return { success: true, assetId, status: AssetStatus.ATTESTED };
   }

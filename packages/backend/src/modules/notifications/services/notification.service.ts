@@ -94,6 +94,35 @@ export class NotificationService {
     };
   }
 
+  async getNotificationById(userId: string, notificationId: string) {
+    const userNotifs = await this.userNotificationModel.findOne({ userId });
+    if (!userNotifs) {
+      throw new Error('User notifications not found');
+    }
+
+    // Find the notification in user's list to verify ownership
+    const userNotif = userNotifs.notifications.find(
+      n => n.notificationId.toString() === notificationId
+    );
+
+    if (!userNotif) {
+      throw new Error('Notification not found or access denied');
+    }
+
+    // Fetch the full notification details
+    const notification = await this.notificationModel.findById(notificationId);
+    if (!notification) {
+      throw new Error('Notification details not found');
+    }
+
+    return {
+      ...notification.toObject(),
+      read: userNotif.read,
+      readAt: userNotif.readAt,
+      receivedAt: userNotif.receivedAt,
+    };
+  }
+
   async markAsRead(userId: string, notificationId: string) {
     const userNotifs = await this.userNotificationModel.findOne({ userId });
     if (!userNotifs) return;
@@ -127,6 +156,9 @@ export class NotificationService {
         case NotificationType.YIELD_DISTRIBUTED: return 'cash-multiple';
         case NotificationType.KYC_STATUS: return 'account-check';
         case NotificationType.TOKEN_PURCHASED: return 'shopping';
+        case NotificationType.BID_PLACED: return 'gavel';
+        case NotificationType.AUCTION_WON: return 'trophy';
+        case NotificationType.BID_REFUNDED: return 'cash-refund';
         default: return 'bell';
     }
   }

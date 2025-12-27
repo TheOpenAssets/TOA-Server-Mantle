@@ -9,6 +9,9 @@ import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { NotifyBidDto } from '../dto/notify-bid.dto';
 import { NotifySettlementDto } from '../dto/notify-settlement.dto';
+import { NotificationService } from '../../notifications/services/notification.service';
+import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
+import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 
 @Injectable()
 export class BidTrackerService {
@@ -20,6 +23,7 @@ export class BidTrackerService {
     private contractLoader: ContractLoaderService,
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
+    private notificationService: NotificationService,
   ) {
     this.publicClient = createPublicClient({
       chain: mantleSepolia,
@@ -81,6 +85,32 @@ export class BidTrackerService {
     });
 
     this.logger.log(`Bid recorded: ${bid._id}`);
+
+    // Send notification to bidder
+    try {
+      const usdcDepositedFormatted = (Number(usdcDeposited) / 1e6).toFixed(2);
+      const assetName = `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`;
+
+      await this.notificationService.create({
+        userId: investorWallet,
+        walletAddress: investorWallet,
+        header: 'Bid Placed Successfully',
+        detail: `Your bid of $${usdcDepositedFormatted} for ${assetName} has been placed.`,
+        type: NotificationType.BID_PLACED,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_ASSET,
+        actionMetadata: {
+          assetId: dto.assetId,
+          bidId: bid._id.toString(),
+          tokenAmount: bidData.tokenAmount,
+          price: bidData.price,
+          usdcDeposited: usdcDeposited.toString(),
+        },
+      });
+    } catch (error: any) {
+      this.logger.error(`Failed to send bid notification: ${error.message}`);
+      // Don't fail the bid if notification fails
+    }
 
     return {
       success: true,
@@ -290,6 +320,55 @@ export class BidTrackerService {
     );
 
     this.logger.log(`Bid ${bid._id} settled with status: ${newStatus}`);
+
+    // Send notification to bidder based on settlement outcome
+    try {
+      const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+      const assetName = asset ? `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}` : dto.assetId;
+
+      if (newStatus === BidStatus.SETTLED && settlementData.tokensReceived > 0n) {
+        // Auction won
+        const tokensReceivedFormatted = (Number(settlementData.tokensReceived) / 1e18).toFixed(2);
+        const clearingPriceFormatted = (Number(bid.price) / 1e6).toFixed(2);
+
+        await this.notificationService.create({
+          userId: investorWallet,
+          walletAddress: investorWallet,
+          header: 'Congratulations! You Won the Auction',
+          detail: `You won the auction for ${assetName} at clearing price $${clearingPriceFormatted}. Your tokens have been allocated.`,
+          type: NotificationType.AUCTION_WON,
+          severity: NotificationSeverity.SUCCESS,
+          action: NotificationAction.VIEW_PORTFOLIO,
+          actionMetadata: {
+            assetId: dto.assetId,
+            bidId: bid._id.toString(),
+            tokensReceived: settlementData.tokensReceived.toString(),
+            clearingPrice: bid.price,
+          },
+        });
+      } else if (newStatus === BidStatus.REFUNDED) {
+        // Bid refunded
+        const refundAmountFormatted = (Number(settlementData.refundAmount) / 1e6).toFixed(2);
+
+        await this.notificationService.create({
+          userId: investorWallet,
+          walletAddress: investorWallet,
+          header: 'Auction Ended - Bid Refunded',
+          detail: `The auction for ${assetName} ended. Your bid of $${refundAmountFormatted} has been refunded.`,
+          type: NotificationType.BID_REFUNDED,
+          severity: NotificationSeverity.INFO,
+          action: NotificationAction.VIEW_MARKETPLACE,
+          actionMetadata: {
+            assetId: dto.assetId,
+            bidId: bid._id.toString(),
+            refundAmount: settlementData.refundAmount.toString(),
+          },
+        });
+      }
+    } catch (error: any) {
+      this.logger.error(`Failed to send settlement notification: ${error.message}`);
+      // Don't fail the settlement if notification fails
+    }
 
     return {
       success: true,

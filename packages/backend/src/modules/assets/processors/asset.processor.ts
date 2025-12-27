@@ -9,6 +9,9 @@ import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/ass
 import * as fs from 'fs';
 import { keccak256, toHex } from 'viem';
 import { EigenDAService } from '../services/eigenda.service';
+import { NotificationService } from '../../notifications/services/notification.service';
+import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
+import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 
 @Processor('asset-processing')
 export class AssetProcessor extends WorkerHost {
@@ -18,6 +21,7 @@ export class AssetProcessor extends WorkerHost {
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectQueue('asset-processing') private assetQueue: Queue,
     private eigenDAService: EigenDAService,
+    private notificationService: NotificationService,
   ) {
     super();
   }
@@ -57,10 +61,25 @@ export class AssetProcessor extends WorkerHost {
       );
 
       this.logger.log(`Hash computed: ${hash}. Queueing Merkle build.`);
-      
+
+      // Get asset for notification
+      const asset = await this.assetModel.findOne({ assetId });
+      if (asset) {
+        await this.notificationService.create({
+          userId: asset.originator,
+          walletAddress: asset.originator,
+          header: 'Document Processing Complete',
+          detail: `Your asset ${asset.metadata.invoiceNumber} has been hashed and verified successfully.`,
+          type: NotificationType.ASSET_STATUS,
+          severity: NotificationSeverity.SUCCESS,
+          action: NotificationAction.VIEW_ASSET,
+          actionMetadata: { assetId },
+        });
+      }
+
       // Trigger next step
       await this.assetQueue.add('build-merkle', { assetId });
-      
+
       return { hash };
     } catch (error) {
       this.logger.error(`Hashing failed for ${assetId}`, error);
@@ -102,10 +121,22 @@ export class AssetProcessor extends WorkerHost {
     );
 
     this.logger.log(`Merkle Root built: ${merkleRoot}. Ready for Attestation.`);
-    
+
+    // Send notification for cryptographic verification complete
+    await this.notificationService.create({
+      userId: asset.originator,
+      walletAddress: asset.originator,
+      header: 'Cryptographic Verification Complete',
+      detail: `Your asset ${asset.metadata.invoiceNumber} has passed cryptographic verification and is ready for compliance review.`,
+      type: NotificationType.ASSET_STATUS,
+      severity: NotificationSeverity.SUCCESS,
+      action: NotificationAction.VIEW_ASSET,
+      actionMetadata: { assetId },
+    });
+
     // In a real flow, next step might be ZK Proof generation or direct Attestation
     // We'll stop here or auto-trigger attestation if admin bot is active.
-    
+
     return { merkleRoot };
   }
 

@@ -13,6 +13,7 @@ import { AuthModule } from '../auth/auth.module';
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { MarketplaceModule } from '../marketplace/marketplace.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { MarketplaceModule } from '../marketplace/marketplace.module';
     YieldModule,
     AuthModule,
     MarketplaceModule,
+    NotificationsModule,
   ],
   controllers: [
     AdminController,

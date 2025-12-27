@@ -12,6 +12,9 @@ import { Model } from 'mongoose';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 
 import { AuctionService } from '../../marketplace/services/auction.service';
+import { NotificationService } from '../../notifications/services/notification.service';
+import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
+import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 
 @Controller('admin/assets')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
@@ -21,6 +24,7 @@ export class AssetOpsController {
     private readonly assetLifecycleService: AssetLifecycleService,
     private readonly auctionService: AuctionService,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   @Get()
@@ -60,6 +64,21 @@ export class AssetOpsController {
           },
         },
       );
+
+      // Get asset for notification
+      const asset = await this.assetModel.findOne({ assetId });
+      if (asset) {
+        await this.notificationService.create({
+          userId: asset.originator,
+          walletAddress: asset.originator,
+          header: 'Asset Registered On-Chain',
+          detail: `Your asset ${asset.metadata.invoiceNumber} has been successfully registered on the blockchain.`,
+          type: NotificationType.ASSET_STATUS,
+          severity: NotificationSeverity.SUCCESS,
+          action: NotificationAction.VIEW_ASSET,
+          actionMetadata: { assetId },
+        });
+      }
 
       return {
         success: true,
@@ -132,6 +151,21 @@ export class AssetOpsController {
           },
         },
       );
+
+      // Get asset for notification
+      const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+      if (asset) {
+        await this.notificationService.create({
+          userId: asset.originator,
+          walletAddress: asset.originator,
+          header: 'Token Deployment Complete',
+          detail: `Your asset ${asset.metadata.invoiceNumber} has been tokenized. Token address: ${result.tokenAddress}`,
+          type: NotificationType.TOKEN_DEPLOYED,
+          severity: NotificationSeverity.SUCCESS,
+          action: NotificationAction.VIEW_ASSET,
+          actionMetadata: { assetId: dto.assetId, tokenAddress: result.tokenAddress },
+        });
+      }
 
       return {
         success: true,
@@ -264,6 +298,18 @@ export class AssetOpsController {
           },
         },
       );
+
+      // Send notification for marketplace listing
+      await this.notificationService.create({
+        userId: asset.originator,
+        walletAddress: asset.originator,
+        header: 'Asset Listed on Marketplace',
+        detail: `Your asset ${asset.metadata.invoiceNumber} is now live on the marketplace and available for investment.`,
+        type: NotificationType.MARKETPLACE_LISTING,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_MARKETPLACE,
+        actionMetadata: { assetId: dto.assetId, tokenAddress: asset.token.address },
+      });
 
       return {
         success: true,

@@ -40,6 +40,12 @@ export class NotificationsController {
     return { unreadCount: result.meta.unreadCount };
   }
 
+  @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  async getNotificationById(@Req() req: any, @Param('id') id: string) {
+    return this.notificationService.getNotificationById(req.user.userId, id);
+  }
+
   @Patch(':id/read')
   @UseGuards(JwtAuthGuard)
   async markRead(@Req() req: any, @Param('id') id: string) {

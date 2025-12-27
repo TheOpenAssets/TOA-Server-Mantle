@@ -8,6 +8,9 @@ import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.s
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
+import { NotificationService } from '../../notifications/services/notification.service';
+import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
+import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 
 @Injectable()
 export class PurchaseTrackerService {
@@ -19,6 +22,7 @@ export class PurchaseTrackerService {
     private contractLoader: ContractLoaderService,
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
+    private notificationService: NotificationService,
   ) {
     this.publicClient = createPublicClient({
       chain: mantleSepolia,
@@ -76,6 +80,32 @@ export class PurchaseTrackerService {
     });
 
     this.logger.log(`Purchase recorded: ${purchase._id}`);
+
+    // Send notification to investor
+    try {
+      const tokenAmountFormatted = (Number(purchaseData.amount) / 1e18).toFixed(2);
+      const totalPaymentFormatted = (Number(purchaseData.totalPayment) / 1e6).toFixed(2);
+      const assetName = `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`;
+
+      await this.notificationService.create({
+        userId: investorWallet,
+        walletAddress: investorWallet,
+        header: 'Token Purchase Successful',
+        detail: `You purchased ${tokenAmountFormatted} tokens of ${assetName} for $${totalPaymentFormatted}`,
+        type: NotificationType.TOKEN_PURCHASED,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_PORTFOLIO,
+        actionMetadata: {
+          assetId: dto.assetId,
+          amount: purchaseData.amount,
+          totalPayment: purchaseData.totalPayment,
+          tokenAddress: asset.token?.address,
+        },
+      });
+    } catch (error: any) {
+      this.logger.error(`Failed to send purchase notification: ${error.message}`);
+      // Don't fail the purchase if notification fails
+    }
 
     return {
       success: true,
