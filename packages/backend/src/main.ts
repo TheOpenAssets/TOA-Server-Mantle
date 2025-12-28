@@ -6,7 +6,29 @@ import { Request, Response, NextFunction } from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Raw body middleware for Typeform webhook (must come BEFORE global JSON parser)
+  // REQUIRED for Render / Railway
+  app.set('trust proxy', 1);
+
+  // 🔥 ABSOLUTE FIRST MIDDLEWARE
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+    );
+    res.setHeader(
+      'Access-Control-Allow-Methods',
+      'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    );
+
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+
+    next();
+  });
+
+  // Typeform raw body
   app.use(
     '/webhooks/typeform',
     express.json({
@@ -16,34 +38,9 @@ async function bootstrap() {
     }),
   );
 
-  // Global JSON body parser
+  // Global parsers
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
-  // ---- REQUIRED: Handle CORS preflight explicitly ----
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header(
-      'Access-Control-Allow-Headers',
-      'Origin, X-Requested-With, Content-Type, Accept, Authorization',
-    );
-    res.header(
-      'Access-Control-Allow-Methods',
-      'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    );
-
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(204);
-    }
-
-    next();
-  });
-
-  // NestJS CORS (allow all)
-  app.enableCors({
-    origin: true,
-    credentials: true,
-  });
 
   await app.listen(3000);
 }
