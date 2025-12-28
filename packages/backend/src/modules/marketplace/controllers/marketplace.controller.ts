@@ -49,22 +49,33 @@ export class MarketplaceController {
     return {
       success: true,
       count: listings.length,
-      listings: listings.map(asset => ({
-        assetId: asset.assetId,
-        tokenAddress: asset.token?.address,
-        name: `${asset.metadata.invoiceNumber} - ${asset.metadata.buyerName}`,
-        industry: asset.metadata.industry,
-        faceValue: asset.metadata.faceValue,
-        currency: asset.metadata.currency,
-        riskTier: asset.metadata.riskTier,
-        dueDate: asset.metadata.dueDate,
-        totalSupply: asset.tokenParams.totalSupply,
-        pricePerToken: asset.listing?.price || asset.tokenParams.pricePerToken,
-        minInvestment: asset.tokenParams.minInvestment,
-        listingType: asset.listing?.type,
-        listedAt: asset.listing?.listedAt,
-        status: asset.status,
-      })),
+      listings: listings.map(asset => {
+        // Calculate percentage sold
+        const totalSupply = BigInt(asset.tokenParams.totalSupply || '0');
+        const sold = BigInt(asset.listing?.sold || '0');
+        const percentageSold = totalSupply > 0n
+          ? Number((sold * 10000n) / totalSupply) / 100 // Use 10000 for 2 decimal precision
+          : 0;
+
+        return {
+          assetId: asset.assetId,
+          tokenAddress: asset.token?.address,
+          name: `${asset.metadata.invoiceNumber} - ${asset.metadata.buyerName}`,
+          industry: asset.metadata.industry,
+          faceValue: asset.metadata.faceValue,
+          currency: asset.metadata.currency,
+          riskTier: asset.metadata.riskTier,
+          dueDate: asset.metadata.dueDate,
+          totalSupply: asset.tokenParams.totalSupply,
+          sold: asset.listing?.sold || '0',
+          percentageSold,
+          pricePerToken: asset.listing?.price || asset.tokenParams.pricePerToken,
+          minInvestment: asset.tokenParams.minInvestment,
+          listingType: asset.listing?.type,
+          listedAt: asset.listing?.listedAt,
+          status: asset.status,
+        };
+      }),
     };
   }
 

@@ -217,49 +217,117 @@ export class BlockchainService {
     minInvestment: string,
     duration?: string,
   ): Promise<Hash> {
-    const wallet = this.walletService.getAdminWallet();
-    const address = this.contractLoader.getContractAddress('PrimaryMarketplace');
-    const abi = this.contractLoader.getContractAbi('PrimaryMarketplace');
+    try {
+      const wallet = this.walletService.getAdminWallet();
+      const address = this.contractLoader.getContractAddress('PrimaryMarketplace');
+      const abi = this.contractLoader.getContractAbi('PrimaryMarketplace');
 
-    this.logger.log(`Listing token ${tokenAddress} on ${type} marketplace...`);
+      this.logger.log(`========== Starting listOnMarketplace ==========`);
+      this.logger.log(`Input params: tokenAddress=${tokenAddress}, type=${type}, price=${price}, minInvestment=${minInvestment}, duration=${duration}`);
+      this.logger.log(`Marketplace contract: ${address}`);
+      this.logger.log(`Admin wallet: ${wallet.account.address}`);
 
-    // Get asset info from database to extract assetId and totalSupply
-    const asset = await this.assetModel.findOne({ 'token.address': tokenAddress });
-    if (!asset) {
-      throw new Error(`Asset not found for token ${tokenAddress}`);
+      // Get asset info from database to extract assetId and totalSupply
+      this.logger.log(`Querying database for asset with token.address: ${tokenAddress}`);
+      const asset = await this.assetModel.findOne({ 'token.address': tokenAddress });
+
+      if (!asset) {
+        this.logger.error(`❌ Asset not found for token ${tokenAddress}`);
+        throw new Error(`Asset not found for token ${tokenAddress}`);
+      }
+
+      this.logger.log(`✓ Asset found: ${asset.assetId}`);
+      this.logger.log(`Asset data: tokenParams.totalSupply=${asset.tokenParams?.totalSupply}, token.supply=${asset.token?.supply}`);
+
+      // Convert UUID to bytes32
+      const assetIdBytes32 = ('0x' + asset.assetId.replace(/-/g, '').padEnd(64, '0')) as Hash;
+      this.logger.log(`AssetId bytes32: ${assetIdBytes32}`);
+
+      // Get totalSupply and convert to wei (18 decimals)
+      const totalSupplyRaw = asset.tokenParams?.totalSupply || asset.token?.supply || '100000';
+      const totalSupplyWei = BigInt(totalSupplyRaw) * BigInt(10 ** 18);
+      this.logger.log(`Total supply: raw=${totalSupplyRaw}, wei=${totalSupplyWei.toString()}`);
+
+      // Determine listing type enum (0 = STATIC, 1 = AUCTION)
+      const listingTypeEnum = type === 'STATIC' ? 0 : 1;
+
+      // Log all contract call parameters
+      this.logger.log(`========== Contract Call Parameters ==========`);
+      this.logger.log(`Function: createListing`);
+      this.logger.log(`  [0] assetId: ${assetIdBytes32}`);
+      this.logger.log(`  [1] tokenAddress: ${tokenAddress}`);
+      this.logger.log(`  [2] listingType: ${listingTypeEnum} (${type})`);
+      this.logger.log(`  [3] priceOrReserve: ${price}`);
+      this.logger.log(`  [4] duration: ${duration || '0'}`);
+      this.logger.log(`  [5] totalSupply: ${totalSupplyWei.toString()}`);
+      this.logger.log(`  [6] minInvestment: ${minInvestment}`);
+      this.logger.log(`==============================================`);
+
+      // New createListing signature:
+      // createListing(assetId, tokenAddress, listingType, priceOrReserve, duration, totalSupply, minInvestment)
+
+      this.logger.log(`Submitting transaction...`);
+      const hash = await wallet.writeContract({
+        address: address as Address,
+        abi,
+        functionName: 'createListing',
+        args: [
+          assetIdBytes32,
+          tokenAddress as Address,
+          listingTypeEnum,
+          BigInt(price),               // priceOrReserve
+          BigInt(duration || '0'),     // duration (0 for STATIC is fine, or ignored)
+          totalSupplyWei,              // totalSupply
+          BigInt(minInvestment),       // minInvestment
+        ],
+      });
+
+      this.logger.log(`✓ Transaction submitted: ${hash}`);
+      this.logger.log(`Waiting for transaction receipt...`);
+
+      const receipt = await this.publicClient.waitForTransactionReceipt({
+        hash,
+        timeout: 180_000,
+        pollingInterval: 2_000,
+      });
+
+      this.logger.log(`✓ Transaction confirmed in block ${receipt.blockNumber}`);
+      this.logger.log(`Transaction status: ${receipt.status}`);
+      this.logger.log(`Gas used: ${receipt.gasUsed.toString()}`);
+      this.logger.log(`${type} listing created successfully in tx: ${hash}`);
+      this.logger.log(`========== listOnMarketplace completed ==========`);
+
+      return hash;
+    } catch (error: any) {
+      this.logger.error(`========== listOnMarketplace FAILED ==========`);
+      this.logger.error(`Error type: ${error?.constructor?.name || typeof error}`);
+      this.logger.error(`Error message: ${error?.message || String(error)}`);
+
+      if (error?.cause) {
+        this.logger.error(`Error cause: ${JSON.stringify(error.cause, null, 2)}`);
+      }
+
+      if (error?.metaMessages) {
+        this.logger.error(`Meta messages: ${JSON.stringify(error.metaMessages, null, 2)}`);
+      }
+
+      if (error?.details) {
+        this.logger.error(`Error details: ${error.details}`);
+      }
+
+      if (error?.data) {
+        this.logger.error(`Error data: ${JSON.stringify(error.data, null, 2)}`);
+      }
+
+      if (error?.stack) {
+        this.logger.error(`Stack trace: ${error.stack}`);
+      }
+
+      this.logger.error(`Full error: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`);
+      this.logger.error(`============================================`);
+
+      throw error;
     }
-
-    // Convert UUID to bytes32
-    const assetIdBytes32 = ('0x' + asset.assetId.replace(/-/g, '').padEnd(64, '0')) as Hash;
-
-    // Get totalSupply and convert to wei (18 decimals)
-    const totalSupplyRaw = asset.tokenParams?.totalSupply || asset.token?.supply || '100000';
-    const totalSupplyWei = BigInt(totalSupplyRaw) * BigInt(10 ** 18);
-
-    // Determine listing type enum (0 = STATIC, 1 = AUCTION)
-    const listingTypeEnum = type === 'STATIC' ? 0 : 1;
-
-    // New createListing signature:
-    // createListing(assetId, tokenAddress, listingType, priceOrReserve, duration, totalSupply, minInvestment)
-    
-    const hash = await wallet.writeContract({
-      address: address as Address,
-      abi,
-      functionName: 'createListing',
-      args: [
-        assetIdBytes32,
-        tokenAddress as Address,
-        listingTypeEnum,
-        BigInt(price),               // priceOrReserve
-        BigInt(duration || '0'),     // duration (0 for STATIC is fine, or ignored)
-        totalSupplyWei,              // totalSupply
-        BigInt(minInvestment),       // minInvestment
-      ],
-    });
-
-    await this.publicClient.waitForTransactionReceipt({ hash });
-    this.logger.log(`${type} listing created in tx: ${hash}`);
-    return hash;
   }
 
   async endAuction(assetId: string, clearingPrice: string): Promise<Hash> {
