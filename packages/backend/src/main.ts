@@ -6,9 +6,6 @@ import { Request, Response, NextFunction } from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // REQUIRED for Render / Railway
-  app.set('trust proxy', 1);
-
   // 🔥 ABSOLUTE FIRST MIDDLEWARE
   app.use((req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
