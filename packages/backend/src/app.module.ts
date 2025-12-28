@@ -4,9 +4,11 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+
 import databaseConfig from './config/database.config';
 import redisConfig from './config/redis.config';
 import blockchainConfig from './config/blockchain.config';
+
 import { AuthModule } from './modules/auth/auth.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { KycModule } from './modules/kyc/kyc.module';
@@ -26,23 +28,38 @@ import { AnnouncementsModule } from './modules/announcements/announcements.modul
       isGlobal: true,
       load: [databaseConfig, redisConfig, blockchainConfig],
     }),
+
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
         uri: configService.get<string>('database.uri'),
       }),
-      inject: [ConfigService],
     }),
+
     BullModule.forRootAsync({
-        imports: [ConfigModule],
-        useFactory: async (configService: ConfigService) => ({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const redis = configService.get('redis');
+
+        if (redis?.url) {
+          return {
             connection: {
-                host: configService.get('redis.host'),
-                port: configService.get('redis.port'),
-            }
-        }),
-        inject: [ConfigService],
+              url: redis.url,
+            },
+          };
+        }
+
+        return {
+          connection: {
+            host: redis.host,
+            port: redis.port,
+          },
+        };
+      },
     }),
+
     RedisModule,
     AuthModule,
     KycModule,
