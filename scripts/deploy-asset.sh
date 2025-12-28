@@ -186,15 +186,7 @@ sleep 10
 if [ ! -z "$TOKEN_ADDRESS" ]; then
     print_header "Step 5: List on Marketplace"
     print_info "Listing asset on primary marketplace..."
-
-    # Marketplace configuration (can be customized via env vars)
-    LISTING_TYPE="${LISTING_TYPE:-STATIC}"
-    LISTING_PRICE="${LISTING_PRICE:-1000000}"  # 1 USDC (6 decimals)
-    MIN_INVESTMENT="${MIN_INVESTMENT:-1000000000000000000000}"  # 1000 tokens (18 decimals)
-
-    print_info "Listing Type: $LISTING_TYPE"
-    print_info "Price: $LISTING_PRICE (1 USDC per token)"
-    print_info "Min Investment: $MIN_INVESTMENT (1000 tokens)"
+    print_info "Using asset parameters from database (type, price, minInvestment)"
     echo ""
 
     # Wait for tokenization to settle
@@ -205,11 +197,7 @@ if [ ! -z "$TOKEN_ADDRESS" ]; then
       --header "Authorization: Bearer $ADMIN_TOKEN" \
       --header 'Content-Type: application/json' \
       --data "{
-        \"assetId\": \"$ASSET_ID\",
-        \"type\": \"$LISTING_TYPE\",
-        \"price\": \"$LISTING_PRICE\",
-        \"minInvestment\": \"$MIN_INVESTMENT\",
-        \"duration\": \"0\"
+        \"assetId\": \"$ASSET_ID\"
       }")
 
     echo "Response:"
@@ -258,10 +246,7 @@ if [ ! -z "$TOKEN_ADDRESS" ]; then
         echo "  --header \"Authorization: Bearer \$ADMIN_TOKEN\" \\"
         echo "  --header 'Content-Type: application/json' \\"
         echo "  --data '{"
-        echo "    \"assetId\": \"$ASSET_ID\","
-        echo "    \"type\": \"STATIC\","
-        echo "    \"price\": \"1000000\","
-        echo "    \"minInvestment\": \"1000000000000000000000\""
+        echo "    \"assetId\": \"$ASSET_ID\""
         echo "  }' | jq"
     fi
 else

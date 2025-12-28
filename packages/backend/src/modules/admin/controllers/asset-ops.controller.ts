@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, UseGuards, Param, Query, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Param, Query, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -19,6 +19,8 @@ import { NotificationAction } from '../../notifications/enums/notification-actio
 @Controller('admin/assets')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
 export class AssetOpsController {
+  private readonly logger = new Logger(AssetOpsController.name);
+
   constructor(
     private readonly blockchainService: BlockchainService,
     private readonly assetLifecycleService: AssetLifecycleService,
@@ -276,13 +278,58 @@ export class AssetOpsController {
         );
       }
 
+      // Extract values from database (single source of truth)
+      const listingType = asset.assetType;
+      const price = asset.tokenParams?.pricePerToken;
+      const minInvestment = asset.tokenParams?.minInvestment;
+      const duration = dto.duration; // Only used for AUCTION
+
+      // Validate required values exist in database
+      if (!listingType) {
+        throw new HttpException(
+          {
+            success: false,
+            error: 'Asset Type Not Available',
+            message: 'Asset type not found in database',
+            assetId: dto.assetId,
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      if (!price) {
+        throw new HttpException(
+          {
+            success: false,
+            error: 'Price Not Available',
+            message: 'Price per token not found in asset tokenParams',
+            assetId: dto.assetId,
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      if (!minInvestment) {
+        throw new HttpException(
+          {
+            success: false,
+            error: 'Min Investment Not Available',
+            message: 'Minimum investment not found in asset tokenParams',
+            assetId: dto.assetId,
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      this.logger.log(`Listing asset ${dto.assetId} - Type: ${listingType}, Price: ${price}, MinInv: ${minInvestment}`);
+
       // List on marketplace
       const txHash = await this.blockchainService.listOnMarketplace(
         asset.token.address,
-        dto.type,
-        dto.price,
-        dto.minInvestment,
-        dto.duration,
+        listingType,
+        price,
+        minInvestment,
+        duration,
       );
 
       // Update asset listing status in DB
@@ -291,10 +338,11 @@ export class AssetOpsController {
         {
           $set: {
             status: AssetStatus.LISTED,
-            'listing.type': dto.type,
-            'listing.price': dto.price,
+            'listing.type': listingType,
+            'listing.price': price,
             'listing.active': true,
             'listing.listedAt': new Date(),
+            'listing.sold': '0', // Initialize sold amount
           },
         },
       );
@@ -316,9 +364,10 @@ export class AssetOpsController {
         message: 'Token listed on marketplace',
         assetId: dto.assetId,
         tokenAddress: asset.token.address,
-        listingType: dto.type,
-        price: dto.price,
-        minInvestment: dto.minInvestment,
+        listingType,
+        price,
+        minInvestment,
+        duration,
         transactionHash: txHash,
         explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
       };

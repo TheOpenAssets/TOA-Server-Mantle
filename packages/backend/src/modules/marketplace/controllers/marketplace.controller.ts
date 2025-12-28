@@ -4,6 +4,8 @@ import { Model } from 'mongoose';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
+import { Settlement, SettlementDocument } from '../../../database/schemas/settlement.schema';
+import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PurchaseTrackerService } from '../services/purchase-tracker.service';
 import { BidTrackerService } from '../services/bid-tracker.service';
@@ -17,6 +19,8 @@ export class MarketplaceController {
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
+    @InjectModel(Settlement.name) private settlementModel: Model<SettlementDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
     private purchaseTracker: PurchaseTrackerService,
     private bidTracker: BidTrackerService,
   ) {}
@@ -154,6 +158,53 @@ export class MarketplaceController {
       stats: {
         totalListings: totalListed,
         byIndustry,
+      },
+    };
+  }
+
+  @Get('info')
+  @UseGuards(JwtAuthGuard)
+  async getMarketplaceInfo() {
+    // 1. Total assets (tokenized assets)
+    const totalAssets = await this.assetModel.countDocuments({
+      'token.address': { $exists: true },
+      status: { $in: [AssetStatus.TOKENIZED, AssetStatus.LISTED] },
+    });
+
+    // 2. Active users (users who have made purchases or bids)
+    const purchaseInvestors = await this.purchaseModel.distinct('investor');
+    const bidInvestors = await this.bidModel.distinct('investor');
+    const uniqueInvestors = new Set([...purchaseInvestors, ...bidInvestors]);
+    const activeUsers = uniqueInvestors.size;
+
+    // 3. Total settlements
+    const totalSettlements = await this.settlementModel.countDocuments();
+
+    // 4. Total value tokenized (sum of face values of tokenized assets)
+    const tokenizedAssets = await this.assetModel.aggregate([
+      {
+        $match: {
+          'token.address': { $exists: true },
+          status: { $in: [AssetStatus.TOKENIZED, AssetStatus.LISTED] },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalValue: { $sum: { $toDouble: '$metadata.faceValue' } },
+        },
+      },
+    ]);
+
+    const totalValueTokenized = tokenizedAssets.length > 0 ? tokenizedAssets[0].totalValue : 0;
+
+    return {
+      success: true,
+      info: {
+        totalAssets,
+        activeUsers,
+        totalSettlements,
+        totalValueTokenized,
       },
     };
   }

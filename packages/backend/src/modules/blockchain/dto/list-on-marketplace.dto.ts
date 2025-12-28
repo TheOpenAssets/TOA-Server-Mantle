@@ -10,18 +10,7 @@ export class ListOnMarketplaceDto {
   @IsNotEmpty()
   assetId!: string;
 
-  @IsEnum(ListingType)
-  type!: ListingType;
-
-  @IsNumberString()
-  @IsNotEmpty()
-  price!: string; // Price per token in USDC (wei)
-
-  @IsNumberString()
-  @IsNotEmpty()
-  minInvestment!: string; // Minimum investment in USDC (wei)
-
   @IsOptional()
   @IsNumberString()
-  duration?: string; // For auctions: duration in seconds
+  duration?: string; // Optional: For auctions - duration in seconds. If not provided, uses default or asset-specific duration
 }

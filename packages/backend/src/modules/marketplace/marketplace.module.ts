@@ -6,6 +6,8 @@ import { BidTrackerService } from './services/bid-tracker.service';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { Bid, BidSchema } from '../../database/schemas/bid.schema';
 import { Purchase, PurchaseSchema } from '../../database/schemas/purchase.schema';
+import { Settlement, SettlementSchema } from '../../database/schemas/settlement.schema';
+import { User, UserSchema } from '../../database/schemas/user.schema';
 import { AuctionService } from './services/auction.service';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 
@@ -15,6 +17,8 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
       { name: Asset.name, schema: AssetSchema },
       { name: Bid.name, schema: BidSchema },
       { name: Purchase.name, schema: PurchaseSchema },
+      { name: Settlement.name, schema: SettlementSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     BlockchainModule,
   ],
