@@ -12,6 +12,7 @@ export enum AssetStatus {
   DA_ANCHORED = 'DA_ANCHORED',
   REGISTERED = 'REGISTERED',
   TOKENIZED = 'TOKENIZED',
+  SCHEDULED = 'SCHEDULED',
   LISTED = 'LISTED',
   PAYOUT_COMPLETE = 'PAYOUT_COMPLETE',
   REVOKED = 'REVOKED',
@@ -123,6 +124,8 @@ export class Asset {
     amountRaised?: string; // Total USDC raised from primary sales (for yield calculation)
     active: boolean;
     listedAt: Date;
+    scheduledStartTime?: Date; // For AUCTION: when the auction is scheduled to start
+    scheduledEndTime?: Date; // For AUCTION: when the auction is scheduled to end
     endedAt?: Date; // When the auction/listing ended
     phase?: 'BIDDING' | 'ENDED' | 'SETTLED' | 'FAILED';
     clearingPrice?: string; // For AUCTION: final clearing price after settlement

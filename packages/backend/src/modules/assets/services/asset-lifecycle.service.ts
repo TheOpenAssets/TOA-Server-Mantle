@@ -268,11 +268,46 @@ export class AssetLifecycleService {
     this.logger.log(`Auction ${assetId} will start at ${auctionStartTime.toISOString()}`);
     this.logger.log(`Auction ${assetId} will end at ${auctionEndTime.toISOString()}`);
 
+    // Update asset status to SCHEDULED
+    await this.assetModel.updateOne(
+      { assetId },
+      {
+        $set: {
+          status: AssetStatus.SCHEDULED,
+          'listing.scheduledStartTime': auctionStartTime,
+          'listing.scheduledEndTime': auctionEndTime,
+        },
+      },
+    );
+
+    this.logger.log(`Asset ${assetId} status updated to SCHEDULED`);
+
     // Create AUCTION_SCHEDULED announcement immediately
     await this.announcementService.createAuctionScheduledAnnouncement(
       assetId,
       auctionStartTime,
     );
+
+    // Send notification to originator about auction scheduling
+    try {
+      await this.notificationService.create({
+        userId: asset.originator,
+        walletAddress: asset.originator,
+        header: 'Auction Scheduled',
+        detail: `Your auction for asset ${asset.metadata.invoiceNumber} has been scheduled to start at ${auctionStartTime.toLocaleString()}.`,
+        type: NotificationType.ASSET_STATUS,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_ASSET,
+        actionMetadata: {
+          assetId,
+          scheduledStartTime: auctionStartTime.toISOString(),
+          scheduledEndTime: auctionEndTime.toISOString(),
+        },
+      });
+    } catch (error: any) {
+      this.logger.error(`Failed to send auction scheduled notification: ${error.message}`);
+      // Don't fail the scheduling if notification fails
+    }
 
     // Queue delayed job to activate auction at the scheduled time
     await this.auctionStatusQueue.add(
