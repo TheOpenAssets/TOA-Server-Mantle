@@ -41,20 +41,24 @@ import { AnnouncementsModule } from './modules/announcements/announcements.modul
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const redis = configService.get('redis');
+        const redis = configService.get<any>('redis');
 
+        // Redis Cloud / Railway (TLS)
         if (redis?.url) {
           return {
             connection: {
               url: redis.url,
+              tls: redis.tls,
             },
           };
         }
 
+        // Local development (no TLS)
         return {
           connection: {
             host: redis.host,
             port: redis.port,
+            password: redis.password,
           },
         };
       },
