@@ -1,10 +1,13 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { Queue } from 'bullmq';
 import { createPublicClient, http, webSocket, Address, parseAbiItem } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
 import { ContractLoaderService } from './contract-loader.service';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 
 @Injectable()
 export class EventListenerService implements OnModuleInit {
@@ -15,6 +18,7 @@ export class EventListenerService implements OnModuleInit {
     private configService: ConfigService,
     private contractLoader: ContractLoaderService,
     @InjectQueue('event-processing') private eventQueue: Queue,
+    @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) {
     const wssUrl = this.configService.get('blockchain.wssUrl');
     this.publicClient = createPublicClient({
@@ -57,9 +61,44 @@ export class EventListenerService implements OnModuleInit {
       if (this.contractLoader.hasContract('YieldVault')) {
         this.watchYieldVault();
       }
+
+      // CRITICAL FIX: Watch Transfer events for all existing deployed tokens
+      // This ensures we don't miss events if the backend was restarted after token deployment
+      await this.watchExistingTokens();
     } catch (error) {
       this.logger.error('Error starting event listeners:', error);
       this.logger.warn('Continuing without blockchain event listeners...');
+    }
+  }
+
+  /**
+   * Query database for all deployed tokens and start watching their Transfer events
+   * This is critical for holder tracking after backend restarts
+   */
+  private async watchExistingTokens() {
+    try {
+      // Find all assets that have tokens deployed
+      const assetsWithTokens = await this.assetModel.find({
+        'token.address': { $exists: true, $ne: null },
+      }).select('token.address assetId');
+
+      if (assetsWithTokens.length === 0) {
+        this.logger.log('No deployed tokens found in database - skipping existing token watch setup');
+        return;
+      }
+
+      this.logger.log(`Found ${assetsWithTokens.length} deployed tokens - setting up Transfer event watchers...`);
+
+      for (const asset of assetsWithTokens) {
+        const tokenAddress = asset.token!.address;
+        this.logger.log(`  ✓ Watching transfers for token: ${tokenAddress} (Asset: ${asset.assetId})`);
+        this.watchTokenTransfers(tokenAddress as Address);
+      }
+
+      this.logger.log(`✅ Successfully set up Transfer watchers for ${assetsWithTokens.length} tokens`);
+    } catch (error: any) {
+      this.logger.error(`Failed to watch existing tokens: ${error?.message || error}`);
+      // Don't throw - allow other listeners to continue working
     }
   }
 

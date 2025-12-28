@@ -169,6 +169,34 @@ export class YieldDistributionService {
         throw new Error('Total holder balance is zero - cannot distribute');
       }
 
+      // CRITICAL VALIDATION: Verify total balance matches token supply
+      const expectedTotalSupply = BigInt(asset.tokenParams?.totalSupply || asset.token?.supply || '0');
+
+      if (totalBalance !== expectedTotalSupply) {
+        const percentageTracked = expectedTotalSupply > 0n
+          ? Number((totalBalance * 10000n) / expectedTotalSupply) / 100
+          : 0;
+
+        this.logger.error(
+          `❌ CRITICAL: Holder balances don't match total supply!\n` +
+          `Total Supply: ${expectedTotalSupply.toString()}\n` +
+          `Tracked Holders: ${totalBalance.toString()}\n` +
+          `Percentage Tracked: ${percentageTracked}%\n` +
+          `Holders Found: ${currentHolders.length}\n` +
+          `This will result in incorrect yield distribution!`,
+        );
+
+        throw new Error(
+          `Holder tracking incomplete: Only ${percentageTracked}% of tokens are tracked. ` +
+          `Expected ${expectedTotalSupply} total supply but found ${totalBalance} in holder balances. ` +
+          `Please run transfer event backfill before distributing yield.`,
+        );
+      }
+
+      this.logger.log(
+        `✓ Validation passed: Total holder balances (${totalBalance}) match total supply (${expectedTotalSupply})`,
+      );
+
       // Create distributions based on current balance (pro-rata)
       distributions = currentHolders
         .map(holder => ({
@@ -185,6 +213,25 @@ export class YieldDistributionService {
 
       if (totalTokenDays === 0n) {
         throw new Error('Total token-days is zero - cannot distribute');
+      }
+
+      // VALIDATION: Check if we have a reasonable number of holders
+      const expectedTotalSupply = BigInt(asset.tokenParams?.totalSupply || asset.token?.supply || '0');
+      const holderCount = holderTokenDays.size;
+
+      this.logger.log(
+        `Time-weighted distribution: ${holderCount} unique holders found\n` +
+        `Total token-days: ${totalTokenDays}\n` +
+        `Expected supply: ${expectedTotalSupply}`,
+      );
+
+      // Warning if holder count seems suspiciously low
+      if (holderCount === 1 && expectedTotalSupply > 0n) {
+        this.logger.warn(
+          `⚠️  WARNING: Only 1 holder found for time-weighted distribution. ` +
+          `This holder will receive 100% of the yield. ` +
+          `Ensure this is correct before proceeding.`,
+        );
       }
 
       distributions = Array.from(holderTokenDays.entries())
