@@ -6,6 +6,7 @@ import { Model } from 'mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
+import { User, UserDocument, UserRole } from '../../../database/schemas/user.schema';
 import * as fs from 'fs';
 import { keccak256, toHex } from 'viem';
 import { EigenDAService } from '../services/eigenda.service';
@@ -19,11 +20,42 @@ export class AssetProcessor extends WorkerHost {
 
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectQueue('asset-processing') private assetQueue: Queue,
     private eigenDAService: EigenDAService,
     private notificationService: NotificationService,
   ) {
     super();
+  }
+
+  /**
+   * Helper method to notify all admin users
+   */
+  private async notifyAllAdmins(header: string, detail: string, type: NotificationType, severity: NotificationSeverity, action: NotificationAction, actionMetadata?: any) {
+    try {
+      const admins = await this.userModel.find({ role: UserRole.ADMIN });
+      this.logger.log(`Notifying ${admins.length} admin users: ${header}`);
+
+      for (const admin of admins) {
+        try {
+          await this.notificationService.create({
+            userId: admin.walletAddress,
+            walletAddress: admin.walletAddress,
+            header,
+            detail,
+            type,
+            severity,
+            action,
+            actionMetadata,
+          });
+        } catch (error: any) {
+          this.logger.error(`Failed to send notification to admin ${admin.walletAddress}: ${error.message}`);
+          // Continue notifying other admins even if one fails
+        }
+      }
+    } catch (error: any) {
+      this.logger.error(`Failed to fetch admin users: ${error.message}`);
+    }
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
@@ -122,7 +154,7 @@ export class AssetProcessor extends WorkerHost {
 
     this.logger.log(`Merkle Root built: ${merkleRoot}. Ready for Attestation.`);
 
-    // Send notification for cryptographic verification complete
+    // Send notification to originator
     await this.notificationService.create({
       userId: asset.originator,
       walletAddress: asset.originator,
@@ -133,6 +165,16 @@ export class AssetProcessor extends WorkerHost {
       action: NotificationAction.VIEW_ASSET,
       actionMetadata: { assetId },
     });
+
+    // Notify all admins to review and approve the asset
+    await this.notifyAllAdmins(
+      'New Asset Ready for Compliance Review',
+      `Asset ${asset.metadata.invoiceNumber} (${asset.assetType}) from ${asset.originator} has completed cryptographic verification and is ready for compliance approval.`,
+      NotificationType.ASSET_STATUS,
+      NotificationSeverity.INFO,
+      NotificationAction.VIEW_ASSET,
+      { assetId, originator: asset.originator, assetType: asset.assetType }
+    );
 
     // In a real flow, next step might be ZK Proof generation or direct Attestation
     // We'll stop here or auto-trigger attestation if admin bot is active.

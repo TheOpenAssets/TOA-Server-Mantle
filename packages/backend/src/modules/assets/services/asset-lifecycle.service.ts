@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { Payout, PayoutDocument } from '../../../database/schemas/payout.schema';
+import { User, UserDocument, UserRole } from '../../../database/schemas/user.schema';
 import { CreateAssetDto } from '../dto/create-asset.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { ethers } from 'ethers';
@@ -26,6 +27,7 @@ export class AssetLifecycleService {
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     @InjectModel(Payout.name) private payoutModel: Model<PayoutDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectQueue('asset-processing') private assetQueue: Queue,
     @InjectQueue('auction-status-check') private auctionStatusQueue: Queue,
     private attestationService: AttestationService,
@@ -34,6 +36,36 @@ export class AssetLifecycleService {
     private configService: ConfigService,
     private notificationService: NotificationService,
   ) {}
+
+  /**
+   * Helper method to notify all admin users
+   */
+  private async notifyAllAdmins(header: string, detail: string, type: NotificationType, severity: NotificationSeverity, action: NotificationAction, actionMetadata?: any) {
+    try {
+      const admins = await this.userModel.find({ role: UserRole.ADMIN });
+      this.logger.log(`Notifying ${admins.length} admin users: ${header}`);
+
+      for (const admin of admins) {
+        try {
+          await this.notificationService.create({
+            userId: admin.walletAddress,
+            walletAddress: admin.walletAddress,
+            header,
+            detail,
+            type,
+            severity,
+            action,
+            actionMetadata,
+          });
+        } catch (error: any) {
+          this.logger.error(`Failed to send notification to admin ${admin.walletAddress}: ${error.message}`);
+          // Continue notifying other admins even if one fails
+        }
+      }
+    } catch (error: any) {
+      this.logger.error(`Failed to fetch admin users: ${error.message}`);
+    }
+  }
 
   async getRegisterAssetPayload(assetId: string): Promise<RegisterAssetDto> {
     const asset = await this.assetModel.findOne({ assetId });
@@ -308,6 +340,21 @@ export class AssetLifecycleService {
       this.logger.error(`Failed to send auction scheduled notification: ${error.message}`);
       // Don't fail the scheduling if notification fails
     }
+
+    // Notify all admins about the scheduled auction
+    await this.notifyAllAdmins(
+      'Auction Scheduled',
+      `Auction for asset ${asset.metadata.invoiceNumber} from ${asset.originator} has been scheduled to start at ${auctionStartTime.toLocaleString()}.`,
+      NotificationType.ASSET_STATUS,
+      NotificationSeverity.INFO,
+      NotificationAction.VIEW_ASSET,
+      {
+        assetId,
+        originator: asset.originator,
+        scheduledStartTime: auctionStartTime.toISOString(),
+        scheduledEndTime: auctionEndTime.toISOString(),
+      }
+    );
 
     // Queue delayed job to activate auction at the scheduled time
     await this.auctionStatusQueue.add(

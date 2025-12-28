@@ -6,8 +6,12 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
+import { User, UserDocument, UserRole } from '../../../database/schemas/user.schema';
 import { AnnouncementService } from '../services/announcement.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
+import { NotificationService } from '../../notifications/services/notification.service';
+import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
+import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 
 interface ActivateAuctionJob {
   assetId: string;
@@ -33,12 +37,45 @@ export class AuctionStatusProcessor extends WorkerHost {
     private assetModel: Model<AssetDocument>,
     @InjectModel(Bid.name)
     private bidModel: Model<BidDocument>,
+    @InjectModel(User.name)
+    private userModel: Model<UserDocument>,
     @InjectQueue('auction-status-check')
     private auctionStatusQueue: Queue,
     private announcementService: AnnouncementService,
     private blockchainService: BlockchainService,
+    private notificationService: NotificationService,
   ) {
     super();
+  }
+
+  /**
+   * Helper method to notify all admin users
+   */
+  private async notifyAllAdmins(header: string, detail: string, type: NotificationType, severity: NotificationSeverity, action: NotificationAction, actionMetadata?: any) {
+    try {
+      const admins = await this.userModel.find({ role: UserRole.ADMIN });
+      this.logger.log(`Notifying ${admins.length} admin users: ${header}`);
+
+      for (const admin of admins) {
+        try {
+          await this.notificationService.create({
+            userId: admin.walletAddress,
+            walletAddress: admin.walletAddress,
+            header,
+            detail,
+            type,
+            severity,
+            action,
+            actionMetadata,
+          });
+        } catch (error: any) {
+          this.logger.error(`Failed to send notification to admin ${admin.walletAddress}: ${error.message}`);
+          // Continue notifying other admins even if one fails
+        }
+      }
+    } catch (error: any) {
+      this.logger.error(`Failed to fetch admin users: ${error.message}`);
+    }
   }
 
   async process(job: Job<ActivateAuctionJob | CheckAuctionStatusJob | CheckAuctionEndJob>): Promise<void> {
@@ -115,6 +152,41 @@ export class AuctionStatusProcessor extends WorkerHost {
       );
 
       this.logger.log(`Auction ${assetId} activated at ${actualStartTime.toISOString()}`);
+
+      // Notify originator that auction is now live
+      try {
+        await this.notificationService.create({
+          userId: asset.originator,
+          walletAddress: asset.originator,
+          header: 'Auction Now Live!',
+          detail: `Your auction for asset ${asset.metadata.invoiceNumber} is now live and accepting bids.`,
+          type: NotificationType.ASSET_STATUS,
+          severity: NotificationSeverity.SUCCESS,
+          action: NotificationAction.VIEW_ASSET,
+          actionMetadata: {
+            assetId,
+            listedAt: actualStartTime.toISOString(),
+            transactionHash: txHash,
+          },
+        });
+      } catch (error: any) {
+        this.logger.error(`Failed to send auction live notification to originator: ${error.message}`);
+      }
+
+      // Notify all admins that auction is now live
+      await this.notifyAllAdmins(
+        'Auction Now Live',
+        `Auction for asset ${asset.metadata.invoiceNumber} from ${asset.originator} is now live and accepting bids.`,
+        NotificationType.ASSET_STATUS,
+        NotificationSeverity.INFO,
+        NotificationAction.VIEW_ASSET,
+        {
+          assetId,
+          originator: asset.originator,
+          listedAt: actualStartTime.toISOString(),
+          transactionHash: txHash,
+        }
+      );
 
       // Queue status check job to run 1 minute later
       await this.auctionStatusQueue.add(
