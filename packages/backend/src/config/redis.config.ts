@@ -1,17 +1,22 @@
 import { registerAs } from '@nestjs/config';
 
 export default registerAs('redis', () => {
-  // Railway / Redis Cloud (TLS)
-  if (process.env.REDIS_URL) {
+  const redisUrl = process.env.REDIS_URL;
+
+  if (redisUrl) {
+    const isTls = redisUrl.startsWith('rediss://');
+
     return {
-      url: process.env.REDIS_URL,
-      tls: {
-        rejectUnauthorized: false,
-      },
+      url: redisUrl,
+      tls: isTls
+        ? {
+            rejectUnauthorized: false,
+          }
+        : undefined,
     };
   }
 
-  // Local development (no TLS)
+  // Local fallback
   return {
     host: process.env.REDIS_HOST || '127.0.0.1',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
