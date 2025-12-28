@@ -3,6 +3,9 @@
   "private": true,
   "packageManager": "yarn@1.22.22",
   "type": "module",
+  "engines": {
+    "node": "20.x"
+  },
   "workspaces": [
     "packages/*"
   ],
