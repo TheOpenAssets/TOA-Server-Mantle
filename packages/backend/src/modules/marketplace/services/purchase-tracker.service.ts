@@ -81,6 +81,33 @@ export class PurchaseTrackerService {
 
     this.logger.log(`Purchase recorded: ${purchase._id}`);
 
+    // Update asset.listing.sold with verified amount from transaction
+    try {
+      const currentSold = BigInt(asset.listing?.sold || '0');
+      const purchasedAmount = BigInt(purchaseData.amount);
+      const newSoldAmount = currentSold + purchasedAmount;
+
+      const updateResult = await this.assetModel.updateOne(
+        { assetId: dto.assetId },
+        {
+          $set: {
+            'listing.sold': newSoldAmount.toString(),
+          },
+        },
+      );
+
+      if (updateResult.modifiedCount > 0) {
+        this.logger.log(
+          `Asset ${dto.assetId} listing.sold updated: ${Number(purchasedAmount) / 1e18} tokens added, total sold: ${Number(newSoldAmount) / 1e18} tokens`,
+        );
+      } else {
+        this.logger.warn(`Failed to update asset.listing.sold for ${dto.assetId}`);
+      }
+    } catch (error: any) {
+      this.logger.error(`Error updating asset.listing.sold: ${error.message}`);
+      // Don't fail the purchase if sold tracking update fails
+    }
+
     // Send notification to investor
     try {
       const tokenAmountFormatted = (Number(purchaseData.amount) / 1e18).toFixed(2);

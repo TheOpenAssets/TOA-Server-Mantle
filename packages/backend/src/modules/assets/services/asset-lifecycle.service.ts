@@ -598,7 +598,7 @@ export class AssetLifecycleService {
       });
       this.logger.log(`Payout notification sent to originator ${asset.originator}`);
     } catch (error) {
-      this.logger.error(`Failed to send payout notification: ${error.message}`);
+      this.logger.error(`Failed to send payout notification: ${error}`);
       // Don't throw - notification failure shouldn't fail the payout
     }
 
