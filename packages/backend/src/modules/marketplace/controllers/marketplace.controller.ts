@@ -2,6 +2,8 @@ import { Controller, Get, Post, Param, UseGuards, Query, Body, Request } from '@
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
+import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
+import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PurchaseTrackerService } from '../services/purchase-tracker.service';
 import { BidTrackerService } from '../services/bid-tracker.service';
@@ -13,6 +15,8 @@ import { NotifySettlementDto } from '../dto/notify-settlement.dto';
 export class MarketplaceController {
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
+    @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
+    @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     private purchaseTracker: PurchaseTrackerService,
     private bidTracker: BidTrackerService,
   ) {}
@@ -151,6 +155,124 @@ export class MarketplaceController {
         totalListings: totalListed,
         byIndustry,
       },
+    };
+  }
+
+  @Get('top-grossing')
+  @UseGuards(JwtAuthGuard)
+  async getTopGrossingAssets(@Query('limit') limit?: string) {
+    const limitNum = limit ? parseInt(limit) : 5; // Default to 5
+
+    // Aggregate purchases by assetId
+    const purchaseCounts = await this.purchaseModel.aggregate([
+      {
+        $match: {
+          status: 'CONFIRMED', // Only count confirmed purchases
+        },
+      },
+      {
+        $group: {
+          _id: '$assetId',
+          purchaseCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Aggregate bids by assetId
+    const bidCounts = await this.bidModel.aggregate([
+      {
+        $group: {
+          _id: '$assetId',
+          bidCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Create a map of assetId -> counts
+    const activityMap = new Map<string, { purchaseCount: number; bidCount: number; totalActivity: number }>();
+
+    purchaseCounts.forEach(item => {
+      activityMap.set(item._id, {
+        purchaseCount: item.purchaseCount,
+        bidCount: 0,
+        totalActivity: item.purchaseCount,
+      });
+    });
+
+    bidCounts.forEach(item => {
+      const existing = activityMap.get(item._id);
+      if (existing) {
+        existing.bidCount = item.bidCount;
+        existing.totalActivity += item.bidCount;
+      } else {
+        activityMap.set(item._id, {
+          purchaseCount: 0,
+          bidCount: item.bidCount,
+          totalActivity: item.bidCount,
+        });
+      }
+    });
+
+    // Sort by total activity and get top N
+    const topAssetIds = Array.from(activityMap.entries())
+      .sort((a, b) => b[1].totalActivity - a[1].totalActivity)
+      .slice(0, limitNum)
+      .map(([assetId, counts]) => ({ assetId, ...counts }));
+
+    // Fetch asset details for top assets
+    const assetIds = topAssetIds.map(item => item.assetId);
+    const assets = await this.assetModel
+      .find({ assetId: { $in: assetIds } })
+      .select({
+        assetId: 1,
+        metadata: 1,
+        tokenParams: 1,
+        token: 1,
+        listing: 1,
+        status: 1,
+      });
+
+    // Map assets with their activity counts
+    const result = topAssetIds.map(activityItem => {
+      const asset = assets.find(a => a.assetId === activityItem.assetId);
+      if (!asset) return null;
+
+      // Calculate percentage sold
+      const totalSupply = BigInt(asset.tokenParams?.totalSupply || '0');
+      const sold = BigInt(asset.listing?.sold || '0');
+      const percentageSold = totalSupply > 0n
+        ? Number((sold * 10000n) / totalSupply) / 100
+        : 0;
+
+      return {
+        assetId: asset.assetId,
+        tokenAddress: asset.token?.address,
+        name: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
+        industry: asset.metadata?.industry,
+        faceValue: asset.metadata?.faceValue,
+        currency: asset.metadata?.currency,
+        riskTier: asset.metadata?.riskTier,
+        dueDate: asset.metadata?.dueDate,
+        totalSupply: asset.tokenParams?.totalSupply,
+        sold: asset.listing?.sold || '0',
+        percentageSold,
+        pricePerToken: asset.listing?.price || asset.tokenParams?.pricePerToken,
+        minInvestment: asset.tokenParams?.minInvestment,
+        listingType: asset.listing?.type,
+        listedAt: asset.listing?.listedAt,
+        status: asset.status,
+        activityMetrics: {
+          purchaseCount: activityItem.purchaseCount,
+          bidCount: activityItem.bidCount,
+          totalActivity: activityItem.totalActivity,
+        },
+      };
+    }).filter(item => item !== null);
+
+    return {
+      success: true,
+      count: result.length,
+      assets: result,
     };
   }
 

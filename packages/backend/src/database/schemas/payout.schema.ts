@@ -17,11 +17,17 @@ export class Payout {
   @Prop({ required: true })
   amountFormatted!: string; // Human-readable amount (e.g., "87000 USDC")
 
-  @Prop({ type: [String], required: true })
-  settledBidIds!: string[]; // Array of bid document IDs that contributed to this payout
+  @Prop({ type: [String] })
+  settledBidIds?: string[]; // Array of bid document IDs that contributed to this payout (for AUCTION)
 
-  @Prop({ required: true })
-  settledBidsCount!: number; // Number of settled bids
+  @Prop()
+  settledBidsCount?: number; // Number of settled bids (for AUCTION)
+
+  @Prop({ type: [String] })
+  purchaseIds?: string[]; // Array of purchase document IDs that contributed to this payout (for STATIC)
+
+  @Prop()
+  purchasesCount?: number; // Number of purchases (for STATIC)
 
   @Prop({ required: true })
   transactionHash!: string; // On-chain transaction hash

@@ -6,6 +6,7 @@ import { Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
 import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
+import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { Payout, PayoutDocument } from '../../../database/schemas/payout.schema';
 import { User, UserDocument, UserRole } from '../../../database/schemas/user.schema';
 import { CreateAssetDto } from '../dto/create-asset.dto';
@@ -26,6 +27,7 @@ export class AssetLifecycleService {
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
+    @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     @InjectModel(Payout.name) private payoutModel: Model<PayoutDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectQueue('asset-processing') private assetQueue: Queue,
@@ -553,22 +555,48 @@ export class AssetLifecycleService {
       throw new Error('Asset not found');
     }
 
-    // Calculate total USDC raised from settled bids
-    const settledBids = await this.bidModel.find({
-      assetId,
-      status: { $in: ['SETTLED', 'REFUNDED'] },
-    });
-
-    // Sum up USDC received (only from winning bids - SETTLED status means they got tokens)
     let totalUsdcRaised = BigInt(0);
-    for (const bid of settledBids) {
-      if (bid.status === 'SETTLED') {
-        totalUsdcRaised += BigInt(bid.usdcDeposited);
+    let settledBids: any[] = [];
+    let confirmedPurchases: any[] = [];
+
+    // Handle based on listing type
+    if (asset.listing?.type === 'STATIC') {
+      // For STATIC listings: sum USDC from confirmed purchases
+      this.logger.log(`STATIC listing detected - calculating from purchases`);
+
+      confirmedPurchases = await this.purchaseModel.find({
+        assetId,
+        status: 'CONFIRMED',
+      });
+
+      for (const purchase of confirmedPurchases) {
+        totalUsdcRaised += BigInt(purchase.totalPayment);
       }
+
+      this.logger.log(`Found ${confirmedPurchases.length} confirmed purchases`);
+    } else if (asset.listing?.type === 'AUCTION') {
+      // For AUCTION listings: sum USDC from settled bids
+      this.logger.log(`AUCTION listing detected - calculating from bids`);
+
+      settledBids = await this.bidModel.find({
+        assetId,
+        status: { $in: ['SETTLED', 'REFUNDED'] },
+      });
+
+      // Sum up USDC received (only from winning bids - SETTLED status means they got tokens)
+      for (const bid of settledBids) {
+        if (bid.status === 'SETTLED') {
+          totalUsdcRaised += BigInt(bid.usdcDeposited);
+        }
+      }
+
+      this.logger.log(`Found ${settledBids.filter(b => b.status === 'SETTLED').length} settled bids`);
+    } else {
+      throw new Error(`Unknown or missing listing type: ${asset.listing?.type}`);
     }
 
     if (totalUsdcRaised === BigInt(0)) {
-      throw new Error('No USDC raised yet - no settled bids');
+      throw new Error('No USDC raised yet - no confirmed purchases or settled bids');
     }
 
     this.logger.log(`Total USDC to payout: ${totalUsdcRaised.toString()} (${Number(totalUsdcRaised) / 1e6} USDC)`);
@@ -621,18 +649,27 @@ export class AssetLifecycleService {
     this.logger.log(`Transaction confirmed in block ${receipt.blockNumber}`);
 
     // Create payout record in MongoDB
-    const settledBidsOnly = settledBids.filter(b => b.status === 'SETTLED');
-    const payoutRecord = new this.payoutModel({
+    const payoutData: any = {
       assetId,
       originator: asset.originator,
       amount: totalUsdcRaised.toString(),
       amountFormatted: `${Number(totalUsdcRaised) / 1e6} USDC`,
-      settledBidIds: settledBidsOnly.map(bid => bid._id.toString()),
-      settledBidsCount: settledBidsOnly.length,
       transactionHash: tx.hash,
       blockNumber: Number(receipt.blockNumber),
       paidAt: new Date(),
-    });
+    };
+
+    // Add type-specific data
+    if (asset.listing?.type === 'STATIC') {
+      payoutData.purchaseIds = confirmedPurchases.map(p => p._id.toString());
+      payoutData.purchasesCount = confirmedPurchases.length;
+    } else if (asset.listing?.type === 'AUCTION') {
+      const settledBidsOnly = settledBids.filter(b => b.status === 'SETTLED');
+      payoutData.settledBidIds = settledBidsOnly.map(bid => bid._id.toString());
+      payoutData.settledBidsCount = settledBidsOnly.length;
+    }
+
+    const payoutRecord = new this.payoutModel(payoutData);
 
     await payoutRecord.save();
     this.logger.log(`Payout record saved to MongoDB with ID: ${payoutRecord._id}`);
@@ -669,7 +706,7 @@ export class AssetLifecycleService {
         walletAddress: asset.originator,
         header: 'Payout Complete',
         detail: `Your payout of ${Number(totalUsdcRaised) / 1e6} USDC for asset ${asset.metadata.invoiceNumber} has been successfully transferred to your wallet.`,
-        type: NotificationType.YIELD_DISTRIBUTED,
+        type: NotificationType.PAYOUT_SETTLED,
         severity: NotificationSeverity.SUCCESS,
         action: NotificationAction.VIEW_PORTFOLIO,
         actionMetadata: {
@@ -690,7 +727,8 @@ export class AssetLifecycleService {
       originator: asset.originator,
       totalUsdcRaised: totalUsdcRaised.toString(),
       totalUsdcRaisedFormatted: `${Number(totalUsdcRaised) / 1e6} USDC`,
-      settledBidsCount: settledBidsOnly.length,
+      listingType: asset.listing?.type,
+      transactionCount: asset.listing?.type === 'STATIC' ? confirmedPurchases.length : settledBids.filter(b => b.status === 'SETTLED').length,
       transactionHash: tx.hash,
       blockNumber: receipt.blockNumber.toString(),
       payoutId: payoutRecord._id.toString(),

@@ -10,6 +10,9 @@ import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { TokenHolderTrackingService } from './token-holder-tracking.service';
 import { TransferEventBackfillService } from './transfer-event-backfill.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
+import { NotificationService } from '../../notifications/services/notification.service';
+import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
+import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 import { RecordSettlementDto } from '../dto/yield-ops.dto';
 
 @Injectable()
@@ -23,6 +26,7 @@ export class YieldDistributionService {
     private holderTrackingService: TokenHolderTrackingService,
     private backfillService: TransferEventBackfillService,
     private blockchainService: BlockchainService,
+    private notificationService: NotificationService,
     private configService: ConfigService,
   ) {}
 
@@ -226,6 +230,32 @@ export class YieldDistributionService {
         }));
 
         await this.historyModel.insertMany(historyRecords);
+
+        // Send notifications to each investor
+        for (const distribution of batch) {
+          try {
+            const amountFormatted = (Number(distribution.amount) / 1e6).toFixed(2);
+            await this.notificationService.create({
+              userId: distribution.address,
+              walletAddress: distribution.address,
+              header: 'Yield Distributed',
+              detail: `You have received ${amountFormatted} USDC as yield distribution for your investment.`,
+              type: NotificationType.YIELD_DISTRIBUTED,
+              severity: NotificationSeverity.SUCCESS,
+              action: NotificationAction.VIEW_PORTFOLIO,
+              actionMetadata: {
+                assetId: settlement.assetId,
+                tokenAddress,
+                amount: distribution.amount.toString(),
+                transactionHash: txHash,
+                settlementId,
+              },
+            });
+          } catch (notifError) {
+            this.logger.error(`Failed to send yield notification to ${distribution.address}: ${notifError}`);
+            // Don't throw - notification failure shouldn't fail the distribution
+          }
+        }
       } catch (e) {
         this.logger.error(`Batch distribution failed`, e);
         // Record failure

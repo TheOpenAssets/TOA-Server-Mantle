@@ -7,6 +7,7 @@ import { EigenDAService } from './services/eigenda.service';
 import { AssetProcessor } from './processors/asset.processor';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { Bid, BidSchema } from '../../database/schemas/bid.schema';
+import { Purchase, PurchaseSchema } from '../../database/schemas/purchase.schema';
 import { Payout, PayoutSchema } from '../../database/schemas/payout.schema';
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { AuthModule } from '../auth/auth.module'; // For JwtAuthGuard
@@ -19,6 +20,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     MongooseModule.forFeature([
       { name: Asset.name, schema: AssetSchema },
       { name: Bid.name, schema: BidSchema },
+      { name: Purchase.name, schema: PurchaseSchema },
       { name: Payout.name, schema: PayoutSchema },
       { name: User.name, schema: UserSchema },
     ]),

@@ -174,7 +174,11 @@ export class BlockchainService {
       args: [yieldVaultAddress, BigInt(amount)],
     });
 
-    await this.publicClient.waitForTransactionReceipt({ hash: approvalHash });
+    await this.publicClient.waitForTransactionReceipt({
+      hash: approvalHash,
+      timeout: 180_000, // 3 minute timeout (Mantle RPC can be slow)
+      pollingInterval: 2_000, // Check every 2 seconds
+    });
     this.logger.log(`USDC approved in tx: ${approvalHash}`);
 
     // Step 2: Deposit yield to vault
@@ -187,7 +191,11 @@ export class BlockchainService {
       args: [tokenAddress, BigInt(amount)],
     });
 
-    await this.publicClient.waitForTransactionReceipt({ hash });
+    await this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 180_000, // 3 minute timeout (Mantle RPC can be slow)
+      pollingInterval: 2_000, // Check every 2 seconds
+    });
     this.logger.log(`Yield deposited in tx: ${hash}`);
     return hash;
   }
@@ -206,7 +214,11 @@ export class BlockchainService {
       args: [tokenAddress, holders, amountBigInts],
     });
 
-    await this.publicClient.waitForTransactionReceipt({ hash });
+    await this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 180_000, // 3 minute timeout (Mantle RPC can be slow)
+      pollingInterval: 2_000, // Check every 2 seconds
+    });
     return hash;
   }
 
