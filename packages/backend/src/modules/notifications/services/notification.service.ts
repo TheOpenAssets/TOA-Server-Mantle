@@ -20,6 +20,10 @@ export class NotificationService {
 
   async create(dto: CreateNotificationDto) {
     try {
+      // Normalize wallet addresses to lowercase for case-insensitive matching
+      const normalizedUserId = dto.userId.toLowerCase();
+      const normalizedWallet = dto.walletAddress.toLowerCase();
+
       // 1. Create Base Notification
       const notification = await this.notificationModel.create({
         header: dto.header,
@@ -33,9 +37,9 @@ export class NotificationService {
 
       // 2. Link to User
       await this.userNotificationModel.updateOne(
-        { userId: dto.userId },
+        { userId: normalizedUserId },
         {
-          $setOnInsert: { walletAddress: dto.walletAddress },
+          $setOnInsert: { walletAddress: normalizedWallet },
           $push: {
             notifications: {
               $each: [{ notificationId: notification._id, read: false, receivedAt: new Date() }],
@@ -47,8 +51,8 @@ export class NotificationService {
         { upsert: true }
       );
 
-      // 3. Emit SSE
-      this.sseService.emitToUser(dto.walletAddress, 'notification', {
+      // 3. Emit SSE (use original casing for SSE)
+      this.sseService.emitToUser(normalizedWallet, 'notification', {
         id: notification._id,
         header: dto.header,
         severity: dto.severity,
@@ -63,7 +67,9 @@ export class NotificationService {
   }
 
   async getNotifications(userId: string, filter: 'all' | 'read' | 'unread' = 'all', limit = 20, offset = 0) {
-    const userNotifs = await this.userNotificationModel.findOne({ userId });
+    // Normalize wallet address to lowercase for case-insensitive matching
+    const normalizedUserId = userId.toLowerCase();
+    const userNotifs = await this.userNotificationModel.findOne({ userId: normalizedUserId });
     if (!userNotifs) return { notifications: [], meta: { unreadCount: 0, totalCount: 0 } };
 
     let items = userNotifs.notifications;
@@ -95,7 +101,9 @@ export class NotificationService {
   }
 
   async getNotificationById(userId: string, notificationId: string) {
-    const userNotifs = await this.userNotificationModel.findOne({ userId });
+    // Normalize wallet address to lowercase for case-insensitive matching
+    const normalizedUserId = userId.toLowerCase();
+    const userNotifs = await this.userNotificationModel.findOne({ userId: normalizedUserId });
     if (!userNotifs) {
       throw new Error('User notifications not found');
     }
@@ -124,7 +132,9 @@ export class NotificationService {
   }
 
   async markAsRead(userId: string, notificationId: string) {
-    const userNotifs = await this.userNotificationModel.findOne({ userId });
+    // Normalize wallet address to lowercase for case-insensitive matching
+    const normalizedUserId = userId.toLowerCase();
+    const userNotifs = await this.userNotificationModel.findOne({ userId: normalizedUserId });
     if (!userNotifs) return;
 
     const item = userNotifs.notifications.find(n => n.notificationId.toString() === notificationId);
@@ -137,13 +147,15 @@ export class NotificationService {
   }
 
   async markAllRead(userId: string) {
+    // Normalize wallet address to lowercase for case-insensitive matching
+    const normalizedUserId = userId.toLowerCase();
     await this.userNotificationModel.updateOne(
-      { userId },
+      { userId: normalizedUserId },
       {
-        $set: { 
+        $set: {
             'notifications.$[elem].read': true,
             'notifications.$[elem].readAt': new Date(),
-            'meta.unreadCount': 0 
+            'meta.unreadCount': 0
         },
       },
       { arrayFilters: [{ 'elem.read': false }] }

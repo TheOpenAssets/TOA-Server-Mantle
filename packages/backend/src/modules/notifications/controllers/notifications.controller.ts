@@ -30,33 +30,33 @@ export class NotificationsController {
     @Query('limit') limit = 20,
     @Query('offset') offset = 0,
   ) {
-    return this.notificationService.getNotifications(req.user.userId, filter, Number(limit), Number(offset));
+    return this.notificationService.getNotifications(req.user.walletAddress, filter, Number(limit), Number(offset));
   }
 
   @Get('unread-count')
   @UseGuards(JwtAuthGuard)
   async getUnreadCount(@Req() req: any) {
-    const result = await this.notificationService.getNotifications(req.user.userId, 'all', 1);
+    const result = await this.notificationService.getNotifications(req.user.walletAddress, 'all', 1);
     return { unreadCount: result.meta.unreadCount };
   }
 
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   async getNotificationById(@Req() req: any, @Param('id') id: string) {
-    return this.notificationService.getNotificationById(req.user.userId, id);
+    return this.notificationService.getNotificationById(req.user.walletAddress, id);
   }
 
   @Patch(':id/read')
   @UseGuards(JwtAuthGuard)
   async markRead(@Req() req: any, @Param('id') id: string) {
-    await this.notificationService.markAsRead(req.user.userId, id);
+    await this.notificationService.markAsRead(req.user.walletAddress, id);
     return { success: true };
   }
 
   @Post('mark-all-read')
   @UseGuards(JwtAuthGuard)
   async markAllRead(@Req() req: any) {
-    await this.notificationService.markAllRead(req.user.userId);
+    await this.notificationService.markAllRead(req.user.walletAddress);
     return { success: true };
   }
 }
