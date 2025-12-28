@@ -130,15 +130,6 @@ export class AssetLifecycleService {
       }
     }
 
-    // Ensure minInvestment is in wei (18 decimals)
-    // If frontend sends plain number like "100", convert to wei: 100 * 10^18
-    // If frontend already sends in wei, this will be a no-op (string stays as-is)
-    // Check if minInvestment looks like it's already in wei (has more than 6 digits)
-    const minInvestmentBigInt = BigInt(dto.minInvestment);
-    const minInvestmentWei = minInvestmentBigInt < BigInt(10 ** 6)
-      ? (minInvestmentBigInt * BigInt(10 ** 18)).toString()  // Convert to wei
-      : dto.minInvestment;  // Already in wei
-
     // Create Asset Record
     const asset = new this.assetModel({
       assetId,
@@ -158,7 +149,7 @@ export class AssetLifecycleService {
       tokenParams: {
         totalSupply: dto.totalSupply,
         pricePerToken: finalPricePerToken,
-        minInvestment: minInvestmentWei,
+        minInvestment: dto.minInvestment,
         minRaise: minRaise.toString(),
       },
       files: {

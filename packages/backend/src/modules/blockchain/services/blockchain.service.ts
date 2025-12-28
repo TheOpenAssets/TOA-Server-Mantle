@@ -232,9 +232,9 @@ export class BlockchainService {
     // Convert UUID to bytes32
     const assetIdBytes32 = ('0x' + asset.assetId.replace(/-/g, '').padEnd(64, '0')) as Hash;
 
-    // Get totalSupply (already in wei - 18 decimals)
-    const totalSupplyRaw = asset.tokenParams?.totalSupply || asset.token?.supply || '100000000000000000000000';
-    const totalSupplyWei = BigInt(totalSupplyRaw);
+    // Get totalSupply and convert to wei (18 decimals)
+    const totalSupplyRaw = asset.tokenParams?.totalSupply || asset.token?.supply || '100000';
+    const totalSupplyWei = BigInt(totalSupplyRaw) * BigInt(10 ** 18);
 
     // Determine listing type enum (0 = STATIC, 1 = AUCTION)
     const listingTypeEnum = type === 'STATIC' ? 0 : 1;
