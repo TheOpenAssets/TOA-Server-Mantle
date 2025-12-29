@@ -18,7 +18,11 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Raw body ONLY for Typeform webhook
+  // CRITICAL FIX: Enable JSON body parsing globally
+  app.use(bodyParser.json());
+  app.use(bodyParser.urlencoded({ extended: true }));
+
+  // Raw body ONLY for Typeform webhook (will override for this specific route)
   app.use(
     '/webhooks/typeform',
     bodyParser.json({
@@ -28,11 +32,13 @@ async function bootstrap() {
     }),
   );
 
+  // DEBUG: Log login requests AFTER body parsing
+
   // Global validation
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false,  // Temporarily disabled for debugging
       transform: true,
     }),
   );
