@@ -12,6 +12,9 @@ async function bootstrap() {
       'https://toa-client-mantle.pages.dev',
       'http://localhost:5173',
       'http://localhost:3000',
+      'https://dev.toa-client-mantle.pages.dev',
+      'https://www.openassets.xyz',
+      'https://openassets.xyz'
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization','ngrok-skip-browser-warning'],
