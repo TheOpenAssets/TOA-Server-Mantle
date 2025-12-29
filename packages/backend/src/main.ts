@@ -14,7 +14,7 @@ async function bootstrap() {
       'http://localhost:3000',
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization','ngrok-skip-browser-warning'],
     credentials: true,
   });
 
