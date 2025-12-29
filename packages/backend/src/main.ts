@@ -1,31 +1,44 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import * as express from 'express';
+import { ValidationPipe } from '@nestjs/common';
+import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Raw body middleware for Typeform webhook (must come BEFORE global JSON parser)
-  app.use('/webhooks/typeform', express.json({
-    verify: (req: any, _res, buf) => {
-      req.rawBody = buf.toString('utf8');
-    }
-  }));
-
-  // Global JSON body parser for all other routes with increased limit
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
+  // CORS – must be first
   app.enableCors({
-  origin: [
-    'https://toa-client-mantle.pages.dev',
-    'http://localhost:5173',
-    'http://localhost:3000',
-  ],
-  methods: '*',
-  allowedHeaders: '*',
-});
+    origin: [
+      'https://toa-client-mantle.pages.dev',
+      'http://localhost:5173',
+      'http://localhost:3000',
+    ],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  });
 
-  await app.listen(3000);
+  // Raw body ONLY for Typeform webhook
+  app.use(
+    '/webhooks/typeform',
+    bodyParser.json({
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
+
+  // Global validation
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+
+  const port = process.env.PORT || 3000;
+  await app.listen(port, '0.0.0.0');
 }
+
 void bootstrap();
