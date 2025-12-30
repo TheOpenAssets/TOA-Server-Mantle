@@ -10,6 +10,7 @@ import { Bid, BidSchema } from '../../database/schemas/bid.schema';
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AssetModule } from '../assets/assets.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     }),
     BlockchainModule,
     NotificationsModule,
+    forwardRef(() => AssetModule),
   ],
   controllers: [AnnouncementController],
   providers: [AnnouncementService, AuctionStatusProcessor],

@@ -400,6 +400,136 @@ export class AssetLifecycleService {
     };
   }
 
+  /**
+   * Calculate suggested clearing price for an auction
+   * Algorithm:
+   * 1. Find price where tokens sold >= total supply (100%)
+   * 2. If not found, try 75%, 50%, 25% thresholds (in order)
+   * 3. Return the first threshold met
+   */
+  async calculateSuggestedClearingPrice(assetId: string): Promise<{
+    suggestedPrice: string;
+    tokensAtPrice: string;
+    percentageOfSupply: number;
+    totalBids: number;
+    allBids: any[];
+    priceBreakdown: any[];
+  }> {
+    const asset = await this.assetModel.findOne({ assetId });
+    if (!asset) {
+      throw new Error('Asset not found');
+    }
+
+    const bids = await this.bidModel.find({ assetId }).sort({ price: -1 }).exec();
+    const totalSupply = BigInt(asset.tokenParams.totalSupply);
+
+    if (bids.length === 0) {
+      return {
+        suggestedPrice: asset.listing?.reservePrice || '0',
+        tokensAtPrice: '0',
+        percentageOfSupply: 0,
+        totalBids: 0,
+        allBids: [],
+        priceBreakdown: [],
+      };
+    }
+
+    // Get unique price points sorted descending
+    const uniquePrices = [...new Set(bids.map(b => b.price))].sort((a, b) => {
+      const aNum = BigInt(a);
+      const bNum = BigInt(b);
+      return aNum > bNum ? -1 : aNum < bNum ? 1 : 0;
+    });
+
+    // Calculate cumulative tokens at each price point
+    const priceBreakdown = uniquePrices.map(price => {
+      const priceBigInt = BigInt(price);
+      let cumulativeTokens = BigInt(0);
+      const bidsAtThisPrice = [];
+
+      for (const bid of bids) {
+        if (BigInt(bid.price) >= priceBigInt) {
+          cumulativeTokens += BigInt(bid.tokenAmount);
+          bidsAtThisPrice.push({
+            bidder: bid.bidder,
+            price: bid.price,
+            tokenAmount: bid.tokenAmount,
+            usdcDeposited: bid.usdcDeposited,
+          });
+        }
+      }
+
+      const percentage = Number((cumulativeTokens * BigInt(10000)) / totalSupply) / 100;
+
+      return {
+        price,
+        cumulativeTokens: cumulativeTokens.toString(),
+        percentage,
+        bidsCount: bidsAtThisPrice.length,
+      };
+    });
+
+    // Find clearing price based on thresholds
+    const thresholds = [
+      { percentage: 100, label: '100% (Full Supply)' },
+      { percentage: 75, label: '75% of Supply' },
+      { percentage: 50, label: '50% of Supply' },
+      { percentage: 25, label: '25% of Supply' },
+    ];
+
+    let suggestedPrice = asset.listing?.reservePrice || '0';
+    let tokensAtPrice = '0';
+    let percentageOfSupply = 0;
+
+    for (const threshold of thresholds) {
+      const breakdown = priceBreakdown.find(p => p.percentage >= threshold.percentage);
+      if (breakdown) {
+        suggestedPrice = breakdown.price;
+        tokensAtPrice = breakdown.cumulativeTokens;
+        percentageOfSupply = breakdown.percentage;
+        this.logger.log(
+          `Found clearing price at ${threshold.label}: ${suggestedPrice} (${percentageOfSupply.toFixed(2)}% of supply)`,
+        );
+        break;
+      }
+    }
+
+    // FIX: If no threshold met, calculate tokens at reserve price
+    if (percentageOfSupply === 0 && bids.length > 0) {
+      const reservePrice = BigInt(asset.listing?.reservePrice || '0');
+      let tokensAtReserve = BigInt(0);
+
+      for (const bid of bids) {
+        if (BigInt(bid.price) >= reservePrice) {
+          tokensAtReserve += BigInt(bid.tokenAmount);
+        }
+      }
+
+      tokensAtPrice = tokensAtReserve.toString();
+      percentageOfSupply = Number((tokensAtReserve * BigInt(10000)) / totalSupply) / 100;
+
+      this.logger.log(
+        `No threshold met. Using reserve price ${suggestedPrice} with ${percentageOfSupply.toFixed(2)}% of supply`,
+      );
+    }
+
+    return {
+      suggestedPrice,
+      tokensAtPrice,
+      percentageOfSupply,
+      totalBids: bids.length,
+      allBids: bids.map(b => ({
+        bidder: b.bidder,
+        price: b.price,
+        tokenAmount: b.tokenAmount,
+        usdcDeposited: b.usdcDeposited,
+        status: b.status,
+        createdAt: b.createdAt,
+      })),
+      priceBreakdown,
+    };
+  }
+
   async endAuction(assetId: string, clearingPrice: string, transactionHash: string) {
     this.logger.log(`Ending auction for asset ${assetId} with clearing price ${clearingPrice}`);
 
@@ -412,8 +542,66 @@ export class AssetLifecycleService {
       throw new Error('Asset is not an auction type');
     }
 
-    if (!asset.listing || !asset.listing.active) {
-      throw new Error('Auction is not active');
+    // Check if results are already declared (idempotent behavior)
+    // Only check idempotency if clearing price is ALREADY SET
+    // If listing.active = false but clearingPrice is undefined, we're in ENDED stage waiting for admin to declare results
+    if (asset.listing?.clearingPrice) {
+      // Clearing price already set - check if it matches (idempotent)
+      if (asset.listing.clearingPrice === clearingPrice) {
+        this.logger.log(`Auction ${assetId} results already declared with clearing price ${clearingPrice} - skipping duplicate processing`);
+
+        // Get all bids to calculate results for response
+        const bids = await this.bidModel.find({ assetId }).exec();
+        const clearingPriceBigInt = BigInt(clearingPrice);
+        let tokensSold = BigInt(0);
+        let wonCount = 0;
+        let lostCount = 0;
+
+        // Update bid statuses if not already done (idempotent)
+        for (const bid of bids) {
+          const bidPrice = BigInt(bid.price);
+          if (bidPrice > clearingPriceBigInt) {
+            tokensSold += BigInt(bid.tokenAmount);
+            // Update to WON if not already
+            if (bid.status === 'PENDING') {
+              await this.bidModel.updateOne(
+                { _id: bid._id },
+                { $set: { status: 'WON' } },
+              );
+              wonCount++;
+            }
+          } else {
+            // Update to LOST if not already
+            if (bid.status === 'PENDING') {
+              await this.bidModel.updateOne(
+                { _id: bid._id },
+                { $set: { status: 'LOST' } },
+              );
+              lostCount++;
+            }
+          }
+        }
+
+        if (wonCount > 0 || lostCount > 0) {
+          this.logger.log(`Bid statuses updated (idempotent): ${wonCount} WON, ${lostCount} LOST`);
+        }
+
+        const totalSupply = BigInt(asset.tokenParams.totalSupply);
+        const tokensRemaining = totalSupply - tokensSold;
+
+        return {
+          success: true,
+          assetId,
+          clearingPrice,
+          tokensSold: tokensSold.toString(),
+          tokensRemaining: tokensRemaining.toString(),
+          totalBids: bids.length,
+          transactionHash,
+          message: 'Auction already ended (idempotent)',
+        };
+      } else {
+        throw new Error(`Auction already ended with different clearing price: ${asset.listing?.clearingPrice}`);
+      }
     }
 
     // Update asset with clearing price and mark as ended
@@ -423,6 +611,7 @@ export class AssetLifecycleService {
         $set: {
           'listing.clearingPrice': clearingPrice,
           'listing.active': false,
+          'listing.phase': 'ENDED',
           'listing.endedAt': new Date(),
           'listing.endTransactionHash': transactionHash,
         },
@@ -435,16 +624,33 @@ export class AssetLifecycleService {
     const bids = await this.bidModel.find({ assetId }).exec();
     this.logger.log(`Found ${bids.length} bids for auction ${assetId}`);
 
-    // Calculate tokens sold (bids >= clearing price)
+    // Calculate tokens sold and update bid statuses (bids >= clearing price = WON, else LOST)
     const clearingPriceBigInt = BigInt(clearingPrice);
     let tokensSold = BigInt(0);
+    let wonCount = 0;
+    let lostCount = 0;
 
     for (const bid of bids) {
       const bidPrice = BigInt(bid.price);
-      if (bidPrice >= clearingPriceBigInt) {
+      if (bidPrice > clearingPriceBigInt) {
         tokensSold += BigInt(bid.tokenAmount);
+        // Update bid status to WON
+        await this.bidModel.updateOne(
+          { _id: bid._id },
+          { $set: { status: 'WON' } },
+        );
+        wonCount++;
+      } else {
+        // Update bid status to LOST (includes bids AT clearing price)
+        await this.bidModel.updateOne(
+          { _id: bid._id },
+          { $set: { status: 'LOST' } },
+        );
+        lostCount++;
       }
     }
+
+    this.logger.log(`Bid statuses updated: ${wonCount} WON, ${lostCount} LOST`);
 
     // Calculate remaining tokens
     const totalSupply = BigInt(asset.tokenParams.totalSupply);
@@ -454,13 +660,75 @@ export class AssetLifecycleService {
       `Auction results: Clearing price: ${clearingPrice}, Sold: ${tokensSold.toString()}, Remaining: ${tokensRemaining.toString()}`,
     );
 
-    // Create AUCTION_ENDED announcement
-    await this.announcementService.createAuctionEndedAnnouncement(
+    // Update asset status to AUCTION_DECLARED (results declared by admin)
+    await this.assetModel.updateOne(
+      { assetId },
+      {
+        $set: {
+          status: 'AUCTION_DECLARED', // Results declared by admin
+        },
+      },
+    );
+
+    // Create AUCTION_RESULTS_DECLARED announcement
+    await this.announcementService.createAuctionResultsDeclaredAnnouncement(
       assetId,
       clearingPrice,
       tokensSold.toString(),
       tokensRemaining.toString(),
     );
+
+    // Notify all bidders that auction has ended with the clearing price
+    try {
+      const uniqueBidders = [...new Set(bids.map(b => b.bidder))];
+      this.logger.log(`Notifying ${uniqueBidders.length} bidders that auction has ended`);
+
+      for (const bidderAddress of uniqueBidders) {
+        try {
+          const clearingPriceUSDC = Number(clearingPrice) / 1e6;
+          await this.notificationService.create({
+            userId: bidderAddress,
+            walletAddress: bidderAddress,
+            header: 'Auction Completed',
+            detail: `Auction for asset ${asset.metadata.invoiceNumber} has ended with a clearing price of $${clearingPriceUSDC.toFixed(2)}. Check your portfolio to claim your tokens or refund!`,
+            type: 'ASSET_STATUS' as any,
+            severity: 'SUCCESS' as any,
+            action: 'VIEW_PORTFOLIO' as any,
+            actionMetadata: {
+              assetId,
+              clearingPrice,
+              clearingPriceUSDC: clearingPriceUSDC.toFixed(2),
+              endedAt: new Date().toISOString(),
+            },
+          });
+        } catch (error: any) {
+          this.logger.error(`Failed to notify bidder ${bidderAddress}: ${error.message}`);
+        }
+      }
+
+      this.logger.log(`Sent auction end notifications to ${uniqueBidders.length} bidders`);
+    } catch (error: any) {
+      this.logger.error(`Failed to send bidder notifications: ${error.message}`);
+    }
+
+    // If there are remaining tokens, update listing to allow sales at clearing price
+    if (tokensRemaining > BigInt(0)) {
+      await this.assetModel.updateOne(
+        { assetId },
+        {
+          $set: {
+            'listing.staticPrice': clearingPrice, // Set static price to clearing price
+            'listing.price': clearingPrice, // Also set price field
+            'listing.type': 'STATIC', // Convert to static listing for remaining tokens
+            'listing.active': true, // Re-activate listing for remaining token sales
+          },
+        },
+      );
+
+      this.logger.log(
+        `Remaining tokens (${tokensRemaining.toString()}) now available for purchase at clearing price $${Number(clearingPrice) / 1e6}. Listing re-activated as STATIC.`,
+      );
+    }
 
     return {
       success: true,
@@ -733,6 +1001,109 @@ export class AssetLifecycleService {
       blockNumber: receipt.blockNumber.toString(),
       payoutId: payoutRecord._id.toString(),
       message: 'Payout executed successfully!',
+    };
+  }
+
+  /**
+   * Get purchase history for an asset (for buy history graph)
+   */
+  async getPurchaseHistory(assetId: string) {
+    const asset = await this.assetModel.findOne({ assetId });
+    if (!asset) {
+      throw new Error('Asset not found');
+    }
+
+    const purchases: any[] = [];
+    let totalTokensSold = BigInt(0);
+    let totalUSDCRaised = BigInt(0);
+
+    if (asset.listing?.type === 'STATIC') {
+      // Get confirmed purchases for STATIC listings
+      const confirmedPurchases = await this.purchaseModel
+        .find({ assetId, status: 'CONFIRMED' })
+        .sort({ createdAt: 1 }) // Sort by time ascending
+        .exec();
+
+      for (const purchase of confirmedPurchases) {
+        purchases.push({
+          buyer: purchase.investorWallet,
+          tokenAmount: purchase.amount,
+          price: purchase.price,
+          totalPayment: purchase.totalPayment,
+          timestamp: purchase.createdAt,
+          transactionHash: purchase.txHash,
+          type: 'PURCHASE',
+        });
+
+        totalTokensSold += BigInt(purchase.amount);
+        totalUSDCRaised += BigInt(purchase.totalPayment);
+      }
+    } else if (asset.listing?.type === 'AUCTION') {
+      // Get settled bids for AUCTION listings
+      const settledBids = await this.bidModel
+        .find({ assetId, status: 'SETTLED' })
+        .sort({ createdAt: 1 }) // Sort by time ascending
+        .exec();
+
+      for (const bid of settledBids) {
+        purchases.push({
+          buyer: bid.bidder,
+          tokenAmount: bid.tokenAmount,
+          price: bid.price,
+          totalPayment: bid.usdcDeposited,
+          timestamp: bid.createdAt || new Date(),
+          transactionHash: bid.transactionHash,
+          type: 'BID',
+        });
+
+        totalTokensSold += BigInt(bid.tokenAmount);
+        totalUSDCRaised += BigInt(bid.usdcDeposited);
+      }
+    }
+
+    // Generate chart data with cumulative tokens
+    const chartData: any[] = [];
+    let cumulativeTokens = BigInt(0);
+
+    for (const purchase of purchases) {
+      cumulativeTokens += BigInt(purchase.tokenAmount);
+
+      chartData.push({
+        timestamp: purchase.timestamp,
+        tokensPurchased: purchase.tokenAmount,
+        cumulativeTokens: cumulativeTokens.toString(),
+        price: purchase.price,
+      });
+    }
+
+    // Calculate metadata
+    const totalSupply = BigInt(asset.tokenParams.totalSupply);
+    const percentageSold = totalSupply > BigInt(0)
+      ? Number((totalTokensSold * BigInt(10000)) / totalSupply) / 100
+      : 0;
+
+    const averagePrice = purchases.length > 0
+      ? totalUSDCRaised / BigInt(purchases.length)
+      : BigInt(0);
+
+    const firstPurchaseAt = purchases.length > 0 ? purchases[0].timestamp : undefined;
+    const lastPurchaseAt = purchases.length > 0 ? purchases[purchases.length - 1].timestamp : undefined;
+
+    return {
+      assetId,
+      assetType: asset.listing?.type || asset.assetType,
+      purchases,
+      chartData,
+      totalTokensSold: totalTokensSold.toString(),
+      totalUSDCRaised: totalUSDCRaised.toString(),
+      totalTransactions: purchases.length,
+      metadata: {
+        totalSupply: asset.tokenParams.totalSupply,
+        percentageSold,
+        averagePrice: averagePrice.toString(),
+        firstPurchaseAt,
+        lastPurchaseAt,
+      },
     };
   }
 }
