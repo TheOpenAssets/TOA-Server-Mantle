@@ -558,7 +558,7 @@ export class AssetLifecycleService {
         // Update bid statuses if not already done (idempotent)
         for (const bid of bids) {
           const bidPrice = BigInt(bid.price);
-          if (bidPrice >= clearingPriceBigInt) {
+          if (bidPrice > clearingPriceBigInt) {
             tokensSold += BigInt(bid.tokenAmount);
             // Update to WON if not already
             if (bid.status === 'PENDING') {
@@ -630,7 +630,7 @@ export class AssetLifecycleService {
 
     for (const bid of bids) {
       const bidPrice = BigInt(bid.price);
-      if (bidPrice >= clearingPriceBigInt) {
+      if (bidPrice > clearingPriceBigInt) {
         tokensSold += BigInt(bid.tokenAmount);
         // Update bid status to WON
         await this.bidModel.updateOne(
@@ -639,7 +639,7 @@ export class AssetLifecycleService {
         );
         wonCount++;
       } else {
-        // Update bid status to LOST
+        // Update bid status to LOST (includes bids AT clearing price)
         await this.bidModel.updateOne(
           { _id: bid._id },
           { $set: { status: 'LOST' } },
@@ -665,6 +665,39 @@ export class AssetLifecycleService {
       tokensSold.toString(),
       tokensRemaining.toString(),
     );
+
+    // Notify all bidders that auction has ended with the clearing price
+    try {
+      const uniqueBidders = [...new Set(bids.map(b => b.bidder))];
+      this.logger.log(`Notifying ${uniqueBidders.length} bidders that auction has ended`);
+
+      for (const bidderAddress of uniqueBidders) {
+        try {
+          const clearingPriceUSDC = Number(clearingPrice) / 1e6;
+          await this.notificationService.create({
+            userId: bidderAddress,
+            walletAddress: bidderAddress,
+            header: 'Auction Completed',
+            detail: `Auction for asset ${asset.metadata.invoiceNumber} has ended with a clearing price of $${clearingPriceUSDC.toFixed(2)}. Check your portfolio to claim your tokens or refund!`,
+            type: 'ASSET_STATUS' as any,
+            severity: 'SUCCESS' as any,
+            action: 'VIEW_PORTFOLIO' as any,
+            actionMetadata: {
+              assetId,
+              clearingPrice,
+              clearingPriceUSDC: clearingPriceUSDC.toFixed(2),
+              endedAt: new Date().toISOString(),
+            },
+          });
+        } catch (error: any) {
+          this.logger.error(`Failed to notify bidder ${bidderAddress}: ${error.message}`);
+        }
+      }
+
+      this.logger.log(`Sent auction end notifications to ${uniqueBidders.length} bidders`);
+    } catch (error: any) {
+      this.logger.error(`Failed to send bidder notifications: ${error.message}`);
+    }
 
     // If there are remaining tokens, update listing to allow sales at clearing price
     if (tokensRemaining > BigInt(0)) {

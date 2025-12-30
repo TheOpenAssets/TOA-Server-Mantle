@@ -172,7 +172,7 @@ MIN_RAISE_PERCENTAGE="80"  # Minimum 80% of face value must be raised (80,000 US
 MAX_RAISE_PERCENTAGE="95"  # Maximum 95% of face value (95,000 USD, leaving room for yield)
 
 # Auction Duration
-AUCTION_DURATION="180"  # 240 seconds
+AUCTION_DURATION="300"  # 240 seconds
 
 print_info "Pricing Calculation:"
 print_info "  Face Value: $FACE_VALUE USD"
