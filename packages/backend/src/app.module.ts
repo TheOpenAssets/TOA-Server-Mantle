@@ -21,6 +21,7 @@ import { ComplianceEngineModule } from './modules/compliance-engine/compliance-e
 import { TypeformModule } from './modules/typeform/typeform.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
+import { FaucetModule } from './modules/faucet/faucet.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { AnnouncementsModule } from './modules/announcements/announcements.modul
     TypeformModule,
     MarketplaceModule,
     AnnouncementsModule,
+    FaucetModule,
   ],
   controllers: [AppController],
   providers: [AppService],
