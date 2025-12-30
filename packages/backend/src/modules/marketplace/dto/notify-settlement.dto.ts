@@ -13,7 +13,4 @@ export class NotifySettlementDto {
   @IsNotEmpty()
   bidIndex!: number;
 
-  @IsOptional()
-  @IsNumber()
-  blockNumber?: number;
 }

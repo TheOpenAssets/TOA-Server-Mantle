@@ -431,6 +431,41 @@ ${bidSummary || '  No bids received'}
         `Auction ${assetId} results: Clearing price: ${clearingPrice}, Sold: ${tokensSold}, Remaining: ${tokensRemaining}`,
       );
 
+      // Notify all bidders that auction has ended
+      try {
+        const uniqueBidders = [...new Set(bids.map(b => b.bidder))];
+        this.logger.log(`Notifying ${uniqueBidders.length} bidders that auction has ended`);
+
+        for (const bidderAddress of uniqueBidders) {
+          try {
+            const clearingPriceUSDC = Number(clearingPrice) / 1e6;
+            await this.notificationService.create({
+              userId: bidderAddress,
+              walletAddress: bidderAddress,
+              header: 'Auction Completed',
+              detail: `Auction for asset ${asset.metadata.invoiceNumber} has ended with a clearing price of $${clearingPriceUSDC.toFixed(2)}. Check your portfolio to claim your tokens or refund!`,
+              type: NotificationType.ASSET_STATUS,
+              severity: NotificationSeverity.SUCCESS,
+              action: NotificationAction.VIEW_PORTFOLIO,
+              actionMetadata: {
+                assetId,
+                clearingPrice,
+                clearingPriceUSDC: clearingPriceUSDC.toFixed(2),
+                endedAt: new Date().toISOString(),
+              },
+            });
+          } catch (error: any) {
+            this.logger.error(`Failed to notify bidder ${bidderAddress}: ${error.message}`);
+            // Continue notifying others even if one fails
+          }
+        }
+
+        this.logger.log(`Sent auction end notifications to ${uniqueBidders.length} bidders`);
+      } catch (error: any) {
+        this.logger.error(`Failed to send bidder notifications: ${error.message}`);
+        // Continue execution even if notifications fail
+      }
+
       // Create AUCTION_ENDED announcement
       // Note: Admin should call endAuction endpoint to settle on-chain before this runs
       await this.announcementService.createAuctionEndedAnnouncement(

@@ -110,12 +110,18 @@ export class EventProcessor extends WorkerHost {
     const assetId = this.bytes32ToUuid(assetIdBytes32);
 
     this.logger.log(`Processing settlement for bid ${bidIndex} on ${assetId} by ${bidder}`);
-    
+
+    // Determine status: SETTLED if tokens received, REFUNDED if no tokens (lost bid)
+    const tokensBigInt = BigInt(tokensReceived);
+    const isWinner = tokensBigInt > BigInt(0);
+    const status = isWinner ? BidStatus.SETTLED : BidStatus.REFUNDED;
+
+    // Update bid with settlement details
     await this.bidModel.updateOne(
       { assetId, bidIndex },
       {
         $set: {
-          status: BidStatus.SETTLED,
+          status,
           settledAt: new Date(),
           tokensReceived,
           cost,
@@ -123,6 +129,28 @@ export class EventProcessor extends WorkerHost {
         },
       }
     );
+
+    // Update listing.sold if tokens were received
+    if (isWinner) {
+      const asset = await this.assetModel.findOne({ assetId });
+      if (asset) {
+        const currentSold = BigInt(asset.listing?.sold || '0');
+        const newSold = currentSold + tokensBigInt;
+
+        await this.assetModel.updateOne(
+          { assetId },
+          { $set: { 'listing.sold': newSold.toString() } }
+        );
+
+        this.logger.log(
+          `Updated listing.sold for ${assetId}: ${currentSold.toString()} + ${tokensReceived} = ${newSold.toString()} tokens`
+        );
+      }
+    } else {
+      this.logger.log(
+        `Bid ${bidIndex} refunded for ${assetId}: ${refund} USDC (no tokens allocated)`
+      );
+    }
   }
 
   private async processAssetRegistered(data: any) {
