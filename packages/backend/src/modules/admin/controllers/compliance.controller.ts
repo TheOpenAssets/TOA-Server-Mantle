@@ -1,26 +1,49 @@
-import { Controller, Post, Body, UseGuards, Param } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { IsString, IsNotEmpty, IsNumber } from 'class-validator';
 import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 
 export class ApproveAssetDto {
+  @IsString()
+  @IsNotEmpty()
   assetId!: string;
+
+  @IsString()
+  @IsNotEmpty()
   adminWallet!: string;
 }
 
 export class RejectAssetDto {
+  @IsString()
+  @IsNotEmpty()
   assetId!: string;
+
+  @IsString()
+  @IsNotEmpty()
   reason!: string;
 }
 
 export class ScheduleAuctionDto {
+  @IsString()
+  @IsNotEmpty()
   assetId!: string;
+
+  @IsNumber()
   startDelayMinutes!: number; // Minutes from now when auction should start
 }
 
 export class EndAuctionDto {
+  @IsString()
+  @IsNotEmpty()
   assetId!: string;
+
+  @IsString()
+  @IsNotEmpty()
   clearingPrice!: string; // Clearing price in USDC wei (6 decimals)
+
+  @IsString()
+  @IsNotEmpty()
   transactionHash!: string; // Transaction hash from endAuction call
 }
 
