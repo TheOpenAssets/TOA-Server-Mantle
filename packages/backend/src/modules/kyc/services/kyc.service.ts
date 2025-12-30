@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -8,13 +8,22 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { DocumentStorageService } from './document-storage.service';
+import { BlockchainService } from '../../blockchain/services/blockchain.service';
+import { NotificationService } from '../../notifications/services/notification.service';
+import { NotificationType } from '../../notifications/enums/notification-type.enum';
+import { NotificationSeverity } from '../../notifications/enums/notification-type.enum';
+import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 
 @Injectable()
 export class KycService {
+  private readonly logger = new Logger(KycService.name);
+
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private storageService: DocumentStorageService,
     @InjectQueue('kyc-verification') private kycQueue: Queue,
+    private blockchainService: BlockchainService,
+    private notificationService: NotificationService,
   ) {}
 
   async uploadDocument(user: UserDocument, file: Express.Multer.File) {
@@ -128,6 +137,7 @@ export class KycService {
       throw new NotFoundException('No KYC document found');
     }
 
+    // Update KYC status in database
     await this.userModel.updateOne(
       { _id: user._id },
       {
@@ -140,6 +150,33 @@ export class KycService {
         },
       },
     );
+
+    // Register investor identity on blockchain
+    try {
+      this.logger.log(`🔗 Registering investor ${fullUser.walletAddress} on blockchain...`);
+      const txHash = await this.blockchainService.registerIdentity(fullUser.walletAddress);
+      this.logger.log(`✅ Investor registered on blockchain: ${txHash}`);
+
+      // Send success notification
+      await this.notificationService.create({
+        userId: fullUser.walletAddress,
+        walletAddress: fullUser.walletAddress,
+        header: 'KYC Verified - Ready to Invest!',
+        detail: 'Your KYC has been approved and your identity has been registered on-chain. You can now purchase RWA tokens!',
+        type: NotificationType.KYC_STATUS,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_MARKETPLACE,
+        actionMetadata: {
+          txHash,
+        },
+      });
+
+      this.logger.log(`📧 Notification sent to ${fullUser.walletAddress}`);
+    } catch (error) {
+      this.logger.error(`Failed to register investor on blockchain: ${error}`);
+      // Don't fail the whole operation if blockchain registration fails
+      // KYC is still approved in database
+    }
 
     return {
       message: 'KYC manually approved (testing mode)',
