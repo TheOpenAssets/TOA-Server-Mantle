@@ -154,7 +154,7 @@ print_info "Uploading asset with auction parameters..."
 INVOICE_NUMBER="INV-AUCTION-$(date +%s | tail -c 7)"
 
 # Invoice Details
-FACE_VALUE="100000"  # Face value in USD (no decimals)
+FACE_VALUE="100"  # Face value in USD (no decimals)
 CURRENCY="USD"
 ISSUE_DATE="2025-01-01"
 DUE_DATE="2025-07-01"
@@ -163,8 +163,8 @@ INDUSTRY="Technology"
 RISK_TIER="A"
 
 # Token Parameters
-TOTAL_SUPPLY="100000000000000000000000"  # 100,000 tokens (18 decimals)
-MIN_INVESTMENT="1000000000000000000000"  # 1,000 USDC (minimum investment per bidder, 18 decimals)
+TOTAL_SUPPLY="100000000000000000000"  # 100,000 tokens (18 decimals)
+MIN_INVESTMENT="10000000000000000000"  # 1,000 USDC (minimum investment per bidder, 18 decimals)
 
 # Raise Parameters (as percentage of face value)
 # Platform fee is 1.5%, we want 5% margin for yield = 95% max
@@ -172,7 +172,7 @@ MIN_RAISE_PERCENTAGE="80"  # Minimum 80% of face value must be raised (80,000 US
 MAX_RAISE_PERCENTAGE="95"  # Maximum 95% of face value (95,000 USD, leaving room for yield)
 
 # Auction Duration
-AUCTION_DURATION="900"  # 15 minutes in seconds
+AUCTION_DURATION="30"  # 30 seconds
 
 print_info "Pricing Calculation:"
 print_info "  Face Value: $FACE_VALUE USD"

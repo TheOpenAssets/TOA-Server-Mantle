@@ -12,6 +12,7 @@ import { BlockchainService } from '../../blockchain/services/blockchain.service'
 import { NotificationService } from '../../notifications/services/notification.service';
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
 
 interface ActivateAuctionJob {
   assetId: string;
@@ -44,6 +45,7 @@ export class AuctionStatusProcessor extends WorkerHost {
     private announcementService: AnnouncementService,
     private blockchainService: BlockchainService,
     private notificationService: NotificationService,
+    private assetLifecycleService: AssetLifecycleService,
   ) {
     super();
   }
@@ -292,6 +294,63 @@ export class AuctionStatusProcessor extends WorkerHost {
       // Fetch all bids for this auction
       const bids = await this.bidModel.find({ assetId }).sort({ price: -1 }).exec();
       this.logger.log(`Found ${bids.length} bids for auction ${assetId}`);
+
+      // Calculate suggested clearing price and notify admins
+      try {
+        const clearingPriceAnalysis = await this.assetLifecycleService.calculateSuggestedClearingPrice(assetId);
+
+        this.logger.log(
+          `Suggested clearing price for ${assetId}: ${clearingPriceAnalysis.suggestedPrice} ` +
+          `(${clearingPriceAnalysis.percentageOfSupply.toFixed(2)}% of supply, ${clearingPriceAnalysis.totalBids} bids)`,
+        );
+
+        // Format bid summary for admin notification
+        const bidSummary = clearingPriceAnalysis.priceBreakdown
+          .slice(0, 5) // Top 5 price points
+          .map(
+            (p) =>
+              `  • $${(Number(p.price) / 1e6).toFixed(2)}: ${p.bidsCount} bids, ${p.percentage.toFixed(1)}% supply`,
+          )
+          .join('\n');
+
+        const notificationDetail = `
+Auction for ${asset.metadata.invoiceNumber} has ended!
+
+📊 Suggested Clearing Price: $${(Number(clearingPriceAnalysis.suggestedPrice) / 1e6).toFixed(2)}
+   → Sells ${clearingPriceAnalysis.percentageOfSupply.toFixed(1)}% of token supply
+   → ${(Number(clearingPriceAnalysis.tokensAtPrice) / 1e18).toFixed(0)} tokens sold
+
+📈 Bid Summary (${clearingPriceAnalysis.totalBids} total bids):
+${bidSummary || '  No bids received'}
+
+⚠️ Action Required: Please review bids and set the final clearing price via the admin panel.
+        `.trim();
+
+        // Notify all admins with suggested clearing price
+        await this.notifyAllAdmins(
+          'Auction Ended - Action Required',
+          notificationDetail,
+          NotificationType.SYSTEM_ALERT,
+          NotificationSeverity.WARNING,
+          NotificationAction.VIEW_ASSET,
+          {
+            assetId,
+            suggestedClearingPrice: clearingPriceAnalysis.suggestedPrice,
+            tokensAtPrice: clearingPriceAnalysis.tokensAtPrice,
+            percentageOfSupply: clearingPriceAnalysis.percentageOfSupply,
+            totalBids: clearingPriceAnalysis.totalBids,
+            allBids: clearingPriceAnalysis.allBids,
+            priceBreakdown: clearingPriceAnalysis.priceBreakdown,
+          },
+        );
+
+        this.logger.log(`Sent clearing price suggestion to all admins for auction ${assetId}`);
+      } catch (error) {
+        this.logger.error(
+          `Failed to calculate/send clearing price suggestion for ${assetId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        // Continue execution even if suggestion fails
+      }
 
       // ==============================================
       // MANUAL MODE: Get clearing price set by admin

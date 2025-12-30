@@ -400,6 +400,117 @@ export class AssetLifecycleService {
     };
   }
 
+  /**
+   * Calculate suggested clearing price for an auction
+   * Algorithm:
+   * 1. Find price where tokens sold >= total supply (100%)
+   * 2. If not found, try 75%, 50%, 25% thresholds (in order)
+   * 3. Return the first threshold met
+   */
+  async calculateSuggestedClearingPrice(assetId: string): Promise<{
+    suggestedPrice: string;
+    tokensAtPrice: string;
+    percentageOfSupply: number;
+    totalBids: number;
+    allBids: any[];
+    priceBreakdown: any[];
+  }> {
+    const asset = await this.assetModel.findOne({ assetId });
+    if (!asset) {
+      throw new Error('Asset not found');
+    }
+
+    const bids = await this.bidModel.find({ assetId }).sort({ price: -1 }).exec();
+    const totalSupply = BigInt(asset.tokenParams.totalSupply);
+
+    if (bids.length === 0) {
+      return {
+        suggestedPrice: asset.listing?.reservePrice || '0',
+        tokensAtPrice: '0',
+        percentageOfSupply: 0,
+        totalBids: 0,
+        allBids: [],
+        priceBreakdown: [],
+      };
+    }
+
+    // Get unique price points sorted descending
+    const uniquePrices = [...new Set(bids.map(b => b.price))].sort((a, b) => {
+      const aNum = BigInt(a);
+      const bNum = BigInt(b);
+      return aNum > bNum ? -1 : aNum < bNum ? 1 : 0;
+    });
+
+    // Calculate cumulative tokens at each price point
+    const priceBreakdown = uniquePrices.map(price => {
+      const priceBigInt = BigInt(price);
+      let cumulativeTokens = BigInt(0);
+      const bidsAtThisPrice = [];
+
+      for (const bid of bids) {
+        if (BigInt(bid.price) >= priceBigInt) {
+          cumulativeTokens += BigInt(bid.tokenAmount);
+          bidsAtThisPrice.push({
+            bidder: bid.bidder,
+            price: bid.price,
+            tokenAmount: bid.tokenAmount,
+            usdcDeposited: bid.usdcDeposited,
+          });
+        }
+      }
+
+      const percentage = Number((cumulativeTokens * BigInt(10000)) / totalSupply) / 100;
+
+      return {
+        price,
+        cumulativeTokens: cumulativeTokens.toString(),
+        percentage,
+        bidsCount: bidsAtThisPrice.length,
+      };
+    });
+
+    // Find clearing price based on thresholds
+    const thresholds = [
+      { percentage: 100, label: '100% (Full Supply)' },
+      { percentage: 75, label: '75% of Supply' },
+      { percentage: 50, label: '50% of Supply' },
+      { percentage: 25, label: '25% of Supply' },
+    ];
+
+    let suggestedPrice = asset.listing?.reservePrice || '0';
+    let tokensAtPrice = '0';
+    let percentageOfSupply = 0;
+
+    for (const threshold of thresholds) {
+      const breakdown = priceBreakdown.find(p => p.percentage >= threshold.percentage);
+      if (breakdown) {
+        suggestedPrice = breakdown.price;
+        tokensAtPrice = breakdown.cumulativeTokens;
+        percentageOfSupply = breakdown.percentage;
+        this.logger.log(
+          `Found clearing price at ${threshold.label}: ${suggestedPrice} (${percentageOfSupply.toFixed(2)}% of supply)`,
+        );
+        break;
+      }
+    }
+
+    return {
+      suggestedPrice,
+      tokensAtPrice,
+      percentageOfSupply,
+      totalBids: bids.length,
+      allBids: bids.map(b => ({
+        bidder: b.bidder,
+        price: b.price,
+        tokenAmount: b.tokenAmount,
+        usdcDeposited: b.usdcDeposited,
+        status: b.status,
+        createdAt: b.createdAt,
+      })),
+      priceBreakdown,
+    };
+  }
+
   async endAuction(assetId: string, clearingPrice: string, transactionHash: string) {
     this.logger.log(`Ending auction for asset ${assetId} with clearing price ${clearingPrice}`);
 
@@ -423,6 +534,7 @@ export class AssetLifecycleService {
         $set: {
           'listing.clearingPrice': clearingPrice,
           'listing.active': false,
+          'listing.phase': 'ENDED',
           'listing.endedAt': new Date(),
           'listing.endTransactionHash': transactionHash,
         },
