@@ -21,27 +21,18 @@ import type {
   TypedLogDescription,
   TypedListener,
   TypedContractMethod,
-} from "../../common";
+} from "../../../../../common";
 
-export interface RWATokenInterface extends Interface {
+export interface ERC20BurnableInterface extends Interface {
   getFunction(
     nameOrSignature:
       | "allowance"
       | "approve"
-      | "assetId"
       | "balanceOf"
       | "burn"
       | "burnFrom"
-      | "compliance"
       | "decimals"
-      | "forcedTransfer"
-      | "identityRegistry"
-      | "issuer"
       | "name"
-      | "owner"
-      | "paused"
-      | "setCompliance"
-      | "setPaused"
       | "symbol"
       | "totalSupply"
       | "transfer"
@@ -58,7 +49,6 @@ export interface RWATokenInterface extends Interface {
     functionFragment: "approve",
     values: [AddressLike, BigNumberish]
   ): string;
-  encodeFunctionData(functionFragment: "assetId", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "balanceOf",
     values: [AddressLike]
@@ -68,28 +58,8 @@ export interface RWATokenInterface extends Interface {
     functionFragment: "burnFrom",
     values: [AddressLike, BigNumberish]
   ): string;
-  encodeFunctionData(
-    functionFragment: "compliance",
-    values?: undefined
-  ): string;
   encodeFunctionData(functionFragment: "decimals", values?: undefined): string;
-  encodeFunctionData(
-    functionFragment: "forcedTransfer",
-    values: [AddressLike, AddressLike, BigNumberish]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "identityRegistry",
-    values?: undefined
-  ): string;
-  encodeFunctionData(functionFragment: "issuer", values?: undefined): string;
   encodeFunctionData(functionFragment: "name", values?: undefined): string;
-  encodeFunctionData(functionFragment: "owner", values?: undefined): string;
-  encodeFunctionData(functionFragment: "paused", values?: undefined): string;
-  encodeFunctionData(
-    functionFragment: "setCompliance",
-    values: [AddressLike]
-  ): string;
-  encodeFunctionData(functionFragment: "setPaused", values: [boolean]): string;
   encodeFunctionData(functionFragment: "symbol", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "totalSupply",
@@ -106,29 +76,11 @@ export interface RWATokenInterface extends Interface {
 
   decodeFunctionResult(functionFragment: "allowance", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "approve", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "assetId", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "balanceOf", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "burn", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "burnFrom", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "compliance", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "decimals", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "forcedTransfer",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "identityRegistry",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(functionFragment: "issuer", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "name", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "paused", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "setCompliance",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(functionFragment: "setPaused", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "symbol", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "totalSupply",
@@ -177,11 +129,11 @@ export namespace TransferEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
-export interface RWAToken extends BaseContract {
-  connect(runner?: ContractRunner | null): RWAToken;
+export interface ERC20Burnable extends BaseContract {
+  connect(runner?: ContractRunner | null): ERC20Burnable;
   waitForDeployment(): Promise<this>;
 
-  interface: RWATokenInterface;
+  interface: ERC20BurnableInterface;
 
   queryFilter<TCEvent extends TypedContractEvent>(
     event: TCEvent,
@@ -232,8 +184,6 @@ export interface RWAToken extends BaseContract {
     "nonpayable"
   >;
 
-  assetId: TypedContractMethod<[], [string], "view">;
-
   balanceOf: TypedContractMethod<[account: AddressLike], [bigint], "view">;
 
   burn: TypedContractMethod<[value: BigNumberish], [void], "nonpayable">;
@@ -244,33 +194,9 @@ export interface RWAToken extends BaseContract {
     "nonpayable"
   >;
 
-  compliance: TypedContractMethod<[], [string], "view">;
-
   decimals: TypedContractMethod<[], [bigint], "view">;
 
-  forcedTransfer: TypedContractMethod<
-    [from: AddressLike, to: AddressLike, amount: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-
-  identityRegistry: TypedContractMethod<[], [string], "view">;
-
-  issuer: TypedContractMethod<[], [string], "view">;
-
   name: TypedContractMethod<[], [string], "view">;
-
-  owner: TypedContractMethod<[], [string], "view">;
-
-  paused: TypedContractMethod<[], [boolean], "view">;
-
-  setCompliance: TypedContractMethod<
-    [_compliance: AddressLike],
-    [void],
-    "nonpayable"
-  >;
-
-  setPaused: TypedContractMethod<[_paused: boolean], [void], "nonpayable">;
 
   symbol: TypedContractMethod<[], [string], "view">;
 
@@ -307,9 +233,6 @@ export interface RWAToken extends BaseContract {
     "nonpayable"
   >;
   getFunction(
-    nameOrSignature: "assetId"
-  ): TypedContractMethod<[], [string], "view">;
-  getFunction(
     nameOrSignature: "balanceOf"
   ): TypedContractMethod<[account: AddressLike], [bigint], "view">;
   getFunction(
@@ -323,39 +246,11 @@ export interface RWAToken extends BaseContract {
     "nonpayable"
   >;
   getFunction(
-    nameOrSignature: "compliance"
-  ): TypedContractMethod<[], [string], "view">;
-  getFunction(
     nameOrSignature: "decimals"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
-    nameOrSignature: "forcedTransfer"
-  ): TypedContractMethod<
-    [from: AddressLike, to: AddressLike, amount: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-  getFunction(
-    nameOrSignature: "identityRegistry"
-  ): TypedContractMethod<[], [string], "view">;
-  getFunction(
-    nameOrSignature: "issuer"
-  ): TypedContractMethod<[], [string], "view">;
-  getFunction(
     nameOrSignature: "name"
   ): TypedContractMethod<[], [string], "view">;
-  getFunction(
-    nameOrSignature: "owner"
-  ): TypedContractMethod<[], [string], "view">;
-  getFunction(
-    nameOrSignature: "paused"
-  ): TypedContractMethod<[], [boolean], "view">;
-  getFunction(
-    nameOrSignature: "setCompliance"
-  ): TypedContractMethod<[_compliance: AddressLike], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "setPaused"
-  ): TypedContractMethod<[_paused: boolean], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "symbol"
   ): TypedContractMethod<[], [string], "view">;

@@ -154,7 +154,7 @@ print_info "Uploading asset with static listing parameters..."
 INVOICE_NUMBER="INV-STATIC-$(date +%s | tail -c 7)"
 
 # Invoice Details
-FACE_VALUE="100000"  # Face value in USD (no decimals)
+FACE_VALUE="100"  # Face value in USD (no decimals)
 CURRENCY="USD"
 ISSUE_DATE="2025-01-01"
 DUE_DATE="2025-07-01"
@@ -163,8 +163,8 @@ INDUSTRY="Technology"
 RISK_TIER="A"
 
 # Token Parameters
-TOTAL_SUPPLY="100000000000000000000000"  # 100,000 tokens (18 decimals)
-MIN_INVESTMENT="1000000000000000000000"  # 1,000 tokens minimum investment (18 decimals)
+TOTAL_SUPPLY="100000000000000000000"  # 100 tokens (18 decimals)
+MIN_INVESTMENT="10000000000000000000"  # 10 tokens minimum investment (18 decimals)
 
 # Raise Parameters (as percentage of face value)
 # Platform fee is 1.5%, we want 5% margin for yield = 95% max
@@ -243,7 +243,7 @@ echo "  • Issue Date: $ISSUE_DATE"
 echo "  • Due Date: $DUE_DATE"
 echo ""
 print_info "Calculated Static Listing Parameters:"
-echo "  • Total Supply: 100,000 tokens"
+echo "  • Total Supply: $TOTAL_SUPPLY tokens"
 echo "  • Min Raise: ${MIN_RAISE_PERCENTAGE}% ($MIN_RAISE_USD USD)"
 echo "  • Max Raise: ${MAX_RAISE_PERCENTAGE}% ($MAX_RAISE_USD USD)"
 echo "  • Min Price/Token: \$${MIN_PRICE_USD} USD"

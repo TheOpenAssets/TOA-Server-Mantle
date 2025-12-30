@@ -136,16 +136,16 @@ async function main() {
     const formData = new FormData();
     formData.append('file', fs.createReadStream(INVOICE_FILE_PATH));
     formData.append('invoiceNumber', 'INV-2025-' + Date.now().toString().slice(-6));
-    formData.append('faceValue', '100000');
+    formData.append('faceValue', '100');
     formData.append('currency', 'USD');
     formData.append('issueDate', '2025-01-01');
     formData.append('dueDate', '2025-07-01');
     formData.append('buyerName', 'Tech Solutions Inc');
     formData.append('industry', 'Technology');
     formData.append('riskTier', 'A');
-    formData.append('totalSupply', '100000');
+    formData.append('totalSupply', '100');
     formData.append('pricePerToken', '1');
-    formData.append('minInvestment', '1000');
+    formData.append('minInvestment', '10');
 
     log('Uploading asset...');
 

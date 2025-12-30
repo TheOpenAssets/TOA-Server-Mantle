@@ -1,12 +1,12 @@
 {
   "network": "mantleTestnet",
-  "timestamp": "2025-12-30T07:13:03.954Z",
+  "timestamp": "2025-12-30T08:42:35.663Z",
   "contracts": {
     "AttestationRegistry": "0x03FE7d3736402D140659e7bD92B64808E31C3f51",
     "TrustedIssuersRegistry": "0xf63B563b6D438122cBC87f4356e60b8BB3Bc53E2",
     "IdentityRegistry": "0x2E310C62A225033055E88B690F8d054ece8bcbC4",
-    "YieldVault": "0x181f7e1c7F5F8a18f32FF2FfEF6162C9771f75e5",
-    "TokenFactory": "0x511B307A774761d029b3B27B2631104C04aF5561",
+    "YieldVault": "0xa05bDf67483EB6ba5CcA0dc81543DeD5Ed845Da7",
+    "TokenFactory": "0x7C75795Cf41ee32fB4FEB89964d7591F0a44BcfE",
     "PrimaryMarketplace": "0x96183D507Bbb0dA7d78192dce7FBC8C1f209061C",
     "USDC": "0x9A54Bad93a00Bf1232D4e636f5e53055Dc0b8238",
     "Faucet": "0x643b8c16F894B39399506cC921efa68d61A14905"
