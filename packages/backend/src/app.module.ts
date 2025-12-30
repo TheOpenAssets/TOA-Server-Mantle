@@ -22,6 +22,7 @@ import { TypeformModule } from './modules/typeform/typeform.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
 import { FaucetModule } from './modules/faucet/faucet.module';
+import { LeverageModule } from './modules/leverage/leverage.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { FaucetModule } from './modules/faucet/faucet.module';
     MarketplaceModule,
     AnnouncementsModule,
     FaucetModule,
+    LeverageModule,
   ],
   controllers: [AppController],
   providers: [AppService],
