@@ -3,4 +3,6 @@
 /* eslint-disable */
 import type * as faucetSol from "./Faucet.sol";
 export type { faucetSol };
+export type { MockFluxionDEX } from "./MockFluxionDEX";
+export type { MockMETH } from "./MockMETH";
 export type { MockUSDC } from "./MockUSDC";

@@ -2,4 +2,6 @@
 /* tslint:disable */
 /* eslint-disable */
 export * as faucetSol from "./Faucet.sol";
+export { MockFluxionDEX__factory } from "./MockFluxionDEX__factory";
+export { MockMETH__factory } from "./MockMETH__factory";
 export { MockUSDC__factory } from "./MockUSDC__factory";

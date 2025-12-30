@@ -2,5 +2,6 @@
 /* tslint:disable */
 /* eslint-disable */
 export * as core from "./core";
+export * as integrations from "./integrations";
 export * as marketplace from "./marketplace";
 export * as test from "./test";

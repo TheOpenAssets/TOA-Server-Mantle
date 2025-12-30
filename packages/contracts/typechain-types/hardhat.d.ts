@@ -14,6 +14,10 @@ import * as Contracts from ".";
 declare module "hardhat/types/runtime" {
   interface HardhatEthersHelpers extends HardhatEthersHelpersBase {
     getContractFactory(
+      name: "Ownable",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.Ownable__factory>;
+    getContractFactory(
       name: "IERC1155Errors",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.IERC1155Errors__factory>;
@@ -50,6 +54,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.SafeCast__factory>;
     getContractFactory(
+      name: "ReentrancyGuard",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.ReentrancyGuard__factory>;
+    getContractFactory(
       name: "Strings",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.Strings__factory>;
@@ -66,9 +74,29 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.IdentityRegistry__factory>;
     getContractFactory(
+      name: "IFluxionIntegration",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IFluxionIntegration__factory>;
+    getContractFactory(
+      name: "IMETHPriceOracle",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IMETHPriceOracle__factory>;
+    getContractFactory(
+      name: "ISeniorPool",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.ISeniorPool__factory>;
+    getContractFactory(
+      name: "LeverageVault",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.LeverageVault__factory>;
+    getContractFactory(
       name: "RWAToken",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.RWAToken__factory>;
+    getContractFactory(
+      name: "SeniorPool",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.SeniorPool__factory>;
     getContractFactory(
       name: "TokenFactory",
       signerOrOptions?: ethers.Signer | FactoryOptions
@@ -86,6 +114,18 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.YieldVault__factory>;
     getContractFactory(
+      name: "FluxionIntegration",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.FluxionIntegration__factory>;
+    getContractFactory(
+      name: "IFluxionDEX",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IFluxionDEX__factory>;
+    getContractFactory(
+      name: "IMETHPriceOracle",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IMETHPriceOracle__factory>;
+    getContractFactory(
       name: "PrimaryMarket",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.PrimaryMarket__factory>;
@@ -98,11 +138,24 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.MockUSDC__factory>;
     getContractFactory(
+      name: "MockFluxionDEX",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.MockFluxionDEX__factory>;
+    getContractFactory(
+      name: "MockMETH",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.MockMETH__factory>;
+    getContractFactory(
       name: "MockUSDC",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.MockUSDC__factory>;
 
     getContractAt(
+      name: "Ownable",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.Ownable>;
+    getContractAt(
       name: "IERC1155Errors",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -148,6 +201,11 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.SafeCast>;
     getContractAt(
+      name: "ReentrancyGuard",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.ReentrancyGuard>;
+    getContractAt(
       name: "Strings",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -168,10 +226,35 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.IdentityRegistry>;
     getContractAt(
+      name: "IFluxionIntegration",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IFluxionIntegration>;
+    getContractAt(
+      name: "IMETHPriceOracle",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IMETHPriceOracle>;
+    getContractAt(
+      name: "ISeniorPool",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.ISeniorPool>;
+    getContractAt(
+      name: "LeverageVault",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.LeverageVault>;
+    getContractAt(
       name: "RWAToken",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.RWAToken>;
+    getContractAt(
+      name: "SeniorPool",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.SeniorPool>;
     getContractAt(
       name: "TokenFactory",
       address: string | ethers.Addressable,
@@ -193,6 +276,21 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.YieldVault>;
     getContractAt(
+      name: "FluxionIntegration",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.FluxionIntegration>;
+    getContractAt(
+      name: "IFluxionDEX",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IFluxionDEX>;
+    getContractAt(
+      name: "IMETHPriceOracle",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IMETHPriceOracle>;
+    getContractAt(
       name: "PrimaryMarket",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -207,6 +305,16 @@ declare module "hardhat/types/runtime" {
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.MockUSDC>;
+    getContractAt(
+      name: "MockFluxionDEX",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.MockFluxionDEX>;
+    getContractAt(
+      name: "MockMETH",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.MockMETH>;
     getContractAt(
       name: "MockUSDC",
       address: string | ethers.Addressable,
@@ -214,6 +322,10 @@ declare module "hardhat/types/runtime" {
     ): Promise<Contracts.MockUSDC>;
 
     deployContract(
+      name: "Ownable",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.Ownable>;
+    deployContract(
       name: "IERC1155Errors",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IERC1155Errors>;
@@ -250,6 +362,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.SafeCast>;
     deployContract(
+      name: "ReentrancyGuard",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.ReentrancyGuard>;
+    deployContract(
       name: "Strings",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.Strings>;
@@ -266,9 +382,29 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IdentityRegistry>;
     deployContract(
+      name: "IFluxionIntegration",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IFluxionIntegration>;
+    deployContract(
+      name: "IMETHPriceOracle",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IMETHPriceOracle>;
+    deployContract(
+      name: "ISeniorPool",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.ISeniorPool>;
+    deployContract(
+      name: "LeverageVault",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.LeverageVault>;
+    deployContract(
       name: "RWAToken",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.RWAToken>;
+    deployContract(
+      name: "SeniorPool",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.SeniorPool>;
     deployContract(
       name: "TokenFactory",
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -286,6 +422,18 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.YieldVault>;
     deployContract(
+      name: "FluxionIntegration",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.FluxionIntegration>;
+    deployContract(
+      name: "IFluxionDEX",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IFluxionDEX>;
+    deployContract(
+      name: "IMETHPriceOracle",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IMETHPriceOracle>;
+    deployContract(
       name: "PrimaryMarket",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.PrimaryMarket>;
@@ -297,12 +445,25 @@ declare module "hardhat/types/runtime" {
       name: "MockUSDC",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.MockUSDC>;
+    deployContract(
+      name: "MockFluxionDEX",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.MockFluxionDEX>;
+    deployContract(
+      name: "MockMETH",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.MockMETH>;
     deployContract(
       name: "MockUSDC",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.MockUSDC>;
 
     deployContract(
+      name: "Ownable",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.Ownable>;
+    deployContract(
       name: "IERC1155Errors",
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -348,6 +509,11 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.SafeCast>;
     deployContract(
+      name: "ReentrancyGuard",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.ReentrancyGuard>;
+    deployContract(
       name: "Strings",
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -368,10 +534,35 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IdentityRegistry>;
     deployContract(
+      name: "IFluxionIntegration",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IFluxionIntegration>;
+    deployContract(
+      name: "IMETHPriceOracle",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IMETHPriceOracle>;
+    deployContract(
+      name: "ISeniorPool",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.ISeniorPool>;
+    deployContract(
+      name: "LeverageVault",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.LeverageVault>;
+    deployContract(
       name: "RWAToken",
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.RWAToken>;
+    deployContract(
+      name: "SeniorPool",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.SeniorPool>;
     deployContract(
       name: "TokenFactory",
       args: any[],
@@ -393,6 +584,21 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.YieldVault>;
     deployContract(
+      name: "FluxionIntegration",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.FluxionIntegration>;
+    deployContract(
+      name: "IFluxionDEX",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IFluxionDEX>;
+    deployContract(
+      name: "IMETHPriceOracle",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IMETHPriceOracle>;
+    deployContract(
       name: "PrimaryMarket",
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -407,6 +613,16 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.MockUSDC>;
+    deployContract(
+      name: "MockFluxionDEX",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.MockFluxionDEX>;
+    deployContract(
+      name: "MockMETH",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.MockMETH>;
     deployContract(
       name: "MockUSDC",
       args: any[],
