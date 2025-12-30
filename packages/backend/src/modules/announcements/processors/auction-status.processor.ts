@@ -428,15 +428,33 @@ ${bidSummary || '  No bids received'}
       // const tokensRemaining = (totalSupply - tokensSold).toString();
 
       this.logger.log(
-        `Auction ${assetId} bidding period ended. Waiting for admin to set clearing price and end auction.`,
+        `Auction ${assetId} bidding period ended. Creating AUCTION_ENDED announcement and waiting for admin to declare results.`,
       );
 
-      // NOTE: Bidder notifications are sent when admin calls endAuction (with actual clearing price)
-      // Not here, because clearing price hasn't been set yet (admin hasn't called endpoint)
+      // Update asset status to ENDED (bidding closed, but results not yet declared)
+      await this.assetModel.updateOne(
+        { assetId },
+        {
+          $set: {
+            status: 'ENDED', // Bidding closed
+            'listing.active': false, // No more bids allowed
+            'listing.phase': 'ENDED',
+            'listing.endedAt': new Date(),
+          },
+        },
+      );
 
-      // NOTE: AUCTION_ENDED announcement is created when admin calls endAuction endpoint
-      // Not creating announcement here because auction hasn't been settled yet
-      // Admin must manually call /admin/compliance/end-auction with clearing price
+      this.logger.log(`Asset ${assetId} status updated to ENDED. Bidding is now closed.`);
+
+      // Create AUCTION_ENDED announcement (bidding closed, not results declared)
+      await this.announcementService.createAuctionEndedAnnouncement(
+        assetId,
+        '0', // No clearing price yet
+        '0', // No tokens sold yet
+        asset.tokenParams.totalSupply, // All tokens still available
+      );
+
+      this.logger.log(`AUCTION_ENDED announcement created for ${assetId}. Admin must now declare results.`);
     } catch (error) {
       this.logger.error(
         `Error checking auction end for ${assetId}: ${error instanceof Error ? error.message : String(error)}`,

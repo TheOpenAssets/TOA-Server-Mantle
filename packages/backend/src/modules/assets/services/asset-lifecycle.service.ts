@@ -542,11 +542,13 @@ export class AssetLifecycleService {
       throw new Error('Asset is not an auction type');
     }
 
-    // Check if auction is already ended (idempotent behavior for event processing)
-    if (!asset.listing || !asset.listing.active) {
-      // If already ended, verify it's the same clearing price
-      if (asset.listing?.clearingPrice === clearingPrice) {
-        this.logger.log(`Auction ${assetId} already ended with clearing price ${clearingPrice} - skipping duplicate processing`);
+    // Check if results are already declared (idempotent behavior)
+    // Only check idempotency if clearing price is ALREADY SET
+    // If listing.active = false but clearingPrice is undefined, we're in ENDED stage waiting for admin to declare results
+    if (asset.listing?.clearingPrice) {
+      // Clearing price already set - check if it matches (idempotent)
+      if (asset.listing.clearingPrice === clearingPrice) {
+        this.logger.log(`Auction ${assetId} results already declared with clearing price ${clearingPrice} - skipping duplicate processing`);
 
         // Get all bids to calculate results for response
         const bids = await this.bidModel.find({ assetId }).exec();
@@ -658,8 +660,18 @@ export class AssetLifecycleService {
       `Auction results: Clearing price: ${clearingPrice}, Sold: ${tokensSold.toString()}, Remaining: ${tokensRemaining.toString()}`,
     );
 
-    // Create AUCTION_ENDED announcement
-    await this.announcementService.createAuctionEndedAnnouncement(
+    // Update asset status to AUCTION_DECLARED (results declared by admin)
+    await this.assetModel.updateOne(
+      { assetId },
+      {
+        $set: {
+          status: 'AUCTION_DECLARED', // Results declared by admin
+        },
+      },
+    );
+
+    // Create AUCTION_RESULTS_DECLARED announcement
+    await this.announcementService.createAuctionResultsDeclaredAnnouncement(
       assetId,
       clearingPrice,
       tokensSold.toString(),
