@@ -8,8 +8,10 @@ import { FluxionDEXService } from './services/fluxion-dex.service';
 import { LeverageBlockchainService } from './services/leverage-blockchain.service';
 import { HarvestKeeperService } from './services/harvest-keeper.service';
 import { HealthMonitorService } from './services/health-monitor.service';
+import { LeverageController } from './controllers/leverage.controller';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -20,7 +22,9 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ScheduleModule.forRoot(), // Enable cron jobs
     forwardRef(() => BlockchainModule),
     NotificationsModule,
+    AuthModule, // For JwtAuthGuard
   ],
+  controllers: [LeverageController],
   providers: [
     LeveragePositionService,
     FluxionDEXService,
