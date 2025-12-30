@@ -74,6 +74,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.TrustedIssuersRegistry__factory>;
     getContractFactory(
+      name: "IBurnableToken",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IBurnableToken__factory>;
+    getContractFactory(
       name: "YieldVault",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.YieldVault__factory>;
@@ -170,6 +174,11 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.TrustedIssuersRegistry>;
     getContractAt(
+      name: "IBurnableToken",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IBurnableToken>;
+    getContractAt(
       name: "YieldVault",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -256,6 +265,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.TrustedIssuersRegistry>;
     deployContract(
+      name: "IBurnableToken",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IBurnableToken>;
+    deployContract(
       name: "YieldVault",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.YieldVault>;
@@ -351,6 +364,11 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.TrustedIssuersRegistry>;
+    deployContract(
+      name: "IBurnableToken",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IBurnableToken>;
     deployContract(
       name: "YieldVault",
       args: any[],

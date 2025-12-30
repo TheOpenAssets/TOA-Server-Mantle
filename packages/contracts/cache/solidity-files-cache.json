@@ -495,8 +495,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/core/YieldVault.sol": {
-      "lastModificationDate": 1766465302362,
-      "contentHash": "fbe14e69eb9d1d4ed097b7c10fd7d363",
+      "lastModificationDate": 1767078614343,
+      "contentHash": "16e5fd1955449b80a648cdbe4186c416",
       "sourceName": "contracts/core/YieldVault.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -529,6 +529,7 @@
         "^0.8.20"
       ],
       "artifacts": [
+        "IBurnableToken",
         "YieldVault"
       ]
     },
