@@ -847,4 +847,107 @@ export class AssetLifecycleService {
       message: 'Payout executed successfully!',
     };
   }
+
+  /**
+   * Get purchase history for an asset (for buy history graph)
+   */
+  async getPurchaseHistory(assetId: string) {
+    const asset = await this.assetModel.findOne({ assetId });
+    if (!asset) {
+      throw new Error('Asset not found');
+    }
+
+    const purchases: any[] = [];
+    let totalTokensSold = BigInt(0);
+    let totalUSDCRaised = BigInt(0);
+
+    if (asset.listing?.type === 'STATIC') {
+      // Get confirmed purchases for STATIC listings
+      const confirmedPurchases = await this.purchaseModel
+        .find({ assetId, status: 'CONFIRMED' })
+        .sort({ createdAt: 1 }) // Sort by time ascending
+        .exec();
+
+      for (const purchase of confirmedPurchases) {
+        purchases.push({
+          buyer: purchase.investorWallet,
+          tokenAmount: purchase.amount,
+          price: purchase.price,
+          totalPayment: purchase.totalPayment,
+          timestamp: purchase.createdAt,
+          transactionHash: purchase.txHash,
+          type: 'PURCHASE',
+        });
+
+        totalTokensSold += BigInt(purchase.amount);
+        totalUSDCRaised += BigInt(purchase.totalPayment);
+      }
+    } else if (asset.listing?.type === 'AUCTION') {
+      // Get settled bids for AUCTION listings
+      const settledBids = await this.bidModel
+        .find({ assetId, status: 'SETTLED' })
+        .sort({ createdAt: 1 }) // Sort by time ascending
+        .exec();
+
+      for (const bid of settledBids) {
+        purchases.push({
+          buyer: bid.bidder,
+          tokenAmount: bid.tokenAmount,
+          price: bid.price,
+          totalPayment: bid.usdcDeposited,
+          timestamp: bid.createdAt || new Date(),
+          transactionHash: bid.transactionHash,
+          type: 'BID',
+        });
+
+        totalTokensSold += BigInt(bid.tokenAmount);
+        totalUSDCRaised += BigInt(bid.usdcDeposited);
+      }
+    }
+
+    // Generate chart data with cumulative tokens
+    const chartData: any[] = [];
+    let cumulativeTokens = BigInt(0);
+
+    for (const purchase of purchases) {
+      cumulativeTokens += BigInt(purchase.tokenAmount);
+
+      chartData.push({
+        timestamp: purchase.timestamp,
+        tokensPurchased: purchase.tokenAmount,
+        cumulativeTokens: cumulativeTokens.toString(),
+        price: purchase.price,
+      });
+    }
+
+    // Calculate metadata
+    const totalSupply = BigInt(asset.tokenParams.totalSupply);
+    const percentageSold = totalSupply > BigInt(0)
+      ? Number((totalTokensSold * BigInt(10000)) / totalSupply) / 100
+      : 0;
+
+    const averagePrice = purchases.length > 0
+      ? totalUSDCRaised / BigInt(purchases.length)
+      : BigInt(0);
+
+    const firstPurchaseAt = purchases.length > 0 ? purchases[0].timestamp : undefined;
+    const lastPurchaseAt = purchases.length > 0 ? purchases[purchases.length - 1].timestamp : undefined;
+
+    return {
+      assetId,
+      assetType: asset.listing?.type || asset.assetType,
+      purchases,
+      chartData,
+      totalTokensSold: totalTokensSold.toString(),
+      totalUSDCRaised: totalUSDCRaised.toString(),
+      totalTransactions: purchases.length,
+      metadata: {
+        totalSupply: asset.tokenParams.totalSupply,
+        percentageSold,
+        averagePrice: averagePrice.toString(),
+        firstPurchaseAt,
+        lastPurchaseAt,
+      },
+    };
+  }
 }
