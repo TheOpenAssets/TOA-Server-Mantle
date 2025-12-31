@@ -946,8 +946,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/MockUSDC.sol": {
-      "lastModificationDate": 1766568781379,
-      "contentHash": "87552e5a9befa185875faa42f863fd2c",
+      "lastModificationDate": 1767160474433,
+      "contentHash": "51c93e37dd223ccf1cbcef93188b5d42",
       "sourceName": "contracts/test/MockUSDC.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -984,8 +984,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/Faucet.sol": {
-      "lastModificationDate": 1766678513799,
-      "contentHash": "ac1a5b03879c1d67f8cae2020379c758",
+      "lastModificationDate": 1767160459285,
+      "contentHash": "f955b5b4913de9dc0152d0137b9a1beb",
       "sourceName": "contracts/test/Faucet.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1100,8 +1100,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/MockMETH.sol": {
-      "lastModificationDate": 1767087340868,
-      "contentHash": "0d249462e3fa698f429981a4a0a8fc1a",
+      "lastModificationDate": 1767160489775,
+      "contentHash": "6226206b1cf653228f6b60c56920a5cb",
       "sourceName": "contracts/test/MockMETH.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1337,6 +1337,45 @@
         "IMETHPriceOracle",
         "ISeniorPool",
         "LeverageVault"
+      ]
+    },
+    "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/METHFaucet.sol": {
+      "lastModificationDate": 1767160517501,
+      "contentHash": "c1f4598556ad81408400ea2fe5e04094",
+      "sourceName": "contracts/test/METHFaucet.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "METHFaucet",
+        "MockMETH"
       ]
     }
   }

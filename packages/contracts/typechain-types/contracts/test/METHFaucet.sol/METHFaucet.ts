@@ -21,37 +21,37 @@ import type {
   TypedContractMethod,
 } from "../../../common";
 
-export interface FaucetInterface extends Interface {
+export interface METHFaucetInterface extends Interface {
   getFunction(
-    nameOrSignature: "mockUSDC" | "requestTokens" | "requestUSDC"
+    nameOrSignature: "mockMETH" | "requestMETH" | "requestTokens"
   ): FunctionFragment;
 
-  encodeFunctionData(functionFragment: "mockUSDC", values?: undefined): string;
+  encodeFunctionData(functionFragment: "mockMETH", values?: undefined): string;
   encodeFunctionData(
-    functionFragment: "requestTokens",
+    functionFragment: "requestMETH",
     values: [AddressLike, BigNumberish]
   ): string;
   encodeFunctionData(
-    functionFragment: "requestUSDC",
+    functionFragment: "requestTokens",
     values: [AddressLike, BigNumberish]
   ): string;
 
-  decodeFunctionResult(functionFragment: "mockUSDC", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "mockMETH", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "requestTokens",
+    functionFragment: "requestMETH",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "requestUSDC",
+    functionFragment: "requestTokens",
     data: BytesLike
   ): Result;
 }
 
-export interface Faucet extends BaseContract {
-  connect(runner?: ContractRunner | null): Faucet;
+export interface METHFaucet extends BaseContract {
+  connect(runner?: ContractRunner | null): METHFaucet;
   waitForDeployment(): Promise<this>;
 
-  interface: FaucetInterface;
+  interface: METHFaucetInterface;
 
   queryFilter<TCEvent extends TypedContractEvent>(
     event: TCEvent,
@@ -90,16 +90,16 @@ export interface Faucet extends BaseContract {
     event?: TCEvent
   ): Promise<this>;
 
-  mockUSDC: TypedContractMethod<[], [string], "view">;
+  mockMETH: TypedContractMethod<[], [string], "view">;
 
-  requestTokens: TypedContractMethod<
-    [to: AddressLike, amount: BigNumberish],
+  requestMETH: TypedContractMethod<
+    [to: AddressLike, amountInMETH: BigNumberish],
     [void],
     "nonpayable"
   >;
 
-  requestUSDC: TypedContractMethod<
-    [to: AddressLike, amountInUSDC: BigNumberish],
+  requestTokens: TypedContractMethod<
+    [to: AddressLike, amount: BigNumberish],
     [void],
     "nonpayable"
   >;
@@ -109,19 +109,19 @@ export interface Faucet extends BaseContract {
   ): T;
 
   getFunction(
-    nameOrSignature: "mockUSDC"
+    nameOrSignature: "mockMETH"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
-    nameOrSignature: "requestTokens"
+    nameOrSignature: "requestMETH"
   ): TypedContractMethod<
-    [to: AddressLike, amount: BigNumberish],
+    [to: AddressLike, amountInMETH: BigNumberish],
     [void],
     "nonpayable"
   >;
   getFunction(
-    nameOrSignature: "requestUSDC"
+    nameOrSignature: "requestTokens"
   ): TypedContractMethod<
-    [to: AddressLike, amountInUSDC: BigNumberish],
+    [to: AddressLike, amount: BigNumberish],
     [void],
     "nonpayable"
   >;

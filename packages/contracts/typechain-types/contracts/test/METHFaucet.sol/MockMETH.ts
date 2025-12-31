@@ -21,37 +21,22 @@ import type {
   TypedContractMethod,
 } from "../../../common";
 
-export interface FaucetInterface extends Interface {
-  getFunction(
-    nameOrSignature: "mockUSDC" | "requestTokens" | "requestUSDC"
-  ): FunctionFragment;
+export interface MockMETHInterface extends Interface {
+  getFunction(nameOrSignature: "mint"): FunctionFragment;
 
-  encodeFunctionData(functionFragment: "mockUSDC", values?: undefined): string;
   encodeFunctionData(
-    functionFragment: "requestTokens",
-    values: [AddressLike, BigNumberish]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "requestUSDC",
+    functionFragment: "mint",
     values: [AddressLike, BigNumberish]
   ): string;
 
-  decodeFunctionResult(functionFragment: "mockUSDC", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "requestTokens",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "requestUSDC",
-    data: BytesLike
-  ): Result;
+  decodeFunctionResult(functionFragment: "mint", data: BytesLike): Result;
 }
 
-export interface Faucet extends BaseContract {
-  connect(runner?: ContractRunner | null): Faucet;
+export interface MockMETH extends BaseContract {
+  connect(runner?: ContractRunner | null): MockMETH;
   waitForDeployment(): Promise<this>;
 
-  interface: FaucetInterface;
+  interface: MockMETHInterface;
 
   queryFilter<TCEvent extends TypedContractEvent>(
     event: TCEvent,
@@ -90,16 +75,8 @@ export interface Faucet extends BaseContract {
     event?: TCEvent
   ): Promise<this>;
 
-  mockUSDC: TypedContractMethod<[], [string], "view">;
-
-  requestTokens: TypedContractMethod<
+  mint: TypedContractMethod<
     [to: AddressLike, amount: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-
-  requestUSDC: TypedContractMethod<
-    [to: AddressLike, amountInUSDC: BigNumberish],
     [void],
     "nonpayable"
   >;
@@ -109,19 +86,9 @@ export interface Faucet extends BaseContract {
   ): T;
 
   getFunction(
-    nameOrSignature: "mockUSDC"
-  ): TypedContractMethod<[], [string], "view">;
-  getFunction(
-    nameOrSignature: "requestTokens"
+    nameOrSignature: "mint"
   ): TypedContractMethod<
     [to: AddressLike, amount: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-  getFunction(
-    nameOrSignature: "requestUSDC"
-  ): TypedContractMethod<
-    [to: AddressLike, amountInUSDC: BigNumberish],
     [void],
     "nonpayable"
   >;

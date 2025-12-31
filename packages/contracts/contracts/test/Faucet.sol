@@ -16,21 +16,23 @@ contract Faucet {
 
     /**
      * @notice Request any amount of MockUSDC tokens
+     * @param to The address to receive tokens
      * @param amount The amount of tokens to request (in smallest unit)
      */
-    function requestTokens(uint256 amount) external {
+    function requestTokens(address to, uint256 amount) external {
         // For testing purposes, allow any amount
         // In production, you might want to add limits or cooldowns
-        MockUSDC(address(mockUSDC)).mint(msg.sender, amount);
+        MockUSDC(address(mockUSDC)).mint(to, amount);
     }
 
     /**
      * @notice Get tokens by specifying amount in USDC (6 decimals)
+     * @param to The address to receive tokens
      * @param amountInUSDC The amount in USDC (e.g., 100 for 100 USDC)
      */
-    function requestUSDC(uint256 amountInUSDC) external {
+    function requestUSDC(address to, uint256 amountInUSDC) external {
         uint256 amount = amountInUSDC * 10 ** 6; // Assuming 6 decimals
-        MockUSDC(address(mockUSDC)).mint(msg.sender, amount);
+        MockUSDC(address(mockUSDC)).mint(to, amount);
     }
 }
 

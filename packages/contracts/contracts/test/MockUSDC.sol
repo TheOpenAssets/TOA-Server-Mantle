@@ -11,8 +11,8 @@ contract MockUSDC is ERC20 {
     uint8 private _decimals = 6;
 
     constructor() ERC20("USD Coin", "USDC") {
-        // Mint 1 million USDC to deployer for testing
-        _mint(msg.sender, 1_000_000 * 10 ** _decimals);
+        // Mint 100 billion USDC to deployer for testing
+        _mint(msg.sender, 100_000_000_000 * 10 ** _decimals);
     }
 
     function decimals() public view virtual override returns (uint8) {
