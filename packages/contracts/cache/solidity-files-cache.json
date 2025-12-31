@@ -1297,8 +1297,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/core/LeverageVault.sol": {
-      "lastModificationDate": 1767087616814,
-      "contentHash": "6f98a00e9d5b3f44bc3872f84c5efb3d",
+      "lastModificationDate": 1767180161433,
+      "contentHash": "a4423f639689b914937925353f28f9cd",
       "sourceName": "contracts/core/LeverageVault.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1334,7 +1334,6 @@
       ],
       "artifacts": [
         "IFluxionIntegration",
-        "IMETHPriceOracle",
         "ISeniorPool",
         "LeverageVault"
       ]

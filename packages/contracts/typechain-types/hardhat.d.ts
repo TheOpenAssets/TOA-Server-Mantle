@@ -138,10 +138,6 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.IMockUSDC__factory>;
     getContractFactory(
-      name: "MockUSDC",
-      signerOrOptions?: ethers.Signer | FactoryOptions
-    ): Promise<Contracts.MockUSDC__factory>;
-    getContractFactory(
       name: "IMockMETH",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.IMockMETH__factory>;
@@ -149,10 +145,6 @@ declare module "hardhat/types/runtime" {
       name: "METHFaucet",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.METHFaucet__factory>;
-    getContractFactory(
-      name: "MockMETH",
-      signerOrOptions?: ethers.Signer | FactoryOptions
-    ): Promise<Contracts.MockMETH__factory>;
     getContractFactory(
       name: "MockFluxionDEX",
       signerOrOptions?: ethers.Signer | FactoryOptions
@@ -322,11 +314,6 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.IMockUSDC>;
     getContractAt(
-      name: "MockUSDC",
-      address: string | ethers.Addressable,
-      signer?: ethers.Signer
-    ): Promise<Contracts.MockUSDC>;
-    getContractAt(
       name: "IMockMETH",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -336,11 +323,6 @@ declare module "hardhat/types/runtime" {
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.METHFaucet>;
-    getContractAt(
-      name: "MockMETH",
-      address: string | ethers.Addressable,
-      signer?: ethers.Signer
-    ): Promise<Contracts.MockMETH>;
     getContractAt(
       name: "MockFluxionDEX",
       address: string | ethers.Addressable,
@@ -482,10 +464,6 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IMockUSDC>;
     deployContract(
-      name: "MockUSDC",
-      signerOrOptions?: ethers.Signer | DeployContractOptions
-    ): Promise<Contracts.MockUSDC>;
-    deployContract(
       name: "IMockMETH",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IMockMETH>;
@@ -493,10 +471,6 @@ declare module "hardhat/types/runtime" {
       name: "METHFaucet",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.METHFaucet>;
-    deployContract(
-      name: "MockMETH",
-      signerOrOptions?: ethers.Signer | DeployContractOptions
-    ): Promise<Contracts.MockMETH>;
     deployContract(
       name: "MockFluxionDEX",
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -666,11 +640,6 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IMockUSDC>;
     deployContract(
-      name: "MockUSDC",
-      args: any[],
-      signerOrOptions?: ethers.Signer | DeployContractOptions
-    ): Promise<Contracts.MockUSDC>;
-    deployContract(
       name: "IMockMETH",
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -680,11 +649,6 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.METHFaucet>;
-    deployContract(
-      name: "MockMETH",
-      args: any[],
-      signerOrOptions?: ethers.Signer | DeployContractOptions
-    ): Promise<Contracts.MockMETH>;
     deployContract(
       name: "MockFluxionDEX",
       args: any[],

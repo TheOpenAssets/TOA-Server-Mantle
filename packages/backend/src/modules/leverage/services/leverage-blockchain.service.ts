@@ -34,6 +34,7 @@ export class LeverageBlockchainService {
    * @param rwaToken RWA token address
    * @param rwaTokenAmount RWA token amount (wei)
    * @param assetId Asset ID
+   * @param mETHPriceUSD Current mETH price in USD (6 decimals USDC wei format)
    * @returns Transaction hash and position ID
    */
   async createPosition(params: {
@@ -43,14 +44,20 @@ export class LeverageBlockchainService {
     rwaToken: string;
     rwaTokenAmount: bigint;
     assetId: string;
+    mETHPriceUSD: bigint;
   }): Promise<{ hash: Hash; positionId?: number }> {
     const wallet = this.walletService.getPlatformWallet();
     const address = this.contractLoader.getContractAddress('LeverageVault');
     const abi = this.contractLoader.getContractAbi('LeverageVault');
 
+    // Convert mETH price from 6 decimals (USDC wei) to 18 decimals (contract expects 18)
+    // e.g., 2856450000 (6 decimals) → 2856450000000000000000 (18 decimals)
+    const mETHPriceUSD18 = params.mETHPriceUSD * BigInt(10 ** 12);
+
     this.logger.log(
       `Creating leverage position for ${params.user}: ${Number(params.mETHAmount) / 1e18} mETH collateral`,
     );
+    this.logger.log(`mETH Price: $${Number(params.mETHPriceUSD) / 1e6} (18 decimals: ${mETHPriceUSD18})`);
 
     try {
       const hash = await wallet.writeContract({
@@ -64,6 +71,7 @@ export class LeverageBlockchainService {
           params.rwaToken,
           params.rwaTokenAmount,
           params.assetId,
+          mETHPriceUSD18,
         ],
       });
 

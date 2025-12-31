@@ -79,7 +79,6 @@ export interface LeverageVaultInterface extends Interface {
       | "nextPositionId"
       | "owner"
       | "positions"
-      | "priceOracle"
       | "processSettlement"
       | "renounceOwnership"
       | "seniorPool"
@@ -123,7 +122,8 @@ export interface LeverageVaultInterface extends Interface {
       BigNumberish,
       AddressLike,
       BigNumberish,
-      string
+      string,
+      BigNumberish
     ]
   ): string;
   encodeFunctionData(
@@ -132,7 +132,7 @@ export interface LeverageVaultInterface extends Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "getHealthFactor",
-    values: [BigNumberish]
+    values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "getPosition",
@@ -140,11 +140,11 @@ export interface LeverageVaultInterface extends Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "harvestYield",
-    values: [BigNumberish]
+    values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "liquidatePosition",
-    values: [BigNumberish]
+    values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(functionFragment: "mETH", values?: undefined): string;
   encodeFunctionData(
@@ -155,10 +155,6 @@ export interface LeverageVaultInterface extends Interface {
   encodeFunctionData(
     functionFragment: "positions",
     values: [BigNumberish]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "priceOracle",
-    values?: undefined
   ): string;
   encodeFunctionData(
     functionFragment: "processSettlement",
@@ -233,10 +229,6 @@ export interface LeverageVaultInterface extends Interface {
   ): Result;
   decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "positions", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "priceOracle",
-    data: BytesLike
-  ): Result;
   decodeFunctionResult(
     functionFragment: "processSettlement",
     data: BytesLike
@@ -452,7 +444,8 @@ export interface LeverageVault extends BaseContract {
       usdcToBorrow: BigNumberish,
       rwaToken: AddressLike,
       rwaTokenAmount: BigNumberish,
-      assetId: string
+      assetId: string,
+      mETHPriceUSD: BigNumberish
     ],
     [bigint],
     "nonpayable"
@@ -461,7 +454,7 @@ export interface LeverageVault extends BaseContract {
   fluxionIntegration: TypedContractMethod<[], [string], "view">;
 
   getHealthFactor: TypedContractMethod<
-    [positionId: BigNumberish],
+    [positionId: BigNumberish, mETHPriceUSD: BigNumberish],
     [bigint],
     "view"
   >;
@@ -473,7 +466,7 @@ export interface LeverageVault extends BaseContract {
   >;
 
   harvestYield: TypedContractMethod<
-    [positionId: BigNumberish],
+    [positionId: BigNumberish, mETHPriceUSD: BigNumberish],
     [
       [bigint, bigint, bigint] & {
         mETHSwapped: bigint;
@@ -485,7 +478,7 @@ export interface LeverageVault extends BaseContract {
   >;
 
   liquidatePosition: TypedContractMethod<
-    [positionId: BigNumberish],
+    [positionId: BigNumberish, mETHPriceUSD: BigNumberish],
     [[bigint, bigint] & { usdcRecovered: bigint; shortfall: bigint }],
     "nonpayable"
   >;
@@ -525,8 +518,6 @@ export interface LeverageVault extends BaseContract {
     ],
     "view"
   >;
-
-  priceOracle: TypedContractMethod<[], [string], "view">;
 
   processSettlement: TypedContractMethod<
     [positionId: BigNumberish, settlementUSDC: BigNumberish],
@@ -589,7 +580,8 @@ export interface LeverageVault extends BaseContract {
       usdcToBorrow: BigNumberish,
       rwaToken: AddressLike,
       rwaTokenAmount: BigNumberish,
-      assetId: string
+      assetId: string,
+      mETHPriceUSD: BigNumberish
     ],
     [bigint],
     "nonpayable"
@@ -599,7 +591,11 @@ export interface LeverageVault extends BaseContract {
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
     nameOrSignature: "getHealthFactor"
-  ): TypedContractMethod<[positionId: BigNumberish], [bigint], "view">;
+  ): TypedContractMethod<
+    [positionId: BigNumberish, mETHPriceUSD: BigNumberish],
+    [bigint],
+    "view"
+  >;
   getFunction(
     nameOrSignature: "getPosition"
   ): TypedContractMethod<
@@ -610,7 +606,7 @@ export interface LeverageVault extends BaseContract {
   getFunction(
     nameOrSignature: "harvestYield"
   ): TypedContractMethod<
-    [positionId: BigNumberish],
+    [positionId: BigNumberish, mETHPriceUSD: BigNumberish],
     [
       [bigint, bigint, bigint] & {
         mETHSwapped: bigint;
@@ -623,7 +619,7 @@ export interface LeverageVault extends BaseContract {
   getFunction(
     nameOrSignature: "liquidatePosition"
   ): TypedContractMethod<
-    [positionId: BigNumberish],
+    [positionId: BigNumberish, mETHPriceUSD: BigNumberish],
     [[bigint, bigint] & { usdcRecovered: bigint; shortfall: bigint }],
     "nonpayable"
   >;
@@ -667,9 +663,6 @@ export interface LeverageVault extends BaseContract {
     ],
     "view"
   >;
-  getFunction(
-    nameOrSignature: "priceOracle"
-  ): TypedContractMethod<[], [string], "view">;
   getFunction(
     nameOrSignature: "processSettlement"
   ): TypedContractMethod<

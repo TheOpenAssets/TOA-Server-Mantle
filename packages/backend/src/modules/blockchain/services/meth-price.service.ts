@@ -144,14 +144,16 @@ export class MethPriceService implements OnModuleInit {
         this.priceHistory.set(dateKey, priceInUsdcWei);
       }
 
-      // Set current price to the most recent data point
+      // Set current price to the FIRST (oldest) data point
+      // This allows the service to progress forward through historical data
       if (this.priceDataPoints.length > 0) {
-        const latestPrice = this.priceDataPoints[this.priceDataPoints.length - 1]!.price;
-        this.currentPrice = Math.floor(latestPrice * 1e6);
-        this.currentDataIndex = this.priceDataPoints.length - 1;
+        const firstPrice = this.priceDataPoints[0]!.price;
+        this.currentPrice = Math.floor(firstPrice * 1e6);
+        this.currentDataIndex = 0; // Start at the beginning
 
         this.logger.log(`Loaded ${this.priceDataPoints.length} days of historical data from CSV`);
         this.logger.log(`Date range: ${this.formatDate(this.priceDataPoints[0]!.date)} to ${this.formatDate(this.priceDataPoints[this.priceDataPoints.length - 1]!.date)}`);
+        this.logger.log(`Starting at first data point: $${firstPrice} (${this.formatDate(this.priceDataPoints[0]!.date)})`);
       }
     } catch (error: any) {
       this.logger.error(`Failed to load CSV data: ${error.message}`, error.stack);
@@ -185,11 +187,13 @@ export class MethPriceService implements OnModuleInit {
       });
     }
 
-    const todayKey = this.formatDate(today);
-    this.currentPrice = this.priceHistory.get(todayKey) || 3000 * 1e6;
-    this.currentDataIndex = this.priceDataPoints.length - 1;
+    // Start at the first (oldest) data point, not the last
+    const firstKey = this.formatDate(this.priceDataPoints[0]!.date);
+    this.currentPrice = this.priceHistory.get(firstKey) || 3000 * 1e6;
+    this.currentDataIndex = 0;
 
     this.logger.log(`Initialized ${this.priceHistory.size} days of simulated price history`);
+    this.logger.log(`Starting at first data point: $${this.currentPrice / 1e6}`);
   }
 
   /**

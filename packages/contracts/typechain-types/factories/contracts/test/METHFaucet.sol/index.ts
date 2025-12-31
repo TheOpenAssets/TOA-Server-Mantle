@@ -3,4 +3,3 @@
 /* eslint-disable */
 export { IMockMETH__factory } from "./IMockMETH__factory";
 export { METHFaucet__factory } from "./METHFaucet__factory";
-export { MockMETH__factory } from "./MockMETH__factory";

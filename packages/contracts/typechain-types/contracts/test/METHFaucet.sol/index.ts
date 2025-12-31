@@ -3,4 +3,3 @@
 /* eslint-disable */
 export type { IMockMETH } from "./IMockMETH";
 export type { METHFaucet } from "./METHFaucet";
-export type { MockMETH } from "./MockMETH";

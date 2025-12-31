@@ -51,7 +51,13 @@ export class ContractLoaderService implements OnModuleInit {
       PrimaryMarketplace: 'marketplace/PrimaryMarket.sol/PrimaryMarket.json',
       RWAToken: 'core/RWAToken.sol/RWAToken.json',
       USDC: 'test/MockUSDC.sol/MockUSDC.json',
-      Faucet: 'test/Faucet.sol/Faucet.json'
+      Faucet: 'test/Faucet.sol/Faucet.json',
+      MockMETH: 'test/MockMETH.sol/MockMETH.json',
+      METHFaucet: 'test/METHFaucet.sol/METHFaucet.json',
+      LeverageVault: 'core/LeverageVault.sol/LeverageVault.json',
+      SeniorPool: 'core/SeniorPool.sol/SeniorPool.json',
+      FluxionIntegration: 'integrations/FluxionIntegration.sol/FluxionIntegration.json',
+      MockFluxionDEX: 'test/MockFluxionDEX.sol/MockFluxionDEX.json',
     };
 
     for (const [name, relPath] of Object.entries(mapping)) {

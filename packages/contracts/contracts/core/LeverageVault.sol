@@ -5,11 +5,6 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-// Price oracle interface
-interface IMETHPriceOracle {
-    function getPrice() external view returns (uint256);
-}
-
 // SeniorPool interface
 interface ISeniorPool {
     function borrow(uint256 positionId, uint256 amount) external;
@@ -49,7 +44,6 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     address public seniorPool;
     address public fluxionIntegration;
     address public yieldVault;
-    IMETHPriceOracle public priceOracle;
 
     // Position tracking
     struct Position {
@@ -108,20 +102,18 @@ contract LeverageVault is Ownable, ReentrancyGuard {
      * @param _usdc USDC token address
      * @param _seniorPool SeniorPool contract address
      * @param _fluxionIntegration FluxionIntegration contract address
-     * @param _priceOracle Price oracle address
+     * @dev mETH price is provided by backend in each function call (no on-chain oracle)
      */
     constructor(
         address _mETH,
         address _usdc,
         address _seniorPool,
-        address _fluxionIntegration,
-        address _priceOracle
+        address _fluxionIntegration
     ) Ownable(msg.sender) {
         mETH = IERC20(_mETH);
         usdc = IERC20(_usdc);
         seniorPool = _seniorPool;
         fluxionIntegration = _fluxionIntegration;
-        priceOracle = IMETHPriceOracle(_priceOracle);
         nextPositionId = 1;
     }
 
@@ -143,6 +135,7 @@ contract LeverageVault is Ownable, ReentrancyGuard {
      * @param rwaToken RWA token address
      * @param rwaTokenAmount RWA token amount (18 decimals)
      * @param assetId Asset ID reference
+     * @param mETHPriceUSD Current mETH price in USD (18 decimals, e.g., 3000e18 = $3000)
      * @return positionId Created position ID
      */
     function createPosition(
@@ -151,15 +144,19 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         uint256 usdcToBorrow,
         address rwaToken,
         uint256 rwaTokenAmount,
-        string memory assetId
+        string memory assetId,
+        uint256 mETHPriceUSD
     ) external onlyOwner nonReentrant returns (uint256 positionId) {
         require(user != address(0), "Invalid user");
         require(mETHAmount > 0, "mETH amount must be > 0");
         require(usdcToBorrow > 0, "USDC amount must be > 0");
         require(rwaToken != address(0), "Invalid RWA token");
+        require(mETHPriceUSD > 0, "Invalid mETH price");
 
         // Verify LTV (collateral must be >= 150% of loan)
-        uint256 collateralValueUSD = _getMETHValueUSD(mETHAmount);
+        // Calculate collateral value: (mETHAmount * mETHPriceUSD) / 1e30
+        // 1e30 = 1e18 (mETH decimals) * 1e18 (price decimals) / 1e6 (USDC decimals)
+        uint256 collateralValueUSD = (mETHAmount * mETHPriceUSD) / 1e30;
         uint256 requiredCollateral = (usdcToBorrow * INITIAL_LTV) / BASIS_POINTS;
         require(
             collateralValueUSD >= requiredCollateral,
@@ -203,12 +200,14 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     /**
      * @notice Harvest mETH yield and pay interest
      * @param positionId Position ID
+     * @param mETHPriceUSD Current mETH price in USD (18 decimals)
      * @return mETHSwapped Amount of mETH converted to USDC
      * @return usdcReceived Amount of USDC received from swap
      * @return interestPaid Amount of interest paid
      */
     function harvestYield(
-        uint256 positionId
+        uint256 positionId,
+        uint256 mETHPriceUSD
     )
         external
         onlyOwner
@@ -217,6 +216,7 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     {
         Position storage position = positions[positionId];
         require(position.active, "Position not active");
+        require(mETHPriceUSD > 0, "Invalid mETH price");
 
         // Get outstanding interest from SeniorPool
         uint256 outstandingInterest = ISeniorPool(seniorPool).getAccruedInterest(
@@ -224,12 +224,8 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         );
         require(outstandingInterest > 0, "No interest to pay");
 
-        // Calculate mETH appreciation since last harvest
-        uint256 mETHPrice = priceOracle.getPrice();
-        uint256 currentValue = _getMETHValueUSD(position.mETHCollateral);
-
         // Determine mETH to swap (enough to cover interest)
-        mETHSwapped = _calculateMETHToSwap(outstandingInterest, mETHPrice);
+        mETHSwapped = _calculateMETHToSwap(outstandingInterest, mETHPriceUSD);
         require(mETHSwapped <= position.mETHCollateral, "Insufficient collateral");
 
         // Approve and swap mETH for USDC
@@ -256,17 +252,20 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     /**
      * @notice Liquidate position if health factor < 110%
      * @param positionId Position ID
+     * @param mETHPriceUSD Current mETH price in USD (18 decimals)
      * @return usdcRecovered USDC recovered from liquidation
      * @return shortfall USDC shortfall (if any)
      */
     function liquidatePosition(
-        uint256 positionId
+        uint256 positionId,
+        uint256 mETHPriceUSD
     ) external onlyOwner nonReentrant returns (uint256 usdcRecovered, uint256 shortfall) {
         Position storage position = positions[positionId];
         require(position.active, "Position not active");
+        require(mETHPriceUSD > 0, "Invalid mETH price");
 
         // Verify liquidation is necessary
-        uint256 healthFactor = getHealthFactor(positionId);
+        uint256 healthFactor = getHealthFactor(positionId, mETHPriceUSD);
         require(healthFactor < LIQUIDATION_THRESHOLD, "Position is healthy");
 
         // Swap all mETH collateral for USDC
@@ -400,13 +399,16 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     /**
      * @notice Get health factor for position
      * @param positionId Position ID
+     * @param mETHPriceUSD Current mETH price in USD (18 decimals)
      * @return Health factor (basis points, e.g., 15000 = 150%)
      */
-    function getHealthFactor(uint256 positionId) public view returns (uint256) {
+    function getHealthFactor(uint256 positionId, uint256 mETHPriceUSD) public view returns (uint256) {
         Position memory position = positions[positionId];
         if (!position.active) return 0;
+        require(mETHPriceUSD > 0, "Invalid mETH price");
 
-        uint256 collateralValueUSD = _getMETHValueUSD(position.mETHCollateral);
+        // Calculate collateral value: (mETHAmount * mETHPriceUSD) / 1e30
+        uint256 collateralValueUSD = (position.mETHCollateral * mETHPriceUSD) / 1e30;
         uint256 outstandingDebt = ISeniorPool(seniorPool).getOutstandingDebt(
             positionId
         );
@@ -439,16 +441,5 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         // mETH = (targetUSDC * 1e18 * 1e12) / mETHPrice
         // 1e12 converts USDC (6 decimals) to 18 decimals
         return (targetUSDC * 1e30) / mETHPrice;
-    }
-
-    /**
-     * @notice Get USD value of mETH amount
-     * @param mETHAmount mETH amount (18 decimals)
-     * @return USD value (6 decimals for USDC)
-     */
-    function _getMETHValueUSD(uint256 mETHAmount) internal view returns (uint256) {
-        uint256 price = priceOracle.getPrice(); // 18 decimals
-        // Convert to USDC 6 decimals: (mETH * price) / 1e30
-        return (mETHAmount * price) / 1e30;
     }
 }

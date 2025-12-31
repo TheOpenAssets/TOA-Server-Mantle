@@ -3,4 +3,3 @@
 /* eslint-disable */
 export { Faucet__factory } from "./Faucet__factory";
 export { IMockUSDC__factory } from "./IMockUSDC__factory";
-export { MockUSDC__factory } from "./MockUSDC__factory";

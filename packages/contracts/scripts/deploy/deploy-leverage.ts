@@ -112,12 +112,12 @@ async function main() {
   if (!leverageVaultAddress) {
     console.log('📝 Deploying LeverageVault...');
     const LeverageVault = await ethers.getContractFactory('LeverageVault');
+    // No price oracle needed - backend passes mETH price as parameter in function calls
     const leverageVault = await LeverageVault.deploy(
       mockMETHAddress,
       usdcAddress,
       seniorPoolAddress,
-      fluxionIntegrationAddress,
-      mockMETHAddress // _priceOracle (placeholder, pricing is backend-managed)
+      fluxionIntegrationAddress
     );
     await leverageVault.waitForDeployment();
     leverageVaultAddress = await leverageVault.getAddress();

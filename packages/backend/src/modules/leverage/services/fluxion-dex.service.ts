@@ -3,11 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { createPublicClient, http, Address } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
+import { MethPriceService } from '../../blockchain/services/meth-price.service';
 
 /**
  * @title FluxionDEXService
  * @notice Service for interacting with Fluxion DEX and mETH price oracle
  * @dev Provides price quotes, swap calculations, and USD value conversions
+ * NOTE: Pricing is managed entirely in backend via MethPriceService (no on-chain oracle)
  */
 @Injectable()
 export class FluxionDEXService {
@@ -17,6 +19,7 @@ export class FluxionDEXService {
   constructor(
     private configService: ConfigService,
     private contractLoader: ContractLoaderService,
+    private methPriceService: MethPriceService,
   ) {
     this.publicClient = createPublicClient({
       chain: mantleSepolia,
@@ -25,22 +28,14 @@ export class FluxionDEXService {
   }
 
   /**
-   * Get mETH price in USD from oracle (MockMETH contract)
-   * @returns Price in USD with 18 decimals (e.g., 3000 * 1e18 = $3000)
+   * Get mETH price in USD from backend MethPriceService
+   * @returns Price in USD with 6 decimals (USDC wei format, e.g., 3000000000 = $3000)
    */
   async getMETHPrice(): Promise<bigint> {
     try {
-      const methAddress = this.contractLoader.getContractAddress('MockMETH');
-      const methABI = this.contractLoader.getContractAbi('MockMETH');
-
-      const price = (await this.publicClient.readContract({
-        address: methAddress as Address,
-        abi: methABI,
-        functionName: 'getPrice',
-      })) as bigint;
-
-      this.logger.debug(`mETH price: $${Number(price) / 1e18}`);
-      return price;
+      const price = this.methPriceService.getCurrentPrice(); // 6 decimals
+      this.logger.debug(`mETH price (from backend): $${price / 1e6}`);
+      return BigInt(price);
     } catch (error) {
       this.logger.error(`Failed to get mETH price: ${error}`);
       throw error;
@@ -76,18 +71,17 @@ export class FluxionDEXService {
   }
 
   /**
-   * Calculate USD value of mETH amount
+   * Calculate USD value of mETH amount using backend pricing
    * @param mETHAmount Amount of mETH (wei format, 18 decimals)
    * @returns USD value (wei format, 6 decimals for USDC)
    */
   async calculateMETHValueUSD(mETHAmount: bigint): Promise<bigint> {
     try {
-      const price = await this.getMETHPrice(); // 18 decimals
-      // Convert to USDC 6 decimals: (mETH * price) / 1e30
-      const valueUSD = (mETHAmount * price) / BigInt(1e30);
+      // Use MethPriceService's built-in conversion
+      const valueUSD = this.methPriceService.methToUsdc(mETHAmount);
 
       this.logger.debug(
-        `${Number(mETHAmount) / 1e18} mETH = $${Number(valueUSD) / 1e6}`,
+        `${Number(mETHAmount) / 1e18} mETH = $${Number(valueUSD) / 1e6} (backend pricing)`,
       );
       return valueUSD;
     } catch (error) {
@@ -97,18 +91,17 @@ export class FluxionDEXService {
   }
 
   /**
-   * Calculate mETH amount needed for target USDC
+   * Calculate mETH amount needed for target USDC using backend pricing
    * @param targetUSDC Target USDC amount (wei format, 6 decimals)
    * @returns mETH amount needed (wei format, 18 decimals)
    */
   async calculateMETHForUSDC(targetUSDC: bigint): Promise<bigint> {
     try {
-      const price = await this.getMETHPrice(); // 18 decimals
-      // mETH = (targetUSDC * 1e30) / price
-      const mETHNeeded = (targetUSDC * BigInt(1e30)) / price;
+      // Use MethPriceService's built-in conversion
+      const mETHNeeded = this.methPriceService.usdcToMeth(targetUSDC);
 
       this.logger.debug(
-        `Need ${Number(mETHNeeded) / 1e18} mETH for $${Number(targetUSDC) / 1e6}`,
+        `Need ${Number(mETHNeeded) / 1e18} mETH for $${Number(targetUSDC) / 1e6} (backend pricing)`,
       );
       return mETHNeeded;
     } catch (error) {
