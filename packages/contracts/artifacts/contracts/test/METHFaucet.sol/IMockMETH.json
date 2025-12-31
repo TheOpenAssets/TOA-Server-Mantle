@@ -1,6 +1,6 @@
 {
   "_format": "hh-sol-artifact-1",
-  "contractName": "MockMETH",
+  "contractName": "IMockMETH",
   "sourceName": "contracts/test/METHFaucet.sol",
   "abi": [
     {

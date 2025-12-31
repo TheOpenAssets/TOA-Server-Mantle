@@ -984,8 +984,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/Faucet.sol": {
-      "lastModificationDate": 1767160459285,
-      "contentHash": "f955b5b4913de9dc0152d0137b9a1beb",
+      "lastModificationDate": 1767173968349,
+      "contentHash": "2925466ae3405e3dc2c0f6ba8ce7cf89",
       "sourceName": "contracts/test/Faucet.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1019,7 +1019,7 @@
       ],
       "artifacts": [
         "Faucet",
-        "MockUSDC"
+        "IMockUSDC"
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/node_modules/@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol": {
@@ -1340,8 +1340,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/METHFaucet.sol": {
-      "lastModificationDate": 1767160517501,
-      "contentHash": "c1f4598556ad81408400ea2fe5e04094",
+      "lastModificationDate": 1767173952384,
+      "contentHash": "3e8614c1161f6237b2e4d5f65cacb6c8",
       "sourceName": "contracts/test/METHFaucet.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1374,8 +1374,8 @@
         "^0.8.20"
       ],
       "artifacts": [
-        "METHFaucet",
-        "MockMETH"
+        "IMockMETH",
+        "METHFaucet"
       ]
     }
   }

@@ -1,6 +1,6 @@
 {
   "_format": "hh-sol-artifact-1",
-  "contractName": "MockUSDC",
+  "contractName": "IMockUSDC",
   "sourceName": "contracts/test/Faucet.sol",
   "abi": [
     {

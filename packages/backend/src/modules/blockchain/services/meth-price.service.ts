@@ -28,7 +28,7 @@ export class MethPriceService implements OnModuleInit {
   private currentDataIndex: number = 0;
 
   // Configuration
-  private readonly updateIntervalHours: number;
+  private readonly updateIntervalSeconds: number;
   private readonly historyDays: number;
   private readonly CSV_PATH = path.join(process.cwd(), 'Data', 'meth-usd-max.csv');
 
@@ -37,13 +37,13 @@ export class MethPriceService implements OnModuleInit {
     private schedulerRegistry: SchedulerRegistry,
   ) {
     // Load configuration from environment
-    this.updateIntervalHours = this.configService.get<number>('METH_PRICE_UPDATE_INTERVAL_HOURS', 4);
+    this.updateIntervalSeconds = this.configService.get<number>('METH_PRICE_UPDATE_INTERVAL_SECONDS', 14400);
     this.historyDays = this.configService.get<number>('METH_PRICE_HISTORY_DAYS', 180);
   }
 
   async onModuleInit() {
     this.logger.log('Initializing mETH Price Service...');
-    this.logger.log(`Configuration: Update interval = ${this.updateIntervalHours}h, History window = ${this.historyDays} days`);
+    this.logger.log(`Configuration: Update interval = ${this.updateIntervalSeconds}s, History window = ${this.historyDays} days`);
 
     await this.loadHistoricalData();
 
@@ -59,14 +59,25 @@ export class MethPriceService implements OnModuleInit {
    */
   private setupPriceUpdateSchedule(): void {
     // Calculate updates per day
-    const updatesPerDay = 24 / this.updateIntervalHours;
+    const updateIntervalHours = this.updateIntervalSeconds / 3600;
+    const updatesPerDay = (24 * 3600) / this.updateIntervalSeconds;
     const daysOfCoverage = this.historyDays / updatesPerDay;
 
-    this.logger.log(`Price will update every ${this.updateIntervalHours} hours (${updatesPerDay} times/day)`);
+    this.logger.log(`Price will update every ${this.updateIntervalSeconds}s (${updatesPerDay.toFixed(1)} times/day)`);
     this.logger.log(`${this.historyDays} days of data will last approximately ${Math.floor(daysOfCoverage)} days of runtime`);
 
-    // Create cron expression: "0 */N * * *" where N is the interval
-    const cronExpression = `0 */${this.updateIntervalHours} * * *`;
+    // Create cron expression based on interval
+    let cronExpression: string;
+
+    if (this.updateIntervalSeconds >= 3600) {
+      // Hourly updates: "0 */N * * *" where N is hours
+      const hours = Math.floor(this.updateIntervalSeconds / 3600);
+      cronExpression = `0 */${hours} * * *`;
+    } else {
+      // Minute updates: "*/M * * * *" where M is minutes
+      const minutes = Math.floor(this.updateIntervalSeconds / 60);
+      cronExpression = `*/${minutes} * * * *`;
+    }
 
     const job = new CronJob(cronExpression, () => {
       this.updatePriceFromHistory();

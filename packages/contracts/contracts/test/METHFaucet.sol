@@ -22,7 +22,7 @@ contract METHFaucet {
     function requestTokens(address to, uint256 amount) external {
         // For testing purposes, allow any amount
         // In production, you might want to add limits or cooldowns
-        MockMETH(address(mockMETH)).mint(to, amount);
+        IMockMETH(address(mockMETH)).mint(to, amount);
     }
 
     /**
@@ -32,11 +32,11 @@ contract METHFaucet {
      */
     function requestMETH(address to, uint256 amountInMETH) external {
         uint256 amount = amountInMETH * 10 ** 18; // 18 decimals
-        MockMETH(address(mockMETH)).mint(to, amount);
+        IMockMETH(address(mockMETH)).mint(to, amount);
     }
 }
 
-// Import the MockMETH to access mint function
-interface MockMETH {
+// Interface to access MockMETH mint function
+interface IMockMETH {
     function mint(address to, uint256 amount) external;
 }
