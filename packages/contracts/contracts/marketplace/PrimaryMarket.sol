@@ -167,7 +167,7 @@ contract PrimaryMarket {
         
         bid.settled = true;
 
-        if (bid.price >= listing.clearingPrice) {
+        if (bid.price > listing.clearingPrice) {
             // --- Oversubscription Protection ---
             uint256 tokensToAllocate = bid.tokenAmount;
             uint256 remainingSupply = listing.totalSupply - listing.sold;

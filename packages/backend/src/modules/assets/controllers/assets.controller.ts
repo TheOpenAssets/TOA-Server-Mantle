@@ -82,4 +82,9 @@ export class AssetsController {
   async payoutOriginator(@Param('assetId') assetId: string) {
     return this.assetLifecycleService.payoutOriginator(assetId);
   }
+
+  @Get(':assetId/purchase-history')
+  async getPurchaseHistory(@Param('assetId') assetId: string) {
+    return this.assetLifecycleService.getPurchaseHistory(assetId);
+  }
 }

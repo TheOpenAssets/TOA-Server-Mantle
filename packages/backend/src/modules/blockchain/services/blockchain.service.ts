@@ -255,9 +255,9 @@ export class BlockchainService {
       const assetIdBytes32 = ('0x' + asset.assetId.replace(/-/g, '').padEnd(64, '0')) as Hash;
       this.logger.log(`AssetId bytes32: ${assetIdBytes32}`);
 
-      // Get totalSupply and convert to wei (18 decimals)
-      const totalSupplyRaw = asset.tokenParams?.totalSupply || asset.token?.supply || '100000';
-      const totalSupplyWei = BigInt(totalSupplyRaw) * BigInt(10 ** 18);
+      // Get totalSupply (already in wei from database - 18 decimals)
+      const totalSupplyRaw = asset.tokenParams?.totalSupply || asset.token?.supply || '100000000000000000000';
+      const totalSupplyWei = BigInt(totalSupplyRaw); // Already in wei, no multiplication needed
       this.logger.log(`Total supply: raw=${totalSupplyRaw}, wei=${totalSupplyWei.toString()}`);
 
       // Determine listing type enum (0 = STATIC, 1 = AUCTION)
@@ -315,12 +315,16 @@ export class BlockchainService {
       this.logger.error(`Error type: ${error?.constructor?.name || typeof error}`);
       this.logger.error(`Error message: ${error?.message || String(error)}`);
 
+      // BigInt-safe JSON serializer
+      const bigIntReplacer = (_key: string, value: any) =>
+        typeof value === 'bigint' ? value.toString() : value;
+
       if (error?.cause) {
-        this.logger.error(`Error cause: ${JSON.stringify(error.cause, null, 2)}`);
+        this.logger.error(`Error cause: ${JSON.stringify(error.cause, bigIntReplacer, 2)}`);
       }
 
       if (error?.metaMessages) {
-        this.logger.error(`Meta messages: ${JSON.stringify(error.metaMessages, null, 2)}`);
+        this.logger.error(`Meta messages: ${JSON.stringify(error.metaMessages, bigIntReplacer, 2)}`);
       }
 
       if (error?.details) {
@@ -328,14 +332,14 @@ export class BlockchainService {
       }
 
       if (error?.data) {
-        this.logger.error(`Error data: ${JSON.stringify(error.data, null, 2)}`);
+        this.logger.error(`Error data: ${JSON.stringify(error.data, bigIntReplacer, 2)}`);
       }
 
       if (error?.stack) {
         this.logger.error(`Stack trace: ${error.stack}`);
       }
 
-      this.logger.error(`Full error: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`);
+      this.logger.error(`Full error: ${JSON.stringify(error, bigIntReplacer, 2)}`);
       this.logger.error(`============================================`);
 
       throw error;

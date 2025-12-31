@@ -81,7 +81,7 @@ export class BidTrackerService {
       bidIndex: bidData.bidIndex,
       status: BidStatus.PENDING,
       transactionHash: dto.txHash,
-      blockNumber: bidData.blockNumber,
+      // blockNumber: bidData.blockNumber,
     });
 
     this.logger.log(`Bid recorded: ${bid._id}`);
@@ -134,7 +134,7 @@ export class BidTrackerService {
     tokenAmount: string;
     price: string;
     bidIndex: number;
-    blockNumber: number;
+    // blockNumber: number;
   } | null> {
     try {
       // Get transaction receipt
@@ -176,7 +176,7 @@ export class BidTrackerService {
                 tokenAmount: tokenAmount.toString(),
                 price: price.toString(),
                 bidIndex: Number(bidIndex),
-                blockNumber: Number(receipt.blockNumber),
+                // blockNumber: Number(receipt.blockNumber),
               };
             }
           }

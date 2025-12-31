@@ -11,6 +11,8 @@ export class FaucetService {
   private publicClient;
   private readonly USDC_AMOUNT = '1000'; // Fixed 1000 USDC
   private readonly METH_AMOUNT = '10'; // Fixed 10 mETH
+  private readonly FIXED_AMOUNT = '1000'; // Fixed 1000 USDC
+  private requestQueue: Promise<any> = Promise.resolve(); // Mutex for serializing requests
 
   constructor(
     private configService: ConfigService,
@@ -24,6 +26,14 @@ export class FaucetService {
   }
 
   async requestUsdc(receiverAddress: string): Promise<{ hash: string; amount: string; receiverAddress: string }> {
+    // Serialize all faucet requests using a queue to prevent nonce conflicts
+    return this.requestQueue = this.requestQueue.then(
+      () => this.executeRequest(receiverAddress),
+      () => this.executeRequest(receiverAddress), // Execute even if previous request failed
+    );
+  }
+
+  private async executeRequest(receiverAddress: string): Promise<{ hash: string; amount: string; receiverAddress: string }> {
     try {
       const wallet = this.walletService.getAdminWallet();
       const faucetAddress = this.contractLoader.getContractAddress('Faucet');

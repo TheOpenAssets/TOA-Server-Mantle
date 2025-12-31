@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards } from '@nestjs/common';
 import { IsString, IsNotEmpty, IsNumber } from 'class-validator';
 import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -65,6 +65,11 @@ export class ComplianceController {
   @Post('schedule-auction')
   async scheduleAuction(@Body() dto: ScheduleAuctionDto) {
     return this.assetLifecycleService.scheduleAuction(dto.assetId, dto.startDelayMinutes);
+  }
+
+  @Get('auction-clearing-price/:assetId')
+  async getAuctionClearingPriceSuggestion(@Param('assetId') assetId: string) {
+    return this.assetLifecycleService.calculateSuggestedClearingPrice(assetId);
   }
 
   @Post('end-auction')
