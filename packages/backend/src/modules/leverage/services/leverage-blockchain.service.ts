@@ -149,8 +149,9 @@ export class LeverageBlockchainService {
 
     this.logger.log(`⚠️ Liquidating position ${positionId}...`);
 
-    // Get current mETH price (returns 18 decimals format)
-    const methPriceUSD = BigInt(this.methPriceService.getCurrentPrice());
+    // Get current mETH price (6 decimals) and convert to 18 decimals
+    const methPriceUSDC = BigInt(this.methPriceService.getCurrentPrice());
+    const methPriceUSD = methPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
 
     try {
       const hash = await wallet.writeContract({
@@ -265,8 +266,9 @@ export class LeverageBlockchainService {
         this.contractLoader.getContractAddress('LeverageVault');
       const leverageVaultABI = this.contractLoader.getContractAbi('LeverageVault');
 
-      // Get current mETH price (returns 18 decimals format)
-      const methPriceUSD = BigInt(this.methPriceService.getCurrentPrice());
+      // Get current mETH price (6 decimals) and convert to 18 decimals
+      const methPriceUSDC = BigInt(this.methPriceService.getCurrentPrice());
+      const methPriceUSD = methPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
 
       const healthFactor = (await this.publicClient.readContract({
         address: leverageVaultAddress as Address,

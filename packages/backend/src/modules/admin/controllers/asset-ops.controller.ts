@@ -405,6 +405,71 @@ export class AssetOpsController {
     }
   }
 
+  @Post(':assetId/approve-marketplace')
+  async approveMarketplace(@Param('assetId') assetId: string) {
+    try {
+      // Get the asset from database
+      const asset = await this.assetModel.findOne({ assetId });
+
+      if (!asset) {
+        throw new HttpException(
+          {
+            success: false,
+            error: 'Asset Not Found',
+            message: 'Asset does not exist in database',
+            assetId,
+          },
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      if (!asset.token?.address) {
+        throw new HttpException(
+          {
+            success: false,
+            error: 'Token Not Deployed',
+            message: 'Token has not been deployed for this asset yet',
+            assetId,
+            hint: 'Call POST /admin/assets/deploy-token first',
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      this.logger.log(`Approving marketplace for asset ${assetId}, token: ${asset.token.address}`);
+
+      // Approve marketplace to spend tokens
+      const txHash = await this.blockchainService.approveMarketplace(asset.token.address);
+
+      return {
+        success: true,
+        message: 'Marketplace approved to spend tokens',
+        assetId,
+        tokenAddress: asset.token.address,
+        transactionHash: txHash,
+        explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
+      };
+    } catch (error: any) {
+      // Re-throw HttpExceptions as-is
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      const errorMessage = error.message || 'Unknown error';
+
+      throw new HttpException(
+        {
+          success: false,
+          error: 'Approval Failed',
+          message: errorMessage.split('\n')[0],
+          assetId,
+          details: error.shortMessage || errorMessage,
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   @Post('auctions/create')
   async createAuction(@Body() dto: CreateAuctionDto) {
     return this.auctionService.createAuction(dto);
