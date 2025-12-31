@@ -37,6 +37,7 @@ export class LeveragePositionService {
 
       const position = await this.leveragePositionModel.create({
         ...data,
+        userAddress: data.userAddress.toLowerCase(), // Normalize address to lowercase
         healthStatus,
         status: PositionStatus.ACTIVE,
         createdAt: new Date(),
