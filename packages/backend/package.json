@@ -29,6 +29,7 @@
     "@nestjs/mongoose": "^11.0.4",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/schedule": "^6.1.0",
     "@types/multer": "^2.0.0",
     "@types/pdf-parse": "^1.1.5",
     "@types/xml2js": "^0.4.14",

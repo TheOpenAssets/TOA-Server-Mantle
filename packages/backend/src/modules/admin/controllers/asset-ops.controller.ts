@@ -405,6 +405,163 @@ export class AssetOpsController {
     }
   }
 
+  @Post(':assetId/end-auction-onchain')
+  async endAuctionOnChain(
+    @Param('assetId') assetId: string,
+    @Body('clearingPrice') clearingPrice: string,
+  ) {
+    try {
+      // Get the asset from database
+      const asset = await this.assetModel.findOne({ assetId });
+
+      if (!asset) {
+        throw new HttpException(
+          {
+            success: false,
+            error: 'Asset Not Found',
+            message: 'Asset does not exist in database',
+            assetId,
+          },
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      if (asset.assetType !== 'AUCTION') {
+        throw new HttpException(
+          {
+            success: false,
+            error: 'Not an Auction',
+            message: 'Asset is not an auction type',
+            assetId,
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      if (!clearingPrice) {
+        throw new HttpException(
+          {
+            success: false,
+            error: 'Missing Clearing Price',
+            message: 'Clearing price is required to end auction',
+            assetId,
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      this.logger.log(`Ending auction on-chain for asset ${assetId}, clearing price: ${clearingPrice}`);
+
+      // Call blockchain service to end auction on-chain
+      const txHash = await this.blockchainService.endAuction(assetId, clearingPrice);
+
+      // Update database with transaction hash and clearing price
+      await this.assetModel.updateOne(
+        { assetId },
+        {
+          $set: {
+            'listing.clearingPrice': clearingPrice,
+            'listing.active': false,
+            'listing.endedAt': new Date(),
+            'listing.endTransactionHash': txHash,
+          },
+        },
+      );
+
+      return {
+        success: true,
+        message: 'Auction ended on-chain successfully',
+        assetId,
+        clearingPrice,
+        transactionHash: txHash,
+        explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
+      };
+    } catch (error: any) {
+      // Re-throw HttpExceptions as-is
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      const errorMessage = error.message || 'Unknown error';
+
+      throw new HttpException(
+        {
+          success: false,
+          error: 'End Auction Failed',
+          message: errorMessage.split('\n')[0],
+          assetId,
+          details: error.shortMessage || errorMessage,
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Post(':assetId/approve-marketplace')
+  async approveMarketplace(@Param('assetId') assetId: string) {
+    try {
+      // Get the asset from database
+      const asset = await this.assetModel.findOne({ assetId });
+
+      if (!asset) {
+        throw new HttpException(
+          {
+            success: false,
+            error: 'Asset Not Found',
+            message: 'Asset does not exist in database',
+            assetId,
+          },
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      if (!asset.token?.address) {
+        throw new HttpException(
+          {
+            success: false,
+            error: 'Token Not Deployed',
+            message: 'Token has not been deployed for this asset yet',
+            assetId,
+            hint: 'Call POST /admin/assets/deploy-token first',
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      this.logger.log(`Approving marketplace for asset ${assetId}, token: ${asset.token.address}`);
+
+      // Approve marketplace to spend tokens
+      const txHash = await this.blockchainService.approveMarketplace(asset.token.address);
+
+      return {
+        success: true,
+        message: 'Marketplace approved to spend tokens',
+        assetId,
+        tokenAddress: asset.token.address,
+        transactionHash: txHash,
+        explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
+      };
+    } catch (error: any) {
+      // Re-throw HttpExceptions as-is
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      const errorMessage = error.message || 'Unknown error';
+
+      throw new HttpException(
+        {
+          success: false,
+          error: 'Approval Failed',
+          message: errorMessage.split('\n')[0],
+          assetId,
+          details: error.shortMessage || errorMessage,
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   @Post('auctions/create')
   async createAuction(@Body() dto: CreateAuctionDto) {
     return this.auctionService.createAuction(dto);

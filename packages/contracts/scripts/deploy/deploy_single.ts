@@ -125,6 +125,37 @@ async function main() {
       contractAddress = await faucet.getAddress();
       break;
 
+    case "SeniorPool": {
+      if (!usdcAddress) throw new Error("USDC not available");
+      const SeniorPool = await ethers.getContractFactory("SeniorPool");
+      const seniorPool = await SeniorPool.deploy(usdcAddress);
+      await seniorPool.waitForDeployment();
+      contractAddress = await seniorPool.getAddress();
+      console.log("⚠️  Remember to call setLeverageVault() after deploying LeverageVault!");
+      break;
+    }
+
+    case "LeverageVault": {
+      const mockMETHAddr = deployedData.contracts.MockMETH;
+      const seniorPoolAddr = deployedData.contracts.SeniorPool;
+      const fluxionIntegrationAddr = deployedData.contracts.FluxionIntegration;
+      if (!mockMETHAddr || !usdcAddress || !seniorPoolAddr || !fluxionIntegrationAddr) {
+        throw new Error("Required contracts not deployed (MockMETH, USDC, SeniorPool, FluxionIntegration)");
+      }
+      const LeverageVault = await ethers.getContractFactory("LeverageVault");
+      // No price oracle needed - backend passes mETH price as parameter
+      const leverageVault = await LeverageVault.deploy(
+        mockMETHAddr,
+        usdcAddress,
+        seniorPoolAddr,
+        fluxionIntegrationAddr
+      );
+      await leverageVault.waitForDeployment();
+      contractAddress = await leverageVault.getAddress();
+      console.log("⚠️  Remember to register LeverageVault in IdentityRegistry!");
+      break;
+    }
+
     default:
       throw new Error(`Unknown contract: ${contractName}`);
   }

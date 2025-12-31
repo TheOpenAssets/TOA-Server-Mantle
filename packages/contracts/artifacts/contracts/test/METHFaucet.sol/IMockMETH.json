@@ -1,7 +1,7 @@
 {
   "_format": "hh-sol-artifact-1",
-  "contractName": "MockUSDC",
-  "sourceName": "contracts/test/Faucet.sol",
+  "contractName": "IMockMETH",
+  "sourceName": "contracts/test/METHFaucet.sol",
   "abi": [
     {
       "inputs": [

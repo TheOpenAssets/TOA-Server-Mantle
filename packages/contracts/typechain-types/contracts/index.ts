@@ -3,6 +3,8 @@
 /* eslint-disable */
 import type * as core from "./core";
 export type { core };
+import type * as integrations from "./integrations";
+export type { integrations };
 import type * as marketplace from "./marketplace";
 export type { marketplace };
 import type * as test from "./test";

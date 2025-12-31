@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createPublicClient, http, Hash, Address, decodeEventLog } from 'viem';
+import { createPublicClient, http, Hash, Address, decodeEventLog, parseAbi } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
 import { ContractLoaderService } from './contract-loader.service';
 import { WalletService } from './wallet.service';
@@ -344,6 +344,50 @@ export class BlockchainService {
 
       throw error;
     }
+  }
+
+  async approveMarketplace(tokenAddress: string): Promise<Hash> {
+    const wallet = this.walletService.getPlatformWallet();
+    const marketplaceAddress = this.contractLoader.getContractAddress('PrimaryMarketplace');
+
+    const tokenAbi = parseAbi([
+      'function approve(address spender, uint256 amount) returns (bool)',
+      'function allowance(address owner, address spender) view returns (uint256)',
+    ]);
+
+    this.logger.log(`Approving marketplace ${marketplaceAddress} to spend tokens from ${tokenAddress}`);
+
+    // Check current allowance
+    const currentAllowance = await this.publicClient.readContract({
+      address: tokenAddress as Address,
+      abi: tokenAbi,
+      functionName: 'allowance',
+      args: [wallet.account.address, marketplaceAddress as Address],
+    }) as bigint;
+
+    if (currentAllowance > 0n) {
+      this.logger.log(`Marketplace already has approval: ${currentAllowance.toString()}`);
+      return '0x0' as Hash; // Return dummy hash if already approved
+    }
+
+    // Approve max amount (unlimited approval)
+    const maxApproval = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'); // MaxUint256
+
+    const hash = await wallet.writeContract({
+      address: tokenAddress as Address,
+      abi: tokenAbi,
+      functionName: 'approve',
+      args: [marketplaceAddress as Address, maxApproval],
+    });
+
+    await this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 180_000,
+      pollingInterval: 2_000,
+    });
+
+    this.logger.log(`Marketplace approved in tx: ${hash}`);
+    return hash;
   }
 
   async endAuction(assetId: string, clearingPrice: string): Promise<Hash> {

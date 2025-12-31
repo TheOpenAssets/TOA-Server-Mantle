@@ -946,8 +946,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/MockUSDC.sol": {
-      "lastModificationDate": 1766568781379,
-      "contentHash": "87552e5a9befa185875faa42f863fd2c",
+      "lastModificationDate": 1767160474433,
+      "contentHash": "51c93e37dd223ccf1cbcef93188b5d42",
       "sourceName": "contracts/test/MockUSDC.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -984,8 +984,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/Faucet.sol": {
-      "lastModificationDate": 1766678513799,
-      "contentHash": "ac1a5b03879c1d67f8cae2020379c758",
+      "lastModificationDate": 1767173968349,
+      "contentHash": "2925466ae3405e3dc2c0f6ba8ce7cf89",
       "sourceName": "contracts/test/Faucet.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1019,7 +1019,7 @@
       ],
       "artifacts": [
         "Faucet",
-        "MockUSDC"
+        "IMockUSDC"
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/node_modules/@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol": {
@@ -1059,6 +1059,322 @@
       ],
       "artifacts": [
         "ERC20Burnable"
+      ]
+    },
+    "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/node_modules/@openzeppelin/contracts/access/Ownable.sol": {
+      "lastModificationDate": 1766467354307,
+      "contentHash": "d3c790edc9ccf808a17c5a6cd13614fd",
+      "sourceName": "@openzeppelin/contracts/access/Ownable.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "../utils/Context.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "Ownable"
+      ]
+    },
+    "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/MockMETH.sol": {
+      "lastModificationDate": 1767165787304,
+      "contentHash": "a77897c1c259865328ca311f3c765347",
+      "sourceName": "contracts/test/MockMETH.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/ERC20.sol",
+        "@openzeppelin/contracts/access/Ownable.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "MockMETH"
+      ]
+    },
+    "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/MockFluxionDEX.sol": {
+      "lastModificationDate": 1767164468698,
+      "contentHash": "8728d702189df43af4751be0accafb41",
+      "sourceName": "contracts/test/MockFluxionDEX.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
+        "@openzeppelin/contracts/access/Ownable.sol",
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "MockFluxionDEX"
+      ]
+    },
+    "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/node_modules/@openzeppelin/contracts/utils/ReentrancyGuard.sol": {
+      "lastModificationDate": 1766467354305,
+      "contentHash": "190613e556d509d9e9a0ea43dc5d891d",
+      "sourceName": "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "ReentrancyGuard"
+      ]
+    },
+    "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/integrations/FluxionIntegration.sol": {
+      "lastModificationDate": 1767087583406,
+      "contentHash": "5926d0c029eaf0b480f174a026ab1a97",
+      "sourceName": "contracts/integrations/FluxionIntegration.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
+        "@openzeppelin/contracts/access/Ownable.sol",
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "FluxionIntegration",
+        "IFluxionDEX",
+        "IMETHPriceOracle"
+      ]
+    },
+    "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/core/SeniorPool.sol": {
+      "lastModificationDate": 1767087427699,
+      "contentHash": "bcfbf27252972de28b5abab1ac011f25",
+      "sourceName": "contracts/core/SeniorPool.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
+        "@openzeppelin/contracts/access/Ownable.sol",
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "SeniorPool"
+      ]
+    },
+    "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/core/LeverageVault.sol": {
+      "lastModificationDate": 1767180161433,
+      "contentHash": "a4423f639689b914937925353f28f9cd",
+      "sourceName": "contracts/core/LeverageVault.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
+        "@openzeppelin/contracts/access/Ownable.sol",
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IFluxionIntegration",
+        "ISeniorPool",
+        "LeverageVault"
+      ]
+    },
+    "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/test/METHFaucet.sol": {
+      "lastModificationDate": 1767173952384,
+      "contentHash": "3e8614c1161f6237b2e4d5f65cacb6c8",
+      "sourceName": "contracts/test/METHFaucet.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IMockMETH",
+        "METHFaucet"
       ]
     }
   }

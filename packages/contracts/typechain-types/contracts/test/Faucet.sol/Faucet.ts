@@ -8,6 +8,7 @@ import type {
   FunctionFragment,
   Result,
   Interface,
+  AddressLike,
   ContractRunner,
   ContractMethod,
   Listener,
@@ -28,11 +29,11 @@ export interface FaucetInterface extends Interface {
   encodeFunctionData(functionFragment: "mockUSDC", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "requestTokens",
-    values: [BigNumberish]
+    values: [AddressLike, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "requestUSDC",
-    values: [BigNumberish]
+    values: [AddressLike, BigNumberish]
   ): string;
 
   decodeFunctionResult(functionFragment: "mockUSDC", data: BytesLike): Result;
@@ -92,13 +93,13 @@ export interface Faucet extends BaseContract {
   mockUSDC: TypedContractMethod<[], [string], "view">;
 
   requestTokens: TypedContractMethod<
-    [amount: BigNumberish],
+    [to: AddressLike, amount: BigNumberish],
     [void],
     "nonpayable"
   >;
 
   requestUSDC: TypedContractMethod<
-    [amountInUSDC: BigNumberish],
+    [to: AddressLike, amountInUSDC: BigNumberish],
     [void],
     "nonpayable"
   >;
@@ -112,10 +113,18 @@ export interface Faucet extends BaseContract {
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
     nameOrSignature: "requestTokens"
-  ): TypedContractMethod<[amount: BigNumberish], [void], "nonpayable">;
+  ): TypedContractMethod<
+    [to: AddressLike, amount: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
   getFunction(
     nameOrSignature: "requestUSDC"
-  ): TypedContractMethod<[amountInUSDC: BigNumberish], [void], "nonpayable">;
+  ): TypedContractMethod<
+    [to: AddressLike, amountInUSDC: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
 
   filters: {};
 }

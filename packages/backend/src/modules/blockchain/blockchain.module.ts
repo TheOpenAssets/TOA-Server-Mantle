@@ -7,6 +7,7 @@ import { BlockchainService } from './services/blockchain.service';
 import { WalletService } from './services/wallet.service';
 import { ContractLoaderService } from './services/contract-loader.service';
 import { EventListenerService } from './services/event-listener.service';
+import { MethPriceService } from './services/meth-price.service';
 import { EventProcessor } from './processors/event.processor';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { Bid, BidSchema } from '../../database/schemas/bid.schema';
@@ -33,6 +34,7 @@ import { forwardRef } from '@nestjs/common';
     WalletService,
     ContractLoaderService,
     EventListenerService,
+    MethPriceService,
     EventProcessor,
   ],
   exports: [
@@ -40,6 +42,7 @@ import { forwardRef } from '@nestjs/common';
     WalletService,
     ContractLoaderService,
     EventListenerService,
+    MethPriceService,
   ],
 })
 export class BlockchainModule {}

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -22,6 +23,7 @@ import { TypeformModule } from './modules/typeform/typeform.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
 import { FaucetModule } from './modules/faucet/faucet.module';
+import { LeverageModule } from './modules/leverage/leverage.module';
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { FaucetModule } from './modules/faucet/faucet.module';
       isGlobal: true,
       load: [databaseConfig, redisConfig, blockchainConfig],
     }),
+
+    ScheduleModule.forRoot(),
 
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
@@ -78,6 +82,7 @@ import { FaucetModule } from './modules/faucet/faucet.module';
     MarketplaceModule,
     AnnouncementsModule,
     FaucetModule,
+    LeverageModule,
   ],
   controllers: [AppController],
   providers: [AppService],

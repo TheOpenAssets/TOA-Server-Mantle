@@ -2,4 +2,4 @@
 /* tslint:disable */
 /* eslint-disable */
 export type { Faucet } from "./Faucet";
-export type { MockUSDC } from "./MockUSDC";
+export type { IMockUSDC } from "./IMockUSDC";
