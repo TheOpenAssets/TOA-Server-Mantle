@@ -149,12 +149,15 @@ export class LeverageBlockchainService {
 
     this.logger.log(`⚠️ Liquidating position ${positionId}...`);
 
+    // Get current mETH price (returns 18 decimals format)
+    const methPriceUSD = BigInt(this.methPriceService.getCurrentPrice());
+
     try {
       const hash = await wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'liquidatePosition',
-        args: [BigInt(positionId)],
+        args: [BigInt(positionId), methPriceUSD],
       });
 
       await this.publicClient.waitForTransactionReceipt({ hash });
