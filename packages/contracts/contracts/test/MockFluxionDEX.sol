@@ -154,6 +154,70 @@ contract MockFluxionDEX is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @notice Swap exact mETH for exact USDC (backend calculates amounts)
+     * @dev This is the preferred method - backend calculates exchange rate off-chain using historical data
+     * @param mETHAmount Exact amount of mETH to swap (18 decimals)
+     * @param exactUSDCOut Exact amount of USDC to receive (6 decimals) - calculated by backend
+     * @return usdcOut Actual USDC output (should match exactUSDCOut)
+     */
+    function swapMETHForUSDCExact(
+        uint256 mETHAmount,
+        uint256 exactUSDCOut
+    ) external nonReentrant returns (uint256 usdcOut) {
+        require(mETHAmount > 0, "mETH amount must be greater than 0");
+        require(exactUSDCOut > 0, "USDC amount must be greater than 0");
+        require(usdcReserve >= exactUSDCOut, "Insufficient USDC liquidity");
+
+        // Transfer mETH from user to DEX
+        require(
+            mETH.transferFrom(msg.sender, address(this), mETHAmount),
+            "mETH transfer failed"
+        );
+
+        // Update reserves
+        mETHReserve += mETHAmount;
+        usdcReserve -= exactUSDCOut;
+
+        // Transfer exact USDC to user
+        require(USDC.transfer(msg.sender, exactUSDCOut), "USDC transfer failed");
+
+        emit Swapped(msg.sender, address(mETH), address(USDC), mETHAmount, exactUSDCOut);
+        return exactUSDCOut;
+    }
+
+    /**
+     * @notice Swap exact USDC for exact mETH (backend calculates amounts)
+     * @dev This is the preferred method - backend calculates exchange rate off-chain using historical data
+     * @param usdcAmount Exact amount of USDC to swap (6 decimals)
+     * @param exactMETHOut Exact amount of mETH to receive (18 decimals) - calculated by backend
+     * @return mETHOut Actual mETH output (should match exactMETHOut)
+     */
+    function swapUSDCForMETHExact(
+        uint256 usdcAmount,
+        uint256 exactMETHOut
+    ) external nonReentrant returns (uint256 mETHOut) {
+        require(usdcAmount > 0, "USDC amount must be greater than 0");
+        require(exactMETHOut > 0, "mETH amount must be greater than 0");
+        require(mETHReserve >= exactMETHOut, "Insufficient mETH liquidity");
+
+        // Transfer USDC from user to DEX
+        require(
+            USDC.transferFrom(msg.sender, address(this), usdcAmount),
+            "USDC transfer failed"
+        );
+
+        // Update reserves
+        usdcReserve += usdcAmount;
+        mETHReserve -= exactMETHOut;
+
+        // Transfer exact mETH to user
+        require(mETH.transfer(msg.sender, exactMETHOut), "mETH transfer failed");
+
+        emit Swapped(msg.sender, address(USDC), address(mETH), usdcAmount, exactMETHOut);
+        return exactMETHOut;
+    }
+
+    /**
      * @notice Add liquidity to DEX (for testing)
      * @param mETHAmount Amount of mETH to add
      * @param usdcAmount Amount of USDC to add

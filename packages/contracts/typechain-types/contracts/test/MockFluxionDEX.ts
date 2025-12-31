@@ -38,7 +38,9 @@ export interface MockFluxionDEXInterface extends Interface {
       | "renounceOwnership"
       | "setExchangeRate"
       | "swapMETHForUSDC"
+      | "swapMETHForUSDCExact"
       | "swapUSDCForMETH"
+      | "swapUSDCForMETHExact"
       | "transferOwnership"
       | "usdcReserve"
   ): FunctionFragment;
@@ -91,7 +93,15 @@ export interface MockFluxionDEXInterface extends Interface {
     values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
+    functionFragment: "swapMETHForUSDCExact",
+    values: [BigNumberish, BigNumberish]
+  ): string;
+  encodeFunctionData(
     functionFragment: "swapUSDCForMETH",
+    values: [BigNumberish, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "swapUSDCForMETHExact",
     values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
@@ -140,7 +150,15 @@ export interface MockFluxionDEXInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
+    functionFragment: "swapMETHForUSDCExact",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "swapUSDCForMETH",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "swapUSDCForMETHExact",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -303,8 +321,20 @@ export interface MockFluxionDEX extends BaseContract {
     "nonpayable"
   >;
 
+  swapMETHForUSDCExact: TypedContractMethod<
+    [mETHAmount: BigNumberish, exactUSDCOut: BigNumberish],
+    [bigint],
+    "nonpayable"
+  >;
+
   swapUSDCForMETH: TypedContractMethod<
     [usdcAmount: BigNumberish, minMETHOut: BigNumberish],
+    [bigint],
+    "nonpayable"
+  >;
+
+  swapUSDCForMETHExact: TypedContractMethod<
+    [usdcAmount: BigNumberish, exactMETHOut: BigNumberish],
     [bigint],
     "nonpayable"
   >;
@@ -366,9 +396,23 @@ export interface MockFluxionDEX extends BaseContract {
     "nonpayable"
   >;
   getFunction(
+    nameOrSignature: "swapMETHForUSDCExact"
+  ): TypedContractMethod<
+    [mETHAmount: BigNumberish, exactUSDCOut: BigNumberish],
+    [bigint],
+    "nonpayable"
+  >;
+  getFunction(
     nameOrSignature: "swapUSDCForMETH"
   ): TypedContractMethod<
     [usdcAmount: BigNumberish, minMETHOut: BigNumberish],
+    [bigint],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "swapUSDCForMETHExact"
+  ): TypedContractMethod<
+    [usdcAmount: BigNumberish, exactMETHOut: BigNumberish],
     [bigint],
     "nonpayable"
   >;

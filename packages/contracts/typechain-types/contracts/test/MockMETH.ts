@@ -31,14 +31,10 @@ export interface MockMETHInterface extends Interface {
       | "balanceOf"
       | "burn"
       | "decimals"
-      | "getPrice"
-      | "getValueInUSD"
       | "mint"
       | "name"
       | "owner"
-      | "price"
       | "renounceOwnership"
-      | "setPrice"
       | "symbol"
       | "totalSupply"
       | "transfer"
@@ -50,7 +46,6 @@ export interface MockMETHInterface extends Interface {
     nameOrSignatureOrTopic:
       | "Approval"
       | "OwnershipTransferred"
-      | "PriceUpdated"
       | "TokensMinted"
       | "Transfer"
   ): EventFragment;
@@ -69,25 +64,15 @@ export interface MockMETHInterface extends Interface {
   ): string;
   encodeFunctionData(functionFragment: "burn", values: [BigNumberish]): string;
   encodeFunctionData(functionFragment: "decimals", values?: undefined): string;
-  encodeFunctionData(functionFragment: "getPrice", values?: undefined): string;
-  encodeFunctionData(
-    functionFragment: "getValueInUSD",
-    values: [BigNumberish]
-  ): string;
   encodeFunctionData(
     functionFragment: "mint",
     values: [AddressLike, BigNumberish]
   ): string;
   encodeFunctionData(functionFragment: "name", values?: undefined): string;
   encodeFunctionData(functionFragment: "owner", values?: undefined): string;
-  encodeFunctionData(functionFragment: "price", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "renounceOwnership",
     values?: undefined
-  ): string;
-  encodeFunctionData(
-    functionFragment: "setPrice",
-    values: [BigNumberish]
   ): string;
   encodeFunctionData(functionFragment: "symbol", values?: undefined): string;
   encodeFunctionData(
@@ -112,20 +97,13 @@ export interface MockMETHInterface extends Interface {
   decodeFunctionResult(functionFragment: "balanceOf", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "burn", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "decimals", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "getPrice", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "getValueInUSD",
-    data: BytesLike
-  ): Result;
   decodeFunctionResult(functionFragment: "mint", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "name", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "price", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "renounceOwnership",
     data: BytesLike
   ): Result;
-  decodeFunctionResult(functionFragment: "setPrice", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "symbol", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "totalSupply",
@@ -166,19 +144,6 @@ export namespace OwnershipTransferredEvent {
   export interface OutputObject {
     previousOwner: string;
     newOwner: string;
-  }
-  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
-  export type Filter = TypedDeferredTopicFilter<Event>;
-  export type Log = TypedEventLog<Event>;
-  export type LogDescription = TypedLogDescription<Event>;
-}
-
-export namespace PriceUpdatedEvent {
-  export type InputTuple = [oldPrice: BigNumberish, newPrice: BigNumberish];
-  export type OutputTuple = [oldPrice: bigint, newPrice: bigint];
-  export interface OutputObject {
-    oldPrice: bigint;
-    newPrice: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -278,14 +243,6 @@ export interface MockMETH extends BaseContract {
 
   decimals: TypedContractMethod<[], [bigint], "view">;
 
-  getPrice: TypedContractMethod<[], [bigint], "view">;
-
-  getValueInUSD: TypedContractMethod<
-    [mETHAmount: BigNumberish],
-    [bigint],
-    "view"
-  >;
-
   mint: TypedContractMethod<
     [to: AddressLike, amount: BigNumberish],
     [void],
@@ -296,11 +253,7 @@ export interface MockMETH extends BaseContract {
 
   owner: TypedContractMethod<[], [string], "view">;
 
-  price: TypedContractMethod<[], [bigint], "view">;
-
   renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
-
-  setPrice: TypedContractMethod<[newPrice: BigNumberish], [void], "nonpayable">;
 
   symbol: TypedContractMethod<[], [string], "view">;
 
@@ -352,12 +305,6 @@ export interface MockMETH extends BaseContract {
     nameOrSignature: "decimals"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
-    nameOrSignature: "getPrice"
-  ): TypedContractMethod<[], [bigint], "view">;
-  getFunction(
-    nameOrSignature: "getValueInUSD"
-  ): TypedContractMethod<[mETHAmount: BigNumberish], [bigint], "view">;
-  getFunction(
     nameOrSignature: "mint"
   ): TypedContractMethod<
     [to: AddressLike, amount: BigNumberish],
@@ -371,14 +318,8 @@ export interface MockMETH extends BaseContract {
     nameOrSignature: "owner"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
-    nameOrSignature: "price"
-  ): TypedContractMethod<[], [bigint], "view">;
-  getFunction(
     nameOrSignature: "renounceOwnership"
   ): TypedContractMethod<[], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "setPrice"
-  ): TypedContractMethod<[newPrice: BigNumberish], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "symbol"
   ): TypedContractMethod<[], [string], "view">;
@@ -418,13 +359,6 @@ export interface MockMETH extends BaseContract {
     OwnershipTransferredEvent.OutputObject
   >;
   getEvent(
-    key: "PriceUpdated"
-  ): TypedContractEvent<
-    PriceUpdatedEvent.InputTuple,
-    PriceUpdatedEvent.OutputTuple,
-    PriceUpdatedEvent.OutputObject
-  >;
-  getEvent(
     key: "TokensMinted"
   ): TypedContractEvent<
     TokensMintedEvent.InputTuple,
@@ -460,17 +394,6 @@ export interface MockMETH extends BaseContract {
       OwnershipTransferredEvent.InputTuple,
       OwnershipTransferredEvent.OutputTuple,
       OwnershipTransferredEvent.OutputObject
-    >;
-
-    "PriceUpdated(uint256,uint256)": TypedContractEvent<
-      PriceUpdatedEvent.InputTuple,
-      PriceUpdatedEvent.OutputTuple,
-      PriceUpdatedEvent.OutputObject
-    >;
-    PriceUpdated: TypedContractEvent<
-      PriceUpdatedEvent.InputTuple,
-      PriceUpdatedEvent.OutputTuple,
-      PriceUpdatedEvent.OutputObject
     >;
 
     "TokensMinted(address,uint256)": TypedContractEvent<
