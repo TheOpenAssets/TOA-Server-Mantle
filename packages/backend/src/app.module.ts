@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -30,6 +31,8 @@ import { LeverageModule } from './modules/leverage/leverage.module';
       isGlobal: true,
       load: [databaseConfig, redisConfig, blockchainConfig],
     }),
+
+    ScheduleModule.forRoot(),
 
     MongooseModule.forRootAsync({
       imports: [ConfigModule],

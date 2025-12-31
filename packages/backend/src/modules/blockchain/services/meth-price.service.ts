@@ -1,55 +1,215 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { CronJob } from 'cron';
+import * as fs from 'fs';
+import * as path from 'path';
+
+interface PriceDataPoint {
+  date: Date;
+  price: number;
+}
 
 /**
  * @class MethPriceService
- * @description Manages mETH price history for demo purposes
- * Stores 3 months of historical data to avoid blockchain RPC calls
+ * @description Manages mETH price history from real CSV data
+ * Loads configurable months of historical data and updates at configurable intervals
  */
 @Injectable()
-export class MethPriceService {
+export class MethPriceService implements OnModuleInit {
   private readonly logger = new Logger(MethPriceService.name);
 
-  // Historical price data (90 days)
+  // Historical price data
   private priceHistory: Map<string, number> = new Map();
+  private priceDataPoints: PriceDataPoint[] = [];
 
   // Current price in USD (6 decimals to match USDC)
-  private currentPrice: number = 3000 * 1e6; // $3000 per mETH
+  private currentPrice: number = 3000 * 1e6; // Default $3000 per mETH
+  private currentDataIndex: number = 0;
 
-  // Price appreciation rate (annual %)
-  private readonly ANNUAL_YIELD = 0.05; // 5% APY
-  private readonly DAILY_YIELD = this.ANNUAL_YIELD / 365;
+  // Configuration
+  private readonly updateIntervalHours: number;
+  private readonly historyDays: number;
+  private readonly CSV_PATH = path.join(process.cwd(), 'Data', 'meth-usd-max.csv');
 
-  constructor() {
-    this.initializePriceHistory();
-    this.logger.log('mETH Price Service initialized with 3-month historical data');
+  constructor(
+    private configService: ConfigService,
+    private schedulerRegistry: SchedulerRegistry,
+  ) {
+    // Load configuration from environment
+    this.updateIntervalHours = this.configService.get<number>('METH_PRICE_UPDATE_INTERVAL_HOURS', 4);
+    this.historyDays = this.configService.get<number>('METH_PRICE_HISTORY_DAYS', 180);
+  }
+
+  async onModuleInit() {
+    this.logger.log('Initializing mETH Price Service...');
+    this.logger.log(`Configuration: Update interval = ${this.updateIntervalHours}h, History window = ${this.historyDays} days`);
+
+    await this.loadHistoricalData();
+
+    this.logger.log(`mETH Price Service initialized with ${this.priceHistory.size} days of historical data`);
+    this.logger.log(`Current mETH price: $${this.getCurrentPriceUSD()}`);
+
+    // Set up dynamic cron job based on configuration
+    this.setupPriceUpdateSchedule();
   }
 
   /**
-   * Initialize 90 days of historical price data
-   * Simulates gradual price appreciation
+   * Set up dynamic cron job for price updates
    */
-  private initializePriceHistory(): void {
-    const today = new Date();
-    const basePrice = 2850 * 1e6; // Start at $2850 (3 months ago)
+  private setupPriceUpdateSchedule(): void {
+    // Calculate updates per day
+    const updatesPerDay = 24 / this.updateIntervalHours;
+    const daysOfCoverage = this.historyDays / updatesPerDay;
 
-    for (let i = 90; i >= 0; i--) {
+    this.logger.log(`Price will update every ${this.updateIntervalHours} hours (${updatesPerDay} times/day)`);
+    this.logger.log(`${this.historyDays} days of data will last approximately ${Math.floor(daysOfCoverage)} days of runtime`);
+
+    // Create cron expression: "0 */N * * *" where N is the interval
+    const cronExpression = `0 */${this.updateIntervalHours} * * *`;
+
+    const job = new CronJob(cronExpression, () => {
+      this.updatePriceFromHistory();
+    });
+
+    this.schedulerRegistry.addCronJob('meth-price-update', job);
+    job.start();
+
+    this.logger.log(`Scheduled price updates with cron expression: ${cronExpression}`);
+  }
+
+  /**
+   * Load 6 months of historical price data from CSV
+   */
+  private async loadHistoricalData(): Promise<void> {
+    try {
+      // Check if CSV exists
+      if (!fs.existsSync(this.CSV_PATH)) {
+        this.logger.warn(`CSV file not found at ${this.CSV_PATH}. Using simulated data.`);
+        this.initializeSimulatedData();
+        return;
+      }
+
+      // Read CSV file
+      const csvContent = fs.readFileSync(this.CSV_PATH, 'utf-8');
+      const lines = csvContent.split('\n').slice(1); // Skip header
+
+      // Parse all data points
+      const allDataPoints: PriceDataPoint[] = [];
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        const [timestamp, priceStr] = line.split(',');
+        if (!timestamp || !priceStr) continue;
+
+        const date = new Date(timestamp.replace(' UTC', 'Z'));
+        const price = parseFloat(priceStr);
+
+        if (!isNaN(price)) {
+          allDataPoints.push({ date, price });
+        }
+      }
+
+      // Sort by date (oldest first)
+      allDataPoints.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+      // Take last 6 months (180 days)
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setDate(sixMonthsAgo.getDate() - 180);
+
+      this.priceDataPoints = allDataPoints.filter(
+        (dp) => dp.date >= sixMonthsAgo
+      );
+
+      // If we don't have 6 months, take all available data
+      if (this.priceDataPoints.length < 180) {
+        this.priceDataPoints = allDataPoints.slice(-180);
+      }
+
+      // Build price history map
+      for (const dataPoint of this.priceDataPoints) {
+        const dateKey = this.formatDate(dataPoint.date);
+        const priceInUsdcWei = Math.floor(dataPoint.price * 1e6);
+        this.priceHistory.set(dateKey, priceInUsdcWei);
+      }
+
+      // Set current price to the most recent data point
+      if (this.priceDataPoints.length > 0) {
+        const latestPrice = this.priceDataPoints[this.priceDataPoints.length - 1]!.price;
+        this.currentPrice = Math.floor(latestPrice * 1e6);
+        this.currentDataIndex = this.priceDataPoints.length - 1;
+
+        this.logger.log(`Loaded ${this.priceDataPoints.length} days of historical data from CSV`);
+        this.logger.log(`Date range: ${this.formatDate(this.priceDataPoints[0]!.date)} to ${this.formatDate(this.priceDataPoints[this.priceDataPoints.length - 1]!.date)}`);
+      }
+    } catch (error: any) {
+      this.logger.error(`Failed to load CSV data: ${error.message}`, error.stack);
+      this.initializeSimulatedData();
+    }
+  }
+
+  /**
+   * Fallback: Initialize simulated data if CSV not available
+   */
+  private initializeSimulatedData(): void {
+    const today = new Date();
+    const basePrice = 2850; // Start at $2850 (6 months ago)
+    const ANNUAL_YIELD = 0.05; // 5% APY
+    const DAILY_YIELD = ANNUAL_YIELD / 365;
+
+    for (let i = 180; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
 
-      // Calculate price with compound daily yield
-      const daysElapsed = 90 - i;
-      const price = basePrice * Math.pow(1 + this.DAILY_YIELD, daysElapsed);
+      const daysElapsed = 180 - i;
+      const price = basePrice * Math.pow(1 + DAILY_YIELD, daysElapsed);
 
       const dateKey = this.formatDate(date);
-      this.priceHistory.set(dateKey, Math.floor(price));
+      const priceInUsdcWei = Math.floor(price * 1e6);
+      this.priceHistory.set(dateKey, priceInUsdcWei);
+
+      this.priceDataPoints.push({
+        date,
+        price,
+      });
     }
 
-    // Set current price to today's price
     const todayKey = this.formatDate(today);
     this.currentPrice = this.priceHistory.get(todayKey) || 3000 * 1e6;
+    this.currentDataIndex = this.priceDataPoints.length - 1;
 
-    this.logger.log(`Initialized ${this.priceHistory.size} days of price history`);
-    this.logger.log(`Current mETH price: $${this.currentPrice / 1e6}`);
+    this.logger.log(`Initialized ${this.priceHistory.size} days of simulated price history`);
+  }
+
+  /**
+   * Update price from historical data
+   * Called by dynamic cron job
+   */
+  async updatePriceFromHistory(): Promise<void> {
+    this.logger.log('Running scheduled price update...');
+
+    // Move to next data point (simulates time passing)
+    if (this.currentDataIndex < this.priceDataPoints.length - 1) {
+      this.currentDataIndex++;
+    } else {
+      // If we've reached the end, loop back or stay at current
+      this.logger.warn('Reached end of historical data. Staying at current price.');
+      return;
+    }
+
+    const nextDataPoint = this.priceDataPoints[this.currentDataIndex]!;
+    const newPrice = Math.floor(nextDataPoint.price * 1e6);
+
+    this.logger.log(
+      `Price updated: $${this.currentPrice / 1e6} → $${newPrice / 1e6} (${this.formatDate(nextDataPoint.date)})`
+    );
+
+    this.currentPrice = newPrice;
+
+    // Update today's price in history
+    const today = new Date();
+    const dateKey = this.formatDate(today);
+    this.priceHistory.set(dateKey, newPrice);
   }
 
   /**
@@ -123,27 +283,23 @@ export class MethPriceService {
    */
   getPriceChartData(days: number = 30): { date: string; price: number }[] {
     const result: { date: string; price: number }[] = [];
-    const today = new Date();
 
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateKey = this.formatDate(date);
-      const price = this.priceHistory.get(dateKey);
+    // Get last N data points
+    const startIndex = Math.max(0, this.priceDataPoints.length - days);
+    const dataPoints = this.priceDataPoints.slice(startIndex);
 
-      if (price) {
-        result.push({
-          date: dateKey,
-          price: price / 1e6, // Convert to USD
-        });
-      }
+    for (const dp of dataPoints) {
+      result.push({
+        date: this.formatDate(dp.date),
+        price: dp.price,
+      });
     }
 
     return result;
   }
 
   /**
-   * Simulate price update (for demo scenarios)
+   * Manually update price (for demo scenarios)
    * @param newPrice New price in USD (e.g., 3100)
    */
   updatePrice(newPrice: number): void {
@@ -154,7 +310,7 @@ export class MethPriceService {
     const dateKey = this.formatDate(today);
     this.priceHistory.set(dateKey, this.currentPrice);
 
-    this.logger.log(`mETH price updated to $${newPrice}`);
+    this.logger.log(`mETH price manually updated to $${newPrice}`);
   }
 
   /**
@@ -188,7 +344,7 @@ export class MethPriceService {
     const min = Math.min(...prices) / 1e6;
     const max = Math.max(...prices) / 1e6;
     const avg = prices.reduce((a, b) => a + b, 0) / prices.length / 1e6;
-    const first = prices[0]! / 1e6; // Safe: checked length above
+    const first = prices[0]! / 1e6;
     const current = this.currentPrice / 1e6;
     const changePercent = ((current - first) / first) * 100;
 

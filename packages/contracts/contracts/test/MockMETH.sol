@@ -22,8 +22,8 @@ contract MockMETH is ERC20, Ownable {
      * @notice Initialize MockMETH token
      */
     constructor() ERC20("Mock Mantle Staked ETH", "mETH") Ownable(msg.sender) {
-        // Mint 100 billion mETH to deployer for testing
-        _mint(msg.sender, 100_000_000_000 * 10 ** 18);
+        // Mint 400k mETH to deployer (matches real-world total supply)
+        _mint(msg.sender, 400_000 * 10 ** 18);
     }
 
     /**
