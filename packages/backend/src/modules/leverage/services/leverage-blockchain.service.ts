@@ -4,6 +4,7 @@ import { createPublicClient, http, Hash, Address, decodeEventLog } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { WalletService } from '../../blockchain/services/wallet.service';
+import { MethPriceService } from '../../blockchain/services/meth-price.service';
 
 /**
  * @title LeverageBlockchainService
@@ -19,6 +20,7 @@ export class LeverageBlockchainService {
     private configService: ConfigService,
     private contractLoader: ContractLoaderService,
     private walletService: WalletService,
+    private methPriceService: MethPriceService,
   ) {
     this.publicClient = createPublicClient({
       chain: mantleSepolia,
@@ -260,11 +262,14 @@ export class LeverageBlockchainService {
         this.contractLoader.getContractAddress('LeverageVault');
       const leverageVaultABI = this.contractLoader.getContractAbi('LeverageVault');
 
+      // Get current mETH price (returns 18 decimals format)
+      const methPriceUSD = BigInt(this.methPriceService.getCurrentPrice());
+
       const healthFactor = (await this.publicClient.readContract({
         address: leverageVaultAddress as Address,
         abi: leverageVaultABI,
         functionName: 'getHealthFactor',
-        args: [BigInt(positionId)],
+        args: [BigInt(positionId), methPriceUSD],
       })) as bigint;
 
       return Number(healthFactor);
