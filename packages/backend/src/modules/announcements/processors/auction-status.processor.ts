@@ -13,6 +13,7 @@ import { NotificationService } from '../../notifications/services/notification.s
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
+import { toISTISOString } from '../../../utils/date.utils';
 
 interface ActivateAuctionJob {
   assetId: string;
@@ -153,7 +154,7 @@ export class AuctionStatusProcessor extends WorkerHost {
         },
       );
 
-      this.logger.log(`Auction ${assetId} activated at ${actualStartTime.toISOString()}`);
+      this.logger.log(`Auction ${assetId} activated at ${toISTISOString(actualStartTime)}`);
 
       // Notify originator that auction is now live
       try {
@@ -167,7 +168,7 @@ export class AuctionStatusProcessor extends WorkerHost {
           action: NotificationAction.VIEW_ASSET,
           actionMetadata: {
             assetId,
-            listedAt: actualStartTime.toISOString(),
+            listedAt: toISTISOString(actualStartTime),
             transactionHash: txHash,
           },
         });
@@ -185,7 +186,7 @@ export class AuctionStatusProcessor extends WorkerHost {
         {
           assetId,
           originator: asset.originator,
-          listedAt: actualStartTime.toISOString(),
+          listedAt: toISTISOString(actualStartTime),
           transactionHash: txHash,
         }
       );

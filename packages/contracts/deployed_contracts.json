@@ -1,6 +1,6 @@
 {
   "network": "mantleTestnet",
-  "timestamp": "2026-01-01T08:45:30.014Z",
+  "timestamp": "2026-01-01T15:12:45.448Z",
   "contracts": {
     "AttestationRegistry": "0x03FE7d3736402D140659e7bD92B64808E31C3f51",
     "TrustedIssuersRegistry": "0xf63B563b6D438122cBC87f4356e60b8BB3Bc53E2",
@@ -9,12 +9,12 @@
     "TokenFactory": "0x7C75795Cf41ee32fB4FEB89964d7591F0a44BcfE",
     "PrimaryMarketplace": "0x034Ca27695555CEeB44CB62d59c4E3f95F4Ef504",
     "USDC": "0x9A54Bad93a00Bf1232D4e636f5e53055Dc0b8238",
-    "Faucet": "0x643b8c16F894B39399506cC921efa68d61A14905",
     "MockMETH": "0x4Ade8aAa0143526393EcadA836224EF21aBC6ac6",
     "METHFaucet": "0xB50d0AC5D59E456C1f3EdB66403fd27eEbd155dB",
     "MockFluxionDEX": "0x882eA0d81d445CF9e696869af4D007008281892D",
-    "SeniorPool": "0xc73378Fa0013A1D5A15A7eD48032dAa5bf6818F7",
+    "SeniorPool": "0x1f972e33E30cD3049C6dfb8A7Ab66371276aCcfA",
     "FluxionIntegration": "0x7351C8b33e9e5AE3cCf5a5380ec27e90fc8B82c7",
-    "LeverageVault": "0x3742bA56291F61b26F69325a4858313670bcFcDE"
+    "LeverageVault": "0xca693a238a597fD30E2D849af6E8fF0c9fda6c56",
+    "Faucet": "0x26Da2F1a2de3295302Fd95eBA1A183dc8Ffd77a3"
   }
 }

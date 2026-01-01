@@ -30,7 +30,7 @@ async function main() {
 
   // Get USDC address
   let usdcAddress = process.env.USDC_ADDRESS || deployedData.contracts.USDC;
-  if (!usdcAddress && (contractName === "YieldVault" || contractName === "PrimaryMarketplace" || contractName === "Faucet")) {
+  if (!usdcAddress && (contractName === "YieldVault" || contractName === "PrimaryMarketplace" || contractName === "Faucet" || contractName === "FAUCET_USDC")) {
     console.log("Deploying MockUSDC as dependency...");
     const MockUSDC = await ethers.getContractFactory("MockUSDC");
     const mockUSDC = await MockUSDC.deploy();
@@ -124,6 +124,16 @@ async function main() {
       await faucet.waitForDeployment();
       contractAddress = await faucet.getAddress();
       break;
+
+    case "FAUCET_USDC": {
+      if (!usdcAddress) throw new Error("USDC not available");
+      const FaucetUSDC = await ethers.getContractFactory("Faucet");
+      const faucetUSDC = await FaucetUSDC.deploy(usdcAddress);
+      await faucetUSDC.waitForDeployment();
+      contractAddress = await faucetUSDC.getAddress();
+      console.log("✅ USDC Faucet deployed with USDC at:", usdcAddress);
+      break;
+    }
 
     case "SeniorPool": {
       if (!usdcAddress) throw new Error("USDC not available");

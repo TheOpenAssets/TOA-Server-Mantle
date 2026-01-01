@@ -4,6 +4,9 @@ import { LeveragePositionService } from '../services/leverage-position.service';
 import { FluxionDEXService } from '../services/fluxion-dex.service';
 import { LeverageBlockchainService } from '../services/leverage-blockchain.service';
 import { InitiateLeveragePurchaseDto, GetSwapQuoteDto, UnwindPositionDto } from '../dto/leverage.dto';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 
 @Controller('leverage')
 @UseGuards(JwtAuthGuard)
@@ -14,6 +17,7 @@ export class LeverageController {
     private readonly positionService: LeveragePositionService,
     private readonly dexService: FluxionDEXService,
     private readonly blockchainService: LeverageBlockchainService,
+    @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) {}
 
   /**
@@ -111,6 +115,16 @@ export class LeverageController {
       });
 
       this.logger.log(`✅ Position created successfully!`);
+
+      // Update asset listing sold count
+      this.logger.log(`📊 Updating asset listing sold count...`);
+      const tokenAmountNum = Number(tokenAmountBigInt) / 1e18; // Convert from wei to tokens
+      await this.assetModel.updateOne(
+        { assetId: dto.assetId },
+        { $inc: { 'listing.sold': tokenAmountNum } }
+      );
+      this.logger.log(`✅ Asset listing updated: +${tokenAmountNum} tokens sold`);
+
       this.logger.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
       return {
