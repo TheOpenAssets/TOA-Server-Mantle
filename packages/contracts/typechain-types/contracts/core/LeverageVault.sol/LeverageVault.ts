@@ -69,6 +69,7 @@ export interface LeverageVaultInterface extends Interface {
       | "INITIAL_LTV"
       | "LIQUIDATION_THRESHOLD"
       | "addCollateral"
+      | "claimYieldFromBurn"
       | "createPosition"
       | "fluxionIntegration"
       | "getHealthFactor"
@@ -113,6 +114,10 @@ export interface LeverageVaultInterface extends Interface {
   encodeFunctionData(
     functionFragment: "addCollateral",
     values: [BigNumberish, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "claimYieldFromBurn",
+    values: [BigNumberish, AddressLike, AddressLike, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "createPosition",
@@ -196,6 +201,10 @@ export interface LeverageVaultInterface extends Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "addCollateral",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "claimYieldFromBurn",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -437,6 +446,17 @@ export interface LeverageVault extends BaseContract {
     "nonpayable"
   >;
 
+  claimYieldFromBurn: TypedContractMethod<
+    [
+      positionId: BigNumberish,
+      yieldVault: AddressLike,
+      rwaToken: AddressLike,
+      tokenAmount: BigNumberish
+    ],
+    [bigint],
+    "nonpayable"
+  >;
+
   createPosition: TypedContractMethod<
     [
       user: AddressLike,
@@ -569,6 +589,18 @@ export interface LeverageVault extends BaseContract {
   ): TypedContractMethod<
     [positionId: BigNumberish, mETHAmount: BigNumberish],
     [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "claimYieldFromBurn"
+  ): TypedContractMethod<
+    [
+      positionId: BigNumberish,
+      yieldVault: AddressLike,
+      rwaToken: AddressLike,
+      tokenAmount: BigNumberish
+    ],
+    [bigint],
     "nonpayable"
   >;
   getFunction(

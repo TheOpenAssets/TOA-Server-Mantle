@@ -33,3 +33,15 @@ export class UnwindPositionDto {
   @IsNotEmpty()
   positionId!: string; // Position ID to unwind
 }
+
+export class ClaimYieldFromBurnDto {
+  @IsString()
+  @IsNotEmpty()
+  tokenAmount!: string; // Amount of RWA tokens to burn (wei, 18 decimals)
+}
+
+export class ProcessSettlementDto {
+  @IsString()
+  @IsNotEmpty()
+  settlementUSDC!: string; // Settlement USDC amount (wei, 6 decimals)
+}

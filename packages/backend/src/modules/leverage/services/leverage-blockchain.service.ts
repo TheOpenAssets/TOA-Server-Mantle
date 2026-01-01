@@ -217,15 +217,102 @@ export class LeverageBlockchainService {
   }
 
   /**
+   * Claim yield by burning RWA tokens held by vault
+   * @param positionId Position ID
+   * @param tokenAmount Amount of RWA tokens to burn (wei)
+   * @returns Transaction hash and amounts
+   */
+  async claimYieldFromBurn(
+    positionId: number,
+    tokenAmount: bigint,
+  ): Promise<{
+    hash: Hash;
+    tokensBurned: bigint;
+    usdcReceived: bigint;
+  }> {
+    const wallet = this.walletService.getPlatformWallet();
+    const leverageVaultAddress = this.contractLoader.getContractAddress('LeverageVault');
+    const leverageVaultAbi = this.contractLoader.getContractAbi('LeverageVault');
+    const yieldVaultAddress = this.contractLoader.getContractAddress('YieldVault');
+    const yieldVaultAbi = this.contractLoader.getContractAbi('YieldVault');
+
+    this.logger.log(
+      `🔥 Claiming yield for position ${positionId}: burning ${Number(tokenAmount) / 1e18} RWA tokens`,
+    );
+
+    try {
+      // Get position to get rwaToken address
+      const position = await this.getPosition(positionId);
+      const rwaToken = position.rwaToken;
+
+      const hash = await wallet.writeContract({
+        address: leverageVaultAddress as Address,
+        abi: leverageVaultAbi,
+        functionName: 'claimYieldFromBurn',
+        args: [BigInt(positionId), yieldVaultAddress, rwaToken, tokenAmount],
+      });
+
+      const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+      this.logger.log(`✅ Yield claimed via burn: ${hash}`);
+
+      // Parse YieldClaimed event from YieldVault
+      const yieldClaimedEvent = receipt.logs.find((log) => {
+        try {
+          const decoded = decodeEventLog({
+            abi: yieldVaultAbi,
+            data: log.data,
+            topics: log.topics,
+          }) as any;
+          return decoded.eventName === 'YieldClaimed';
+        } catch {
+          return false;
+        }
+      });
+
+      if (!yieldClaimedEvent) {
+        throw new Error('YieldClaimed event not found in transaction receipt');
+      }
+
+      const decoded = decodeEventLog({
+        abi: yieldVaultAbi,
+        data: yieldClaimedEvent.data,
+        topics: yieldClaimedEvent.topics,
+      }) as any;
+
+      const eventArgs = decoded.args as {
+        user: string;
+        tokenAddress: string;
+        tokensBurned: bigint;
+        usdcReceived: bigint;
+        timestamp: bigint;
+      };
+
+      return {
+        hash,
+        tokensBurned: eventArgs.tokensBurned,
+        usdcReceived: eventArgs.usdcReceived,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to claim yield from burn: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
    * Process settlement for position
    * @param positionId Position ID
    * @param settlementUSDC Settlement USDC amount (wei)
-   * @returns Transaction hash
+   * @returns Transaction hash and settlement details
    */
   async processSettlement(
     positionId: number,
     settlementUSDC: bigint,
-  ): Promise<Hash> {
+  ): Promise<{
+    hash: Hash;
+    seniorRepayment: bigint;
+    interestRepayment: bigint;
+    userYield: bigint;
+  }> {
     const wallet = this.walletService.getPlatformWallet();
     const address = this.contractLoader.getContractAddress('LeverageVault');
     const abi = this.contractLoader.getContractAbi('LeverageVault');
@@ -242,9 +329,46 @@ export class LeverageBlockchainService {
         args: [BigInt(positionId), settlementUSDC],
       });
 
-      await this.publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
       this.logger.log(`✅ Settlement processed: ${hash}`);
-      return hash;
+
+      // Parse SettlementProcessed event from receipt
+      const settlementEvent = receipt.logs.find((log) => {
+        try {
+          const decoded = decodeEventLog({
+            abi,
+            data: log.data,
+            topics: log.topics,
+          }) as any;
+          return decoded.eventName === 'SettlementProcessed';
+        } catch {
+          return false;
+        }
+      });
+
+      if (!settlementEvent) {
+        throw new Error('SettlementProcessed event not found in transaction receipt');
+      }
+
+      const decoded = decodeEventLog({
+        abi,
+        data: settlementEvent.data,
+        topics: settlementEvent.topics,
+      }) as any;
+
+      const eventArgs = decoded.args as {
+        positionId: bigint;
+        seniorRepayment: bigint;
+        interestRepayment: bigint;
+        userYield: bigint;
+      };
+
+      return {
+        hash,
+        seniorRepayment: eventArgs.seniorRepayment,
+        interestRepayment: eventArgs.interestRepayment,
+        userYield: eventArgs.userYield,
+      };
     } catch (error) {
       this.logger.error(`Failed to process settlement: ${error}`);
       throw error;

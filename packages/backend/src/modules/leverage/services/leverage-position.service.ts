@@ -225,7 +225,79 @@ export class LeveragePositionService {
   }
 
   /**
-   * Mark position as settled
+   * Record yield claim from burning RWA tokens
+   */
+  async recordYieldClaim(
+    positionId: number,
+    claim: {
+      tokensBurned: string;
+      usdcReceived: string;
+      transactionHash: string;
+    },
+  ): Promise<void> {
+    const position = await this.getPosition(positionId);
+    if (!position) {
+      throw new Error(`Position ${positionId} not found`);
+    }
+
+    // Update RWA token amount
+    const newRWATokenAmount = (
+      BigInt(position.rwaTokenAmount) - BigInt(claim.tokensBurned)
+    ).toString();
+
+    await this.leveragePositionModel.updateOne(
+      { positionId },
+      {
+        $set: {
+          rwaTokenAmount: newRWATokenAmount,
+          yieldClaimTimestamp: new Date(),
+          yieldClaimTxHash: claim.transactionHash,
+          yieldClaimedUSDC: claim.usdcReceived,
+          tokensBurnedForYield: claim.tokensBurned,
+        },
+      },
+    );
+
+    this.logger.log(
+      `🔥 Yield claim recorded for position ${positionId}: ${parseFloat(claim.usdcReceived) / 1e6} USDC claimed`,
+    );
+  }
+
+  /**
+   * Record settlement waterfall
+   */
+  async recordSettlement(
+    positionId: number,
+    settlement: {
+      settlementUSDC: string;
+      seniorRepayment: string;
+      interestRepayment: string;
+      userYield: string;
+      transactionHash: string;
+    },
+  ): Promise<void> {
+    await this.leveragePositionModel.updateOne(
+      { positionId },
+      {
+        $set: {
+          status: PositionStatus.SETTLED,
+          settlementTimestamp: new Date(),
+          settlementTxHash: settlement.transactionHash,
+          settlementUSDCReceived: settlement.settlementUSDC,
+          seniorRepayment: settlement.seniorRepayment,
+          interestRepayment: settlement.interestRepayment,
+          userYieldDistributed: settlement.userYield,
+        },
+      },
+    );
+
+    this.logger.log(
+      `✅ Settlement recorded for position ${positionId}: ${parseFloat(settlement.userYield) / 1e6} USDC pushed to user`,
+    );
+  }
+
+  /**
+   * Mark position as settled (legacy method)
    */
   async markSettled(
     positionId: number,

@@ -302,6 +302,47 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @notice Claim USDC yield by burning RWA tokens held by this vault
+     * @param positionId Position ID
+     * @param yieldVault YieldVault contract address
+     * @param rwaToken RWA token address
+     * @param tokenAmount Amount of RWA tokens to burn
+     * @return usdcReceived Amount of USDC received from YieldVault
+     */
+    function claimYieldFromBurn(
+        uint256 positionId,
+        address yieldVault,
+        address rwaToken,
+        uint256 tokenAmount
+    ) external onlyOwner nonReentrant returns (uint256 usdcReceived) {
+        Position storage position = positions[positionId];
+        require(position.active, "Position not active");
+        require(position.rwaToken == rwaToken, "Token mismatch");
+        require(tokenAmount <= position.rwaTokenAmount, "Insufficient RWA tokens");
+
+        // Approve YieldVault to burn tokens from this contract
+        IERC20(rwaToken).approve(yieldVault, tokenAmount);
+
+        // Get USDC balance before claim
+        uint256 balanceBefore = usdc.balanceOf(address(this));
+
+        // Call YieldVault.claimYield to burn tokens and receive USDC
+        (bool success, ) = yieldVault.call(
+            abi.encodeWithSignature("claimYield(address,uint256)", rwaToken, tokenAmount)
+        );
+        require(success, "YieldVault claim failed");
+
+        // Calculate USDC received
+        uint256 balanceAfter = usdc.balanceOf(address(this));
+        usdcReceived = balanceAfter - balanceBefore;
+
+        // Update position
+        position.rwaTokenAmount -= tokenAmount;
+
+        return usdcReceived;
+    }
+
+    /**
      * @notice Process settlement waterfall when RWA asset settles
      * @param positionId Position ID
      * @param settlementUSDC Total USDC from asset settlement

@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AssetModule } from '../assets/assets.module';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { YieldModule } from '../yield/yield.module';
+import { LeverageModule } from '../leverage/leverage.module';
 import { ComplianceController } from './controllers/compliance.controller';
 import { AssetOpsController } from './controllers/asset-ops.controller';
 import { YieldOpsController } from './controllers/yield-ops.controller';
@@ -24,6 +25,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AssetModule,
     BlockchainModule,
     YieldModule,
+    LeverageModule,
     AuthModule,
     MarketplaceModule,
     NotificationsModule,
