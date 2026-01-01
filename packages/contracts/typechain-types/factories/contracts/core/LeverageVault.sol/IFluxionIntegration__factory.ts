@@ -16,6 +16,11 @@ const _abi = [
         name: "mETHAmount",
         type: "uint256",
       },
+      {
+        internalType: "uint256",
+        name: "mETHPriceUSD",
+        type: "uint256",
+      },
     ],
     name: "swapMETHToUSDC",
     outputs: [

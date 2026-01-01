@@ -106,7 +106,7 @@ export interface FluxionIntegrationInterface extends Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "swapMETHToUSDC",
-    values: [BigNumberish]
+    values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "totalMETHSwapped",
@@ -352,7 +352,7 @@ export interface FluxionIntegration extends BaseContract {
   >;
 
   swapMETHToUSDC: TypedContractMethod<
-    [mETHAmount: BigNumberish],
+    [mETHAmount: BigNumberish, mETHPriceUSD: BigNumberish],
     [bigint],
     "nonpayable"
   >;
@@ -429,7 +429,11 @@ export interface FluxionIntegration extends BaseContract {
   ): TypedContractMethod<[_oracle: AddressLike], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "swapMETHToUSDC"
-  ): TypedContractMethod<[mETHAmount: BigNumberish], [bigint], "nonpayable">;
+  ): TypedContractMethod<
+    [mETHAmount: BigNumberish, mETHPriceUSD: BigNumberish],
+    [bigint],
+    "nonpayable"
+  >;
   getFunction(
     nameOrSignature: "totalMETHSwapped"
   ): TypedContractMethod<[], [bigint], "view">;

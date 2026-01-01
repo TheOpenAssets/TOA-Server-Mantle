@@ -21,7 +21,7 @@ interface ISeniorPool {
 
 // FluxionIntegration interface
 interface IFluxionIntegration {
-    function swapMETHToUSDC(uint256 mETHAmount) external returns (uint256);
+    function swapMETHToUSDC(uint256 mETHAmount, uint256 mETHPriceUSD) external returns (uint256);
 }
 
 /**
@@ -231,7 +231,8 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         // Approve and swap mETH for USDC
         mETH.approve(fluxionIntegration, mETHSwapped);
         usdcReceived = IFluxionIntegration(fluxionIntegration).swapMETHToUSDC(
-            mETHSwapped
+            mETHSwapped,
+            mETHPriceUSD
         );
 
         // Pay interest to SeniorPool
@@ -272,7 +273,8 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         uint256 mETHAmount = position.mETHCollateral;
         mETH.approve(fluxionIntegration, mETHAmount);
         usdcRecovered = IFluxionIntegration(fluxionIntegration).swapMETHToUSDC(
-            mETHAmount
+            mETHAmount,
+            mETHPriceUSD
         );
 
         // Get outstanding debt

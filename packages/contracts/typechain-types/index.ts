@@ -38,8 +38,6 @@ export type { IdentityRegistry } from "./contracts/core/IdentityRegistry";
 export { IdentityRegistry__factory } from "./factories/contracts/core/IdentityRegistry__factory";
 export type { IFluxionIntegration } from "./contracts/core/LeverageVault.sol/IFluxionIntegration";
 export { IFluxionIntegration__factory } from "./factories/contracts/core/LeverageVault.sol/IFluxionIntegration__factory";
-export type { IMETHPriceOracle } from "./contracts/core/LeverageVault.sol/IMETHPriceOracle";
-export { IMETHPriceOracle__factory } from "./factories/contracts/core/LeverageVault.sol/IMETHPriceOracle__factory";
 export type { ISeniorPool } from "./contracts/core/LeverageVault.sol/ISeniorPool";
 export { ISeniorPool__factory } from "./factories/contracts/core/LeverageVault.sol/ISeniorPool__factory";
 export type { LeverageVault } from "./contracts/core/LeverageVault.sol/LeverageVault";
@@ -60,6 +58,8 @@ export type { FluxionIntegration } from "./contracts/integrations/FluxionIntegra
 export { FluxionIntegration__factory } from "./factories/contracts/integrations/FluxionIntegration.sol/FluxionIntegration__factory";
 export type { IFluxionDEX } from "./contracts/integrations/FluxionIntegration.sol/IFluxionDEX";
 export { IFluxionDEX__factory } from "./factories/contracts/integrations/FluxionIntegration.sol/IFluxionDEX__factory";
+export type { IMETHPriceOracle } from "./contracts/integrations/FluxionIntegration.sol/IMETHPriceOracle";
+export { IMETHPriceOracle__factory } from "./factories/contracts/integrations/FluxionIntegration.sol/IMETHPriceOracle__factory";
 export type { PrimaryMarket } from "./contracts/marketplace/PrimaryMarket";
 export { PrimaryMarket__factory } from "./factories/contracts/marketplace/PrimaryMarket__factory";
 export type { Faucet } from "./contracts/test/Faucet.sol/Faucet";

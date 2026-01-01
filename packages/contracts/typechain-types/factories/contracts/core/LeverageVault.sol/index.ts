@@ -2,6 +2,5 @@
 /* tslint:disable */
 /* eslint-disable */
 export { IFluxionIntegration__factory } from "./IFluxionIntegration__factory";
-export { IMETHPriceOracle__factory } from "./IMETHPriceOracle__factory";
 export { ISeniorPool__factory } from "./ISeniorPool__factory";
 export { LeverageVault__factory } from "./LeverageVault__factory";

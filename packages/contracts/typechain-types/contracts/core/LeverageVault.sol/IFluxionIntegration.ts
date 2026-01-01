@@ -25,7 +25,7 @@ export interface IFluxionIntegrationInterface extends Interface {
 
   encodeFunctionData(
     functionFragment: "swapMETHToUSDC",
-    values: [BigNumberish]
+    values: [BigNumberish, BigNumberish]
   ): string;
 
   decodeFunctionResult(
@@ -78,7 +78,7 @@ export interface IFluxionIntegration extends BaseContract {
   ): Promise<this>;
 
   swapMETHToUSDC: TypedContractMethod<
-    [mETHAmount: BigNumberish],
+    [mETHAmount: BigNumberish, mETHPriceUSD: BigNumberish],
     [bigint],
     "nonpayable"
   >;
@@ -89,7 +89,11 @@ export interface IFluxionIntegration extends BaseContract {
 
   getFunction(
     nameOrSignature: "swapMETHToUSDC"
-  ): TypedContractMethod<[mETHAmount: BigNumberish], [bigint], "nonpayable">;
+  ): TypedContractMethod<
+    [mETHAmount: BigNumberish, mETHPriceUSD: BigNumberish],
+    [bigint],
+    "nonpayable"
+  >;
 
   filters: {};
 }

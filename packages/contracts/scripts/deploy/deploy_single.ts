@@ -135,6 +135,25 @@ async function main() {
       break;
     }
 
+    case "FluxionIntegration": {
+      const mockMETHAddr = deployedData.contracts.MockMETH;
+      const mockDEXAddr = deployedData.contracts.MockFluxionDEX;
+      if (!mockMETHAddr || !usdcAddress || !mockDEXAddr) {
+        throw new Error("Required contracts not deployed (MockMETH, USDC, MockFluxionDEX)");
+      }
+      const FluxionIntegration = await ethers.getContractFactory("FluxionIntegration");
+      // Backend passes mETH price as parameter, oracle is placeholder
+      const fluxionIntegration = await FluxionIntegration.deploy(
+        mockMETHAddr,
+        usdcAddress,
+        mockDEXAddr,
+        mockMETHAddr // Placeholder oracle
+      );
+      await fluxionIntegration.waitForDeployment();
+      contractAddress = await fluxionIntegration.getAddress();
+      break;
+    }
+
     case "LeverageVault": {
       const mockMETHAddr = deployedData.contracts.MockMETH;
       const seniorPoolAddr = deployedData.contracts.SeniorPool;

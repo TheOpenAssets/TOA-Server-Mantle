@@ -74,11 +74,13 @@ const contracts = deployed.contracts;
 const USDC_ABI = [
   'function mint(address to, uint256 amount) external',
   'function balanceOf(address account) external view returns (uint256)',
+  'function approve(address spender, uint256 amount) external returns (bool)',
 ];
 
 const METH_ABI = [
   'function mint(address to, uint256 amount) external',
   'function balanceOf(address account) external view returns (uint256)',
+  'function approve(address spender, uint256 amount) external returns (bool)',
 ];
 
 async function main() {
@@ -105,32 +107,59 @@ async function main() {
   const usdcWei = ethers.parseUnits(USDC_AMOUNT, 6); // USDC has 6 decimals
   const methWei = ethers.parseEther(METH_AMOUNT); // mETH has 18 decimals
 
+  const DEX_ABI = [
+    'function addLiquidity(uint256 mETHAmount, uint256 usdcAmount) external',
+    'function getReserves() external view returns (uint256, uint256)',
+  ];
+
+  const dex = new ethers.Contract(contracts.MockFluxionDEX, DEX_ABI, wallet);
+
   try {
-    // Step 1: Mint USDC to DEX
-    logInfo(`Step 1: Minting ${USDC_AMOUNT} USDC to DEX...`);
-    const mintUsdcTx = await usdc.mint(contracts.MockFluxionDEX, usdcWei);
+    // Step 1: Mint USDC to deployer
+    logInfo(`Step 1: Minting ${USDC_AMOUNT} USDC to deployer...`);
+    const mintUsdcTx = await usdc.mint(wallet.address, usdcWei);
     logInfo(`Transaction: ${mintUsdcTx.hash}`);
     await mintUsdcTx.wait();
     logSuccess('USDC minted!');
-
-    const usdcBalance = await usdc.balanceOf(contracts.MockFluxionDEX);
-    logInfo(`DEX USDC balance: ${ethers.formatUnits(usdcBalance, 6)} USDC`);
     console.log();
 
-    // Step 2: Mint mETH to DEX
-    logInfo(`Step 2: Minting ${METH_AMOUNT} mETH to DEX...`);
-    const mintMethTx = await mockMETH.mint(contracts.MockFluxionDEX, methWei);
+    // Step 2: Mint mETH to deployer
+    logInfo(`Step 2: Minting ${METH_AMOUNT} mETH to deployer...`);
+    const mintMethTx = await mockMETH.mint(wallet.address, methWei);
     logInfo(`Transaction: ${mintMethTx.hash}`);
     await mintMethTx.wait();
     logSuccess('mETH minted!');
-
-    const methBalance = await mockMETH.balanceOf(contracts.MockFluxionDEX);
-    logInfo(`DEX mETH balance: ${ethers.formatEther(methBalance)} mETH`);
     console.log();
 
-    logSuccess('DEX funded successfully!');
-    logSuccess(`USDC: ${ethers.formatUnits(usdcBalance, 6)} USDC`);
-    logSuccess(`mETH: ${ethers.formatEther(methBalance)} mETH`);
+    // Step 3: Approve DEX to spend USDC
+    logInfo(`Step 3: Approving DEX to spend ${USDC_AMOUNT} USDC...`);
+    const approveUsdcTx = await usdc.approve(contracts.MockFluxionDEX, usdcWei);
+    logInfo(`Transaction: ${approveUsdcTx.hash}`);
+    await approveUsdcTx.wait();
+    logSuccess('USDC approved!');
+    console.log();
+
+    // Step 4: Approve DEX to spend mETH
+    logInfo(`Step 4: Approving DEX to spend ${METH_AMOUNT} mETH...`);
+    const approveMethTx = await mockMETH.approve(contracts.MockFluxionDEX, methWei);
+    logInfo(`Transaction: ${approveMethTx.hash}`);
+    await approveMethTx.wait();
+    logSuccess('mETH approved!');
+    console.log();
+
+    // Step 5: Add liquidity to DEX
+    logInfo(`Step 5: Adding liquidity to DEX (${METH_AMOUNT} mETH + ${USDC_AMOUNT} USDC)...`);
+    const addLiquidityTx = await dex.addLiquidity(methWei, usdcWei);
+    logInfo(`Transaction: ${addLiquidityTx.hash}`);
+    await addLiquidityTx.wait();
+    logSuccess('Liquidity added!');
+    console.log();
+
+    // Verify reserves
+    const [methReserve, usdcReserve] = await dex.getReserves();
+    logSuccess(`DEX Reserves:`);
+    logSuccess(`  mETH: ${ethers.formatEther(methReserve)} mETH`);
+    logSuccess(`  USDC: ${ethers.formatUnits(usdcReserve, 6)} USDC`);
 
   } catch (error) {
     logError(`Failed to fund DEX: ${error.message}`);

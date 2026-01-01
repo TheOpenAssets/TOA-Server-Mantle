@@ -121,11 +121,15 @@ export class LeverageBlockchainService {
     this.logger.log(`🌾 Harvesting yield for position ${positionId}...`);
 
     try {
+      // Get current mETH price and convert from 6 to 18 decimals
+      const methPriceUSDC = BigInt(this.methPriceService.getCurrentPrice());
+      const methPriceUSD = methPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
+
       const hash = await wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'harvestYield',
-        args: [BigInt(positionId)],
+        args: [BigInt(positionId), methPriceUSD],
       });
 
       await this.publicClient.waitForTransactionReceipt({ hash });
