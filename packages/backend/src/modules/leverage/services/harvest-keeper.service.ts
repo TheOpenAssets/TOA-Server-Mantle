@@ -130,7 +130,7 @@ export class HarvestKeeperService implements OnModuleInit {
 
     // Execute harvest on-chain
     try {
-      const txHash = await this.blockchainService.harvestYield(positionId);
+      const harvestResult = await this.blockchainService.harvestYield(positionId);
 
       // Get harvest details from contract (or parse event)
       const position = await this.blockchainService.getPosition(positionId);
@@ -139,12 +139,12 @@ export class HarvestKeeperService implements OnModuleInit {
       const healthFactorAfter =
         await this.blockchainService.getHealthFactor(positionId);
 
-      // Record harvest in database
+      // Record harvest in database with ACTUAL values from transaction event
       await this.positionService.recordHarvest(positionId, {
-        mETHSwapped: mETHWithBuffer.toString(),
-        usdcReceived: outstandingInterest.toString(),
-        interestPaid: outstandingInterest.toString(),
-        transactionHash: txHash,
+        mETHSwapped: harvestResult.mETHSwapped.toString(),
+        usdcReceived: harvestResult.usdcReceived.toString(),
+        interestPaid: harvestResult.interestPaid.toString(),
+        transactionHash: harvestResult.hash,
         healthFactorBefore,
         healthFactorAfter,
       });
@@ -159,23 +159,23 @@ export class HarvestKeeperService implements OnModuleInit {
           userId: dbPosition.userAddress,
           walletAddress: dbPosition.userAddress,
           header: 'Yield Harvested',
-          detail: `${(Number(outstandingInterest) / 1e6).toFixed(2)} USDC interest paid from your mETH yield. Health factor: ${(healthFactorAfter / 100).toFixed(1)}%`,
+          detail: `${(Number(harvestResult.interestPaid) / 1e6).toFixed(2)} USDC interest paid from your mETH yield. Health factor: ${(healthFactorAfter / 100).toFixed(1)}%`,
           type: NotificationType.YIELD_DISTRIBUTED,
           severity: NotificationSeverity.INFO,
           action: NotificationAction.VIEW_PORTFOLIO,
           actionMetadata: {
             positionId,
-            mETHSwapped: mETHWithBuffer.toString(),
-            usdcReceived: outstandingInterest.toString(),
+            mETHSwapped: harvestResult.mETHSwapped.toString(),
+            usdcReceived: harvestResult.usdcReceived.toString(),
             healthFactorBefore,
             healthFactorAfter,
-            txHash,
+            txHash: harvestResult.hash,
           },
         });
       }
 
       this.logger.log(
-        `✅ Position ${positionId} harvested: ${Number(outstandingInterest) / 1e6} USDC paid`,
+        `✅ Position ${positionId} harvested: ${Number(harvestResult.interestPaid) / 1e6} USDC paid`,
       );
     } catch (error) {
       this.logger.error(`Failed to execute harvest for position ${positionId}: ${error}`);

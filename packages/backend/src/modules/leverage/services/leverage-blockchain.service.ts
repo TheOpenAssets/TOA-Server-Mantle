@@ -113,7 +113,12 @@ export class LeverageBlockchainService {
    * @param positionId Position ID
    * @returns Transaction hash
    */
-  async harvestYield(positionId: number): Promise<Hash> {
+  async harvestYield(positionId: number): Promise<{
+    hash: Hash;
+    mETHSwapped: bigint;
+    usdcReceived: bigint;
+    interestPaid: bigint;
+  }> {
     const wallet = this.walletService.getPlatformWallet();
     const address = this.contractLoader.getContractAddress('LeverageVault');
     const abi = this.contractLoader.getContractAbi('LeverageVault');
@@ -132,9 +137,46 @@ export class LeverageBlockchainService {
         args: [BigInt(positionId), methPriceUSD],
       });
 
-      await this.publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
       this.logger.log(`✅ Yield harvested: ${hash}`);
-      return hash;
+
+      // Parse YieldHarvested event from receipt
+      const yieldHarvestedEvent = receipt.logs.find((log) => {
+        try {
+          const decoded = decodeEventLog({
+            abi,
+            data: log.data,
+            topics: log.topics,
+          }) as any;
+          return decoded.eventName === 'YieldHarvested';
+        } catch {
+          return false;
+        }
+      });
+
+      if (!yieldHarvestedEvent) {
+        throw new Error('YieldHarvested event not found in transaction receipt');
+      }
+
+      const decoded = decodeEventLog({
+        abi,
+        data: yieldHarvestedEvent.data,
+        topics: yieldHarvestedEvent.topics,
+      }) as any;
+
+      const eventArgs = decoded.args as {
+        positionId: bigint;
+        mETHSwapped: bigint;
+        usdcReceived: bigint;
+        interestPaid: bigint;
+      };
+
+      return {
+        hash,
+        mETHSwapped: eventArgs.mETHSwapped,
+        usdcReceived: eventArgs.usdcReceived,
+        interestPaid: eventArgs.interestPaid,
+      };
     } catch (error) {
       this.logger.error(`Failed to harvest yield: ${error}`);
       throw error;
