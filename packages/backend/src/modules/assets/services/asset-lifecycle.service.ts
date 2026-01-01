@@ -689,8 +689,8 @@ export class AssetLifecycleService {
           await this.notificationService.create({
             userId: bidderAddress,
             walletAddress: bidderAddress,
-            header: 'Auction Completed',
-            detail: `Auction for asset ${asset.metadata.invoiceNumber} has ended with a clearing price of $${clearingPriceUSDC.toFixed(2)}. Check your portfolio to claim your tokens or refund!`,
+            header: 'Auction Results Declared',
+            detail: `Auction results for asset ${asset.metadata.invoiceNumber} have been declared with a clearing price of $${clearingPriceUSDC.toFixed(2)}. Please settle your bid to claim tokens or receive refund.`,
             type: 'ASSET_STATUS' as any,
             severity: 'SUCCESS' as any,
             action: 'VIEW_PORTFOLIO' as any,
@@ -698,7 +698,8 @@ export class AssetLifecycleService {
               assetId,
               clearingPrice,
               clearingPriceUSDC: clearingPriceUSDC.toFixed(2),
-              endedAt: new Date().toISOString(),
+              resultsDeclared: true,
+              needsSettlement: true,
             },
           });
         } catch (error: any) {
