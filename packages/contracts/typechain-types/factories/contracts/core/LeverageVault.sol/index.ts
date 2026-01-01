@@ -2,5 +2,6 @@
 /* tslint:disable */
 /* eslint-disable */
 export { IFluxionIntegration__factory } from "./IFluxionIntegration__factory";
+export { IPrimaryMarket__factory } from "./IPrimaryMarket__factory";
 export { ISeniorPool__factory } from "./ISeniorPool__factory";
 export { LeverageVault__factory } from "./LeverageVault__factory";

@@ -80,9 +80,11 @@ export interface LeverageVaultInterface extends Interface {
       | "nextPositionId"
       | "owner"
       | "positions"
+      | "primaryMarket"
       | "processSettlement"
       | "renounceOwnership"
       | "seniorPool"
+      | "setPrimaryMarket"
       | "setYieldVault"
       | "transferOwnership"
       | "usdc"
@@ -128,6 +130,7 @@ export interface LeverageVaultInterface extends Interface {
       AddressLike,
       BigNumberish,
       string,
+      BytesLike,
       BigNumberish
     ]
   ): string;
@@ -162,6 +165,10 @@ export interface LeverageVaultInterface extends Interface {
     values: [BigNumberish]
   ): string;
   encodeFunctionData(
+    functionFragment: "primaryMarket",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
     functionFragment: "processSettlement",
     values: [BigNumberish, BigNumberish]
   ): string;
@@ -172,6 +179,10 @@ export interface LeverageVaultInterface extends Interface {
   encodeFunctionData(
     functionFragment: "seniorPool",
     values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "setPrimaryMarket",
+    values: [AddressLike]
   ): string;
   encodeFunctionData(
     functionFragment: "setYieldVault",
@@ -239,6 +250,10 @@ export interface LeverageVaultInterface extends Interface {
   decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "positions", data: BytesLike): Result;
   decodeFunctionResult(
+    functionFragment: "primaryMarket",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "processSettlement",
     data: BytesLike
   ): Result;
@@ -247,6 +262,10 @@ export interface LeverageVaultInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "seniorPool", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "setPrimaryMarket",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(
     functionFragment: "setYieldVault",
     data: BytesLike
@@ -465,6 +484,7 @@ export interface LeverageVault extends BaseContract {
       rwaToken: AddressLike,
       rwaTokenAmount: BigNumberish,
       assetId: string,
+      assetIdBytes: BytesLike,
       mETHPriceUSD: BigNumberish
     ],
     [bigint],
@@ -539,6 +559,8 @@ export interface LeverageVault extends BaseContract {
     "view"
   >;
 
+  primaryMarket: TypedContractMethod<[], [string], "view">;
+
   processSettlement: TypedContractMethod<
     [positionId: BigNumberish, settlementUSDC: BigNumberish],
     [
@@ -554,6 +576,12 @@ export interface LeverageVault extends BaseContract {
   renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
 
   seniorPool: TypedContractMethod<[], [string], "view">;
+
+  setPrimaryMarket: TypedContractMethod<
+    [_primaryMarket: AddressLike],
+    [void],
+    "nonpayable"
+  >;
 
   setYieldVault: TypedContractMethod<
     [_yieldVault: AddressLike],
@@ -613,6 +641,7 @@ export interface LeverageVault extends BaseContract {
       rwaToken: AddressLike,
       rwaTokenAmount: BigNumberish,
       assetId: string,
+      assetIdBytes: BytesLike,
       mETHPriceUSD: BigNumberish
     ],
     [bigint],
@@ -696,6 +725,9 @@ export interface LeverageVault extends BaseContract {
     "view"
   >;
   getFunction(
+    nameOrSignature: "primaryMarket"
+  ): TypedContractMethod<[], [string], "view">;
+  getFunction(
     nameOrSignature: "processSettlement"
   ): TypedContractMethod<
     [positionId: BigNumberish, settlementUSDC: BigNumberish],
@@ -714,6 +746,9 @@ export interface LeverageVault extends BaseContract {
   getFunction(
     nameOrSignature: "seniorPool"
   ): TypedContractMethod<[], [string], "view">;
+  getFunction(
+    nameOrSignature: "setPrimaryMarket"
+  ): TypedContractMethod<[_primaryMarket: AddressLike], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "setYieldVault"
   ): TypedContractMethod<[_yieldVault: AddressLike], [void], "nonpayable">;

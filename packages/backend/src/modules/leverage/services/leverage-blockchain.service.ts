@@ -56,10 +56,14 @@ export class LeverageBlockchainService {
     // e.g., 2856450000 (6 decimals) → 2856450000000000000000 (18 decimals)
     const mETHPriceUSD18 = params.mETHPriceUSD * BigInt(10 ** 12);
 
+    // Convert assetId to bytes32 for PrimaryMarket interaction
+    const assetIdBytes = ('0x' + params.assetId.replace(/-/g, '').padEnd(64, '0')) as Hash;
+
     this.logger.log(
       `Creating leverage position for ${params.user}: ${Number(params.mETHAmount) / 1e18} mETH collateral`,
     );
     this.logger.log(`mETH Price: $${Number(params.mETHPriceUSD) / 1e6} (18 decimals: ${mETHPriceUSD18})`);
+    this.logger.log(`Asset ID bytes32: ${assetIdBytes}`);
 
     try {
       const hash = await wallet.writeContract({
@@ -73,6 +77,7 @@ export class LeverageBlockchainService {
           params.rwaToken,
           params.rwaTokenAmount,
           params.assetId,
+          assetIdBytes, // Pass bytes32 assetId
           mETHPriceUSD18,
         ],
       });

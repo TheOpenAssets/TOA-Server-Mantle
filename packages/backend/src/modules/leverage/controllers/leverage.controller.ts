@@ -32,13 +32,28 @@ export class LeverageController {
     this.logger.log(`📊 Leverage Purchase Request Received`);
     this.logger.log(`User: ${userAddress}`);
     this.logger.log(`Asset ID: ${dto.assetId}`);
-    this.logger.log(`Token Address: ${dto.tokenAddress}`);
-    this.logger.log(`Token Amount: ${dto.tokenAmount}`);
-    this.logger.log(`Price Per Token: ${dto.pricePerToken}`);
-    this.logger.log(`mETH Collateral: ${dto.mETHCollateral}`);
-    this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     try {
+      // Fetch Asset to get correct token address
+      const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+      if (!asset) {
+        throw new Error(`Asset ${dto.assetId} not found`);
+      }
+      if (!asset.token?.address) {
+        throw new Error(`Asset ${dto.assetId} has no token address registered`);
+      }
+      
+      const rwaTokenAddress = asset.token.address;
+      this.logger.log(`Token Address (DB): ${rwaTokenAddress}`);
+      if (dto.tokenAddress && dto.tokenAddress.toLowerCase() !== rwaTokenAddress.toLowerCase()) {
+        this.logger.warn(`⚠️ Request token address ${dto.tokenAddress} mismatch with DB ${rwaTokenAddress}. Using DB value.`);
+      }
+
+      this.logger.log(`Token Amount: ${dto.tokenAmount}`);
+      this.logger.log(`Price Per Token: ${dto.pricePerToken}`);
+      this.logger.log(`mETH Collateral: ${dto.mETHCollateral}`);
+      this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       // Calculate total USDC needed
       const tokenAmountBigInt = BigInt(dto.tokenAmount);
       const pricePerTokenBigInt = BigInt(dto.pricePerToken);
@@ -77,7 +92,7 @@ export class LeverageController {
         user: userAddress,
         mETHAmount: mETHCollateralBigInt,
         usdcToBorrow: totalUSDCNeeded,
-        rwaToken: dto.tokenAddress,
+        rwaToken: rwaTokenAddress, // Use DB value
         rwaTokenAmount: tokenAmountBigInt,
         assetId: dto.assetId,
         mETHPriceUSD, // Pass mETH price from backend
@@ -106,7 +121,7 @@ export class LeverageController {
         positionId: result.positionId,
         userAddress,
         assetId: dto.assetId,
-        rwaTokenAddress: dto.tokenAddress,
+        rwaTokenAddress: rwaTokenAddress, // Use DB value
         rwaTokenAmount: dto.tokenAmount,
         mETHCollateral: dto.mETHCollateral,
         usdcBorrowed: totalUSDCNeeded.toString(),
@@ -119,11 +134,20 @@ export class LeverageController {
       // Update asset listing sold count
       this.logger.log(`📊 Updating asset listing sold count...`);
       const tokenAmountNum = Number(tokenAmountBigInt) / 1e18; // Convert from wei to tokens
-      await this.assetModel.updateOne(
-        { assetId: dto.assetId },
-        { $inc: { 'listing.sold': tokenAmountNum } }
-      );
-      this.logger.log(`✅ Asset listing updated: +${tokenAmountNum} tokens sold`);
+      
+      // We already fetched asset above
+      if (asset && asset.listing) {
+        const currentSold = parseFloat(asset.listing.sold || '0');
+        const newSold = (currentSold + tokenAmountNum).toString();
+        
+        await this.assetModel.updateOne(
+          { assetId: dto.assetId },
+          { $set: { 'listing.sold': newSold } }
+        );
+        this.logger.log(`✅ Asset listing updated: +${tokenAmountNum} tokens sold (New Total: ${newSold})`);
+      } else {
+        this.logger.warn(`⚠️ Asset ${dto.assetId} has no listing, skipping sold count update`);
+      }
 
       this.logger.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 

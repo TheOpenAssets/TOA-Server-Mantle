@@ -24,6 +24,11 @@ interface IFluxionIntegration {
     function swapMETHToUSDC(uint256 mETHAmount, uint256 mETHPriceUSD) external returns (uint256);
 }
 
+// PrimaryMarket interface
+interface IPrimaryMarket {
+    function buyTokens(bytes32 assetId, uint256 amount) external;
+}
+
 /**
  * @title LeverageVault
  * @notice Core vault for managing leveraged RWA token purchases using mETH collateral
@@ -44,6 +49,7 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     address public seniorPool;
     address public fluxionIntegration;
     address public yieldVault;
+    address public primaryMarket;
 
     // Position tracking
     struct Position {
@@ -128,13 +134,23 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @notice Set PrimaryMarket address
+     * @param _primaryMarket PrimaryMarket contract address
+     */
+    function setPrimaryMarket(address _primaryMarket) external onlyOwner {
+        require(_primaryMarket != address(0), "Invalid address");
+        primaryMarket = _primaryMarket;
+    }
+
+    /**
      * @notice Create leverage position
      * @param user Investor address
      * @param mETHAmount mETH collateral amount (18 decimals)
      * @param usdcToBorrow USDC to borrow (6 decimals)
      * @param rwaToken RWA token address
      * @param rwaTokenAmount RWA token amount (18 decimals)
-     * @param assetId Asset ID reference
+     * @param assetId Asset ID reference (string)
+     * @param assetIdBytes Asset ID reference (bytes32 for PrimaryMarket)
      * @param mETHPriceUSD Current mETH price in USD (18 decimals, e.g., 3000e18 = $3000)
      * @return positionId Created position ID
      */
@@ -145,6 +161,7 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         address rwaToken,
         uint256 rwaTokenAmount,
         string memory assetId,
+        bytes32 assetIdBytes,
         uint256 mETHPriceUSD
     ) external onlyOwner nonReentrant returns (uint256 positionId) {
         require(user != address(0), "Invalid user");
@@ -152,6 +169,7 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         require(usdcToBorrow > 0, "USDC amount must be > 0");
         require(rwaToken != address(0), "Invalid RWA token");
         require(mETHPriceUSD > 0, "Invalid mETH price");
+        require(primaryMarket != address(0), "PrimaryMarket not set");
 
         // Verify LTV (collateral must be >= 150% of loan)
         // Calculate collateral value: (mETHAmount * mETHPriceUSD) / 1e30
@@ -171,6 +189,16 @@ contract LeverageVault is Ownable, ReentrancyGuard {
 
         // Borrow USDC from SeniorPool
         ISeniorPool(seniorPool).borrow(nextPositionId, usdcToBorrow);
+
+        // Buy RWA tokens from PrimaryMarket
+        usdc.approve(primaryMarket, usdcToBorrow);
+        IPrimaryMarket(primaryMarket).buyTokens(assetIdBytes, rwaTokenAmount);
+
+        // Verify RWA tokens were received
+        require(
+            IERC20(rwaToken).balanceOf(address(this)) >= rwaTokenAmount, 
+            "RWA token purchase failed"
+        );
 
         // Create position
         positionId = nextPositionId++;

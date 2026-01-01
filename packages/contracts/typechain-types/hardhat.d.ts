@@ -78,6 +78,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.IFluxionIntegration__factory>;
     getContractFactory(
+      name: "IPrimaryMarket",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IPrimaryMarket__factory>;
+    getContractFactory(
       name: "ISeniorPool",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.ISeniorPool__factory>;
@@ -235,6 +239,11 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.IFluxionIntegration>;
     getContractAt(
+      name: "IPrimaryMarket",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IPrimaryMarket>;
+    getContractAt(
       name: "ISeniorPool",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -395,6 +404,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IFluxionIntegration>;
     deployContract(
+      name: "IPrimaryMarket",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IPrimaryMarket>;
+    deployContract(
       name: "ISeniorPool",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.ISeniorPool>;
@@ -551,6 +564,11 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IFluxionIntegration>;
+    deployContract(
+      name: "IPrimaryMarket",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IPrimaryMarket>;
     deployContract(
       name: "ISeniorPool",
       args: any[],

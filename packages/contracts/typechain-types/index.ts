@@ -38,6 +38,8 @@ export type { IdentityRegistry } from "./contracts/core/IdentityRegistry";
 export { IdentityRegistry__factory } from "./factories/contracts/core/IdentityRegistry__factory";
 export type { IFluxionIntegration } from "./contracts/core/LeverageVault.sol/IFluxionIntegration";
 export { IFluxionIntegration__factory } from "./factories/contracts/core/LeverageVault.sol/IFluxionIntegration__factory";
+export type { IPrimaryMarket } from "./contracts/core/LeverageVault.sol/IPrimaryMarket";
+export { IPrimaryMarket__factory } from "./factories/contracts/core/LeverageVault.sol/IPrimaryMarket__factory";
 export type { ISeniorPool } from "./contracts/core/LeverageVault.sol/ISeniorPool";
 export { ISeniorPool__factory } from "./factories/contracts/core/LeverageVault.sol/ISeniorPool__factory";
 export type { LeverageVault } from "./contracts/core/LeverageVault.sol/LeverageVault";
