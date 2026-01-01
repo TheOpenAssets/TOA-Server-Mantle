@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { YieldDistributionService } from './services/yield-distribution.service';
 import { TokenHolderTrackingService } from './services/token-holder-tracking.service';
@@ -13,7 +13,7 @@ import { UserYieldClaim, UserYieldClaimSchema } from '../../database/schemas/use
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
-import { forwardRef } from '@nestjs/common';
+import { LeverageModule } from '../leverage/leverage.module';
 
 @Module({
   imports: [
@@ -26,6 +26,7 @@ import { forwardRef } from '@nestjs/common';
       { name: Asset.name, schema: AssetSchema },
     ]),
     forwardRef(() => BlockchainModule),
+    forwardRef(() => LeverageModule),
     NotificationsModule,
   ],
   controllers: [YieldController],
