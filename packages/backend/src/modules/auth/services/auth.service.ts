@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
@@ -24,6 +25,7 @@ export class AuthService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(UserSession.name) private sessionModel: Model<UserSessionDocument>,
     private jwtService: JwtService,
+    private configService: ConfigService,
     private redisService: RedisService,
     private signatureService: SignatureService,
   ) {
@@ -198,6 +200,8 @@ export class AuthService {
     const refreshJti = uuidv4();
     const deviceHash = 'unknown';
 
+    const accessTokenExpiresIn = parseInt(this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRES_IN', '900'));
+
     const accessPayload = {
       sub: user._id,
       wallet: user.walletAddress,
@@ -215,7 +219,7 @@ export class AuthService {
     };
 
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync(accessPayload, { expiresIn: '15m' }),
+      this.jwtService.signAsync(accessPayload, { expiresIn: accessTokenExpiresIn }),
       this.jwtService.signAsync(refreshPayload, { expiresIn: '7d' }),
     ]);
 
@@ -223,9 +227,9 @@ export class AuthService {
     await this.redisService.set(
       `access:${user.walletAddress}:${accessJti}`,
       JSON.stringify({ userId: user._id, jti: accessJti, wallet: user.walletAddress }),
-      900 // 15m
+      accessTokenExpiresIn
     );
-    await this.redisService.set(`session:active:${user.walletAddress}`, accessJti, 900);
+    await this.redisService.set(`session:active:${user.walletAddress}`, accessJti, accessTokenExpiresIn);
 
     // Store Refresh Token in MongoDB UserSession
     // Upsert session document
