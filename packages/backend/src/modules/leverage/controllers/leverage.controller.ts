@@ -133,18 +133,20 @@ export class LeverageController {
 
       // Update asset listing sold count
       this.logger.log(`📊 Updating asset listing sold count...`);
-      const tokenAmountNum = Number(tokenAmountBigInt) / 1e18; // Convert from wei to tokens
       
       // We already fetched asset above
       if (asset && asset.listing) {
-        const currentSold = parseFloat(asset.listing.sold || '0');
-        const newSold = (currentSold + tokenAmountNum).toString();
+        const currentSold = BigInt(asset.listing.sold || '0');
+        const newSold = (currentSold + tokenAmountBigInt).toString();
         
         await this.assetModel.updateOne(
           { assetId: dto.assetId },
           { $set: { 'listing.sold': newSold } }
         );
-        this.logger.log(`✅ Asset listing updated: +${tokenAmountNum} tokens sold (New Total: ${newSold})`);
+        
+        const addedTokens = Number(tokenAmountBigInt) / 1e18;
+        const totalTokens = Number(newSold) / 1e18;
+        this.logger.log(`✅ Asset listing updated: +${addedTokens} tokens sold (New Total: ${totalTokens} tokens)`);
       } else {
         this.logger.warn(`⚠️ Asset ${dto.assetId} has no listing, skipping sold count update`);
       }

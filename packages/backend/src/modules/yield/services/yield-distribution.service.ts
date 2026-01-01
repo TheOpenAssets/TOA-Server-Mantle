@@ -235,6 +235,7 @@ export class YieldDistributionService {
             this.logger.log(`   1️⃣ Senior Pool Repayment: ${Number(settlementResult.seniorRepayment) / 1e6} USDC`);
             this.logger.log(`   2️⃣ Interest Payment: ${Number(settlementResult.interestRepayment) / 1e6} USDC`);
             this.logger.log(`   3️⃣ User Yield (Pushed): ${Number(settlementResult.userYield) / 1e6} USDC`);
+            this.logger.log(`   4️⃣ mETH Returned: ${Number(settlementResult.mETHReturned) / 1e18} mETH`);
             this.logger.log(`   TX: ${settlementResult.hash}`);
 
             // Record settlement
@@ -243,8 +244,31 @@ export class YieldDistributionService {
               seniorRepayment: settlementResult.seniorRepayment.toString(),
               interestRepayment: settlementResult.interestRepayment.toString(),
               userYield: settlementResult.userYield.toString(),
+              mETHReturned: settlementResult.mETHReturned.toString(),
               transactionHash: settlementResult.hash,
             });
+
+            // Notify user
+            try {
+              const yieldFormatted = (Number(settlementResult.userYield) / 1e6).toFixed(2);
+              const mETHFormatted = (Number(settlementResult.mETHReturned) / 1e18).toFixed(4);
+              
+              await this.notificationService.create({
+                userId: position.userAddress,
+                walletAddress: position.userAddress,
+                header: 'Leverage Position Settled',
+                detail: `Your leveraged position #${position.positionId} has been settled. Net Yield: ${yieldFormatted} USDC. Collateral Returned: ${mETHFormatted} mETH.`,
+                type: NotificationType.PAYOUT_SETTLED,
+                severity: NotificationSeverity.SUCCESS,
+                action: NotificationAction.VIEW_PORTFOLIO,
+                actionMetadata: {
+                  positionId: position.positionId.toString(),
+                  assetId: position.assetId,
+                },
+              });
+            } catch (notifError) {
+              this.logger.error(`Failed to send settlement notification to ${position.userAddress}: ${notifError}`);
+            }
 
             this.logger.log(`✅ Position ${position.positionId} settled successfully!`);
           } catch (error) {

@@ -323,157 +323,47 @@ db.leveragepositions.findOne(
 }
 ```
 
----
-
 ## Test 3: Settlement Waterfall Flow
 
-**What it tests:** Distribution of invoice settlement proceeds through 3-tier waterfall (Principal → Interest → User Yield).
+**Objective:** Verify that when the underlying asset settles, the leverage position is unwound correctly (Waterfall: Senior Debt -> Interest -> User Yield).
 
-### Prerequisites
-- Active leverage position with RWA tokens held in LeverageVault
-- Asset must be in settlement status
-- Settlement USDC must be available
+1.  **Trigger Settlement:**
+    *   Admin deposits yield/settlement for the asset using `scripts/admin-settle-yield.sh` (or API).
+    *   This triggers `YieldDistributionService.distributeYield`.
 
-### Step-by-Step Testing
+2.  **Verify Backend Logs:**
+    *   [ ] "Checking for leverage positions holding this asset..."
+    *   [ ] "Claiming yield for position X: burning tokens..."
+    *   [ ] "Processing settlement waterfall..."
+    *   [ ] **Detailed settlement breakdown:**
+        *   [ ] "Principal Repaid: ... USDC"
+        *   [ ] "Interest Deducted: ... USDC"
+        *   [ ] "User Yield (Net): ... USDC"
+        *   [ ] "mETH Returned: ... mETH"
+    *   [ ] "Position X settled successfully!"
 
-#### 3.1 Setup Test Scenario
+3.  **Verify Database State:**
+    *   Check `LeveragePositions` collection.
+    *   [ ] Status should be `SETTLED`.
+    *   [ ] `settlementTimestamp` is set.
+    *   [ ] `seniorRepayment`, `interestRepayment`, `userYieldDistributed`, and `mETHReturnedToUser` are recorded.
+    *   [ ] `rwaTokenAmount` should be 0 (burned).
 
-**Create a leverage position for a tokenized asset:**
+4.  **Verify Blockchain State:**
+    *   [ ] LeverageVault RWA balance is 0.
+    *   [ ] SeniorPool received principal + interest.
+    *   [ ] User received net yield (USDC).
+    *   [ ] User received mETH collateral back.
+
+5.  **Verify Notification:**
+    *   [ ] User receives `PAYOUT_SETTLED` notification.
+    *   [ ] Notification details include Net Yield amount and mETH collateral returned.
+
+**Command:**
 ```bash
-# 1. Asset should be LISTED and have tokens sold
-# 2. Position created via leverage (tokens held by LeverageVault)
-# 3. Some interest has accrued (wait a few harvest cycles)
+# Settle asset (Admin)
+./scripts/admin-settle-yield.sh <ASSET_ID> <AMOUNT>
 ```
-
-**Record position details:**
-```javascript
-use rwa-platform
-
-db.leveragepositions.findOne({ positionId: 1 })
-```
-
-Note:
-- RWA tokens held: `____`
-- USDC debt (principal): `____`
-- Accrued interest: `____` (check SeniorPool)
-- mETH collateral: `____`
-
-#### 3.2 Simulate Invoice Settlement
-
-**Option 1: Via API (if implemented)**
-```bash
-# Admin triggers settlement distribution
-curl -X POST http://localhost:3000/admin/assets/{assetId}/distribute-yield \
-  -H "Authorization: Bearer ADMIN_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "settlementAmount": "50000000000"
-  }'
-```
-
-**Option 2: Manual Contract Call (for testing)**
-```bash
-# Use a script to call YieldVault.distributeYield()
-```
-
-#### 3.3 Monitor Waterfall Execution
-
-```bash
-tail -f packages/backend/logs/combined.log | grep -E "Settlement|Waterfall"
-```
-
-**Expected log sequence:**
-```
-[YieldDistributionService] 💧 Starting settlement waterfall for asset XYZ
-[YieldDistributionService] Total settlement USDC: 50,000
-[YieldDistributionService] LeverageVault holds 10,000 tokens (10% of supply)
-[YieldDistributionService] Position 1 entitled to: 5,000 USDC
-
-[LeverageVault] 💧 WATERFALL: Processing position 1
-[LeverageVault] Step 1: Repaying principal (owed: 10,000 USDC)
-[LeverageVault] ⚠️ Insufficient to repay principal (have: 5,000, need: 10,000)
-[LeverageVault] Partial principal repayment: 5,000 USDC
-[SeniorPool] Loan principal reduced: 10,000 → 5,000
-[LeverageVault] 💧 Waterfall stopped (no funds remaining)
-```
-
-**Alternative scenario (full repayment + surplus):**
-```
-[LeverageVault] 💧 WATERFALL: Processing position 1
-[LeverageVault] Step 1: Repaying principal (owed: 10,000 USDC)
-[SeniorPool] ✅ Principal fully repaid
-[LeverageVault] Remaining: 40,000 USDC
-
-[LeverageVault] Step 2: Repaying accrued interest (owed: 550 USDC)
-[SeniorPool] ✅ Interest fully paid
-[LeverageVault] Remaining: 39,450 USDC
-
-[LeverageVault] Step 3: Returning surplus to user
-[LeverageVault] Burning RWA tokens: 10,000 tokens
-[LeverageVault] Returning mETH collateral: 0.003938 mETH
-[LeverageVault] Surplus USDC to user: 39,450 USDC
-[LeverageVault] ✅ Position SETTLED
-```
-
-#### 3.4 Verify Settlement in Database
-
-```javascript
-use rwa-platform
-
-db.leveragepositions.findOne(
-  { positionId: 1 },
-  {
-    status: 1,
-    settlementData: 1
-  }
-)
-```
-
-**Expected output (full settlement):**
-```javascript
-{
-  status: "SETTLED",
-  settlementData: {
-    settledAt: ISODate("2026-01-01T00:20:00.000Z"),
-    totalReceived: "50000000",
-    principalRepaid: "10000000",
-    interestRepaid: "550000",
-    surplusToUser: "39450000",
-    mETHReturned: "3938000000000000",
-    transactionHash: "0x..."
-  }
-}
-```
-
-#### 3.5 Verify User Notification
-
-```json
-{
-  "type": "LEVERAGE_SETTLEMENT",
-  "header": "Position Settled",
-  "detail": "Your leverage position #1 has been settled. Debt repaid: 10.55 USDC. Surplus returned: 39.45 USDC + 0.003938 mETH",
-  "severity": "SUCCESS",
-  "action": "VIEW_SETTLEMENT"
-}
-```
-
-#### 3.6 Test Edge Cases
-
-**A. Partial Principal Repayment**
-- Settlement amount < principal owed
-- Waterfall stops at Step 1
-- Position remains ACTIVE with reduced debt
-
-**B. Principal Paid, Interest Unpaid**
-- Settlement amount = principal exactly
-- Waterfall stops at Step 2
-- Interest remains accrued
-
-**C. Full Repayment, No Surplus**
-- Settlement amount = principal + interest exactly
-- Waterfall completes all steps
-- User receives mETH collateral back, no USDC surplus
-
 ---
 
 ## Monitoring Tools

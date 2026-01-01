@@ -137,6 +137,7 @@ export class YieldOpsController {
       this.logger.log(`1️⃣ Senior Pool Repayment: ${Number(result.seniorRepayment) / 1e6} USDC`);
       this.logger.log(`2️⃣ Interest Payment: ${Number(result.interestRepayment) / 1e6} USDC`);
       this.logger.log(`3️⃣ User Yield (Pushed): ${Number(result.userYield) / 1e6} USDC`);
+      this.logger.log(`4️⃣ mETH Returned: ${Number(result.mETHReturned) / 1e18} mETH`);
       this.logger.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
       // Update position record as settled
@@ -145,6 +146,7 @@ export class YieldOpsController {
         seniorRepayment: result.seniorRepayment.toString(),
         interestRepayment: result.interestRepayment.toString(),
         userYield: result.userYield.toString(),
+        mETHReturned: result.mETHReturned.toString(),
         transactionHash: result.hash,
       });
 
@@ -159,8 +161,9 @@ export class YieldOpsController {
           seniorRepayment: result.seniorRepayment.toString(),
           interestRepayment: result.interestRepayment.toString(),
           userYield: result.userYield.toString(),
+          mETHReturned: result.mETHReturned.toString(),
         },
-        message: 'Settlement waterfall processed successfully - user yield pushed to wallet',
+        message: 'Settlement waterfall processed successfully - user yield and collateral pushed to wallet',
       };
     } catch (error) {
       this.logger.error(`❌ Settlement processing failed: ${error}`);

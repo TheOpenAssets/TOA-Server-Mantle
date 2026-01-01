@@ -273,6 +273,7 @@ export class LeveragePositionService {
       seniorRepayment: string;
       interestRepayment: string;
       userYield: string;
+      mETHReturned: string;
       transactionHash: string;
     },
   ): Promise<void> {
@@ -287,12 +288,13 @@ export class LeveragePositionService {
           seniorRepayment: settlement.seniorRepayment,
           interestRepayment: settlement.interestRepayment,
           userYieldDistributed: settlement.userYield,
+          mETHReturnedToUser: settlement.mETHReturned,
         },
       },
     );
 
     this.logger.log(
-      `✅ Settlement recorded for position ${positionId}: ${parseFloat(settlement.userYield) / 1e6} USDC pushed to user`,
+      `✅ Settlement recorded for position ${positionId}: ${parseFloat(settlement.userYield) / 1e6} USDC pushed to user, ${parseFloat(settlement.mETHReturned) / 1e18} mETH returned`,
     );
   }
 

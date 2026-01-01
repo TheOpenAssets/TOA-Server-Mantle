@@ -317,6 +317,7 @@ export class LeverageBlockchainService {
     seniorRepayment: bigint;
     interestRepayment: bigint;
     userYield: bigint;
+    mETHReturned: bigint;
   }> {
     const wallet = this.walletService.getPlatformWallet();
     const address = this.contractLoader.getContractAddress('LeverageVault');
@@ -327,6 +328,10 @@ export class LeverageBlockchainService {
     );
 
     try {
+      // Get position details to know mETH collateral that will be returned
+      const position = await this.getPosition(positionId);
+      const mETHReturned = position.mETHCollateral;
+
       const hash = await wallet.writeContract({
         address: address as Address,
         abi,
@@ -334,7 +339,10 @@ export class LeverageBlockchainService {
         args: [BigInt(positionId), settlementUSDC],
       });
 
-      const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await this.publicClient.waitForTransactionReceipt({ 
+        hash,
+        timeout: 60_000, // 60 seconds timeout
+      });
       this.logger.log(`✅ Settlement processed: ${hash}`);
 
       // Parse SettlementProcessed event from receipt
@@ -368,11 +376,19 @@ export class LeverageBlockchainService {
         userYield: bigint;
       };
 
+      // Log detailed breakdown
+      this.logger.log(`📊 Settlement Breakdown for Position ${positionId}:`);
+      this.logger.log(`   🔹 Principal Repaid: ${Number(eventArgs.seniorRepayment) / 1e6} USDC`);
+      this.logger.log(`   🔹 Interest Deducted: ${Number(eventArgs.interestRepayment) / 1e6} USDC`);
+      this.logger.log(`   🔹 User Yield (Net): ${Number(eventArgs.userYield) / 1e6} USDC`);
+      this.logger.log(`   🔹 mETH Returned: ${Number(mETHReturned) / 1e18} mETH`);
+
       return {
         hash,
         seniorRepayment: eventArgs.seniorRepayment,
         interestRepayment: eventArgs.interestRepayment,
         userYield: eventArgs.userYield,
+        mETHReturned,
       };
     } catch (error) {
       this.logger.error(`Failed to process settlement: ${error}`);
