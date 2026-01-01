@@ -446,6 +446,41 @@ ${bidSummary || '  No bids received'}
 
       this.logger.log(`Asset ${assetId} status updated to ENDED. Bidding is now closed.`);
 
+      // Update all bids for this auction from PLACED to FINALIZED
+      const updateResult = await this.bidModel.updateMany(
+        { assetId, status: 'PLACED' },
+        { $set: { status: 'FINALIZED' } }
+      );
+      this.logger.log(`Updated ${updateResult.modifiedCount} bids from PLACED to FINALIZED for auction ${assetId}`);
+
+      // Send notifications to all bidders who participated in this auction
+      const bidders = await this.bidModel.distinct('bidder', { assetId });
+      this.logger.log(`Sending auction ended notifications to ${bidders.length} bidders for auction ${assetId}`);
+
+      for (const bidderWallet of bidders) {
+        try {
+          await this.notificationService.create({
+            userId: bidderWallet,
+            walletAddress: bidderWallet,
+            header: 'Auction Ended',
+            detail: `The auction for asset ${asset.metadata.invoiceNumber} has ended. The admin will declare results soon. Please check back for your bid outcome.`,
+            type: NotificationType.ASSET_STATUS,
+            severity: NotificationSeverity.INFO,
+            action: NotificationAction.VIEW_ASSET,
+            actionMetadata: {
+              assetId,
+              auctionEnded: true,
+              awaitingResults: true,
+            },
+          });
+        } catch (error: any) {
+          this.logger.error(`Failed to send auction ended notification to ${bidderWallet}: ${error.message}`);
+          // Continue with other notifications even if one fails
+        }
+      }
+
+      this.logger.log(`Sent auction ended notifications to all ${bidders.length} bidders for auction ${assetId}`);
+
       // Create AUCTION_ENDED announcement (bidding closed, not results declared)
       await this.announcementService.createAuctionEndedAnnouncement(
         assetId,

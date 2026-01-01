@@ -79,7 +79,7 @@ export class BidTrackerService {
       price: bidData.price,
       usdcDeposited: usdcDeposited.toString(),
       bidIndex: bidData.bidIndex,
-      status: BidStatus.PENDING,
+      status: BidStatus.PLACED,
       transactionHash: dto.txHash,
       // blockNumber: bidData.blockNumber,
     });
