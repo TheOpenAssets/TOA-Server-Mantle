@@ -691,9 +691,9 @@ export class AssetLifecycleService {
             walletAddress: bidderAddress,
             header: 'Auction Results Declared',
             detail: `Auction results for asset ${asset.metadata.invoiceNumber} have been declared with a clearing price of $${clearingPriceUSDC.toFixed(2)}. Please settle your bid to claim tokens or receive refund.`,
-            type: 'ASSET_STATUS' as any,
-            severity: 'SUCCESS' as any,
-            action: 'VIEW_PORTFOLIO' as any,
+            type: NotificationType.ASSET_STATUS,
+            severity: NotificationSeverity.SUCCESS,
+            action: NotificationAction.VIEW_PORTFOLIO,
             actionMetadata: {
               assetId,
               clearingPrice,
