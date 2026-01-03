@@ -24,7 +24,7 @@ import { UserSession, UserSessionSchema } from '../../database/schemas/session.s
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET') || 'secret',
-        signOptions: { expiresIn: '15m' }, // Default
+        signOptions: { expiresIn: '180m' }, // Default
       }),
       inject: [ConfigService],
     }),

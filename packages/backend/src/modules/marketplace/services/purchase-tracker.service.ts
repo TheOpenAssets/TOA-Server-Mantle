@@ -323,7 +323,7 @@ export class PurchaseTrackerService {
     const purchases = await this.purchaseModel
       .find({
         investorWallet: investorWallet.toLowerCase(),
-        status: 'CONFIRMED'
+        status: ['CLAIMED', 'CONFIRMED'],
       })
       .sort({ createdAt: -1 });
 
@@ -343,6 +343,7 @@ export class PurchaseTrackerService {
           tokenAddress: purchase.tokenAddress,
           totalAmount: purchase.amount,
           totalInvested: purchase.totalPayment,
+          status:purchase.status,
           purchaseCount: 1,
           firstPurchase: purchase.createdAt,
           lastPurchase: purchase.createdAt,
