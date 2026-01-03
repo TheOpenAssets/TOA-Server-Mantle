@@ -139,11 +139,16 @@ export class HarvestKeeperService implements OnModuleInit {
       const healthFactorAfter =
         await this.blockchainService.getHealthFactor(positionId);
 
+      // Get mETH price at harvest time
+      const mETHPrice = await this.dexService.getMETHPrice();
+
       // Record harvest in database with ACTUAL values from transaction event
       await this.positionService.recordHarvest(positionId, {
         mETHSwapped: harvestResult.mETHSwapped.toString(),
         usdcReceived: harvestResult.usdcReceived.toString(),
         interestPaid: harvestResult.interestPaid.toString(),
+        interestAccrued: outstandingInterest.toString(),
+        mETHPrice: mETHPrice.toString(),
         transactionHash: harvestResult.hash,
         healthFactorBefore,
         healthFactorAfter,
