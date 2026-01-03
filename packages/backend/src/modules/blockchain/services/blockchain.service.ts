@@ -449,6 +449,83 @@ export class BlockchainService {
     return hash;
   }
 
+  /**
+   * Burn unsold tokens from marketplace inventory
+   * This is called during payout to ensure only sold tokens remain in circulation
+   */
+  async burnUnsoldTokens(tokenAddress: string, assetId: string): Promise<{
+    tokensBurned: bigint;
+    newTotalSupply: bigint;
+    txHash: string;
+  }> {
+    const wallet = this.walletService.getPlatformWallet();
+    const tokenAbi = this.contractLoader.getContractAbi('RWAToken');
+
+    // Get marketplace address and check its token balance (unsold tokens)
+    const marketplaceAddress = this.contractLoader.getContractAddress('PrimaryMarketplace');
+
+    this.logger.log(`Checking unsold token balance for ${tokenAddress}...`);
+
+    const unsoldBalance = await this.publicClient.readContract({
+      address: tokenAddress as Address,
+      abi: tokenAbi,
+      functionName: 'balanceOf',
+      args: [marketplaceAddress],
+    }) as bigint;
+
+    this.logger.log(`Marketplace holds ${unsoldBalance.toString()} wei (${Number(unsoldBalance) / 1e18} tokens)`);
+
+    if (unsoldBalance === 0n) {
+      this.logger.log(`✅ No unsold tokens to burn - all tokens were sold`);
+
+      // Get current total supply
+      const totalSupply = await this.publicClient.readContract({
+        address: tokenAddress as Address,
+        abi: tokenAbi,
+        functionName: 'totalSupply',
+        args: [],
+      }) as bigint;
+
+      return { tokensBurned: 0n, newTotalSupply: totalSupply, txHash: '' };
+    }
+
+    // Burn unsold tokens from marketplace
+    this.logger.log(`🔥 Burning ${Number(unsoldBalance) / 1e18} unsold tokens from marketplace...`);
+
+    const hash = await wallet.writeContract({
+      address: tokenAddress as Address,
+      abi: tokenAbi,
+      functionName: 'burn',
+      args: [unsoldBalance],
+    });
+
+    this.logger.log(`Burn transaction submitted: ${hash}`);
+
+    await this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 180_000,
+      pollingInterval: 2_000,
+    });
+
+    this.logger.log(`✅ Burn transaction confirmed in tx: ${hash}`);
+
+    // Get new total supply after burn
+    const newTotalSupply = await this.publicClient.readContract({
+      address: tokenAddress as Address,
+      abi: tokenAbi,
+      functionName: 'totalSupply',
+      args: [],
+    }) as bigint;
+
+    this.logger.log(`New total supply: ${newTotalSupply.toString()} wei (${Number(newTotalSupply) / 1e18} tokens)`);
+
+    return {
+      tokensBurned: unsoldBalance,
+      newTotalSupply,
+      txHash: hash,
+    };
+  }
+
   // Read Methods
   async isVerified(walletAddress: string): Promise<boolean> {
     const address = this.contractLoader.getContractAddress('IdentityRegistry');
