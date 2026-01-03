@@ -165,14 +165,25 @@ export class MarketplaceController {
   @Get('info')
   @UseGuards(JwtAuthGuard)
   async getMarketplaceInfo() {
-    // 1. Total assets (tokenized assets)
+    // Include all assets that have been tokenized and listed (regardless of current lifecycle stage)
+    // This includes: TOKENIZED, SCHEDULED, LISTED, PAYOUT_COMPLETE, YIELD_SETTLED, ENDED
+    const includedStatuses = [
+      AssetStatus.TOKENIZED,
+      AssetStatus.SCHEDULED,
+      AssetStatus.LISTED,
+      AssetStatus.PAYOUT_COMPLETE,
+      AssetStatus.YIELD_SETTLED,
+      AssetStatus.ENDED,
+    ];
+
+    // 1. Total assets (all tokenized assets that have reached listing stage or beyond)
     const totalAssets = await this.assetModel.countDocuments({
       'token.address': { $exists: true },
-      status: { $in: [AssetStatus.TOKENIZED, AssetStatus.LISTED] },
+      status: { $in: includedStatuses },
     });
 
     // 2. Active users (users who have made purchases or bids)
-    const purchaseInvestors = await this.purchaseModel.distinct('investor');
+    const purchaseInvestors = await this.purchaseModel.distinct('investorWallet');
     const bidInvestors = await this.bidModel.distinct('investor');
     const uniqueInvestors = new Set([...purchaseInvestors, ...bidInvestors]);
     const activeUsers = uniqueInvestors.size;
@@ -180,12 +191,12 @@ export class MarketplaceController {
     // 3. Total settlements
     const totalSettlements = await this.settlementModel.countDocuments();
 
-    // 4. Total value tokenized (sum of face values of tokenized assets)
+    // 4. Total value tokenized (sum of face values of all tokenized assets)
     const tokenizedAssets = await this.assetModel.aggregate([
       {
         $match: {
           'token.address': { $exists: true },
-          status: { $in: [AssetStatus.TOKENIZED, AssetStatus.LISTED] },
+          status: { $in: includedStatuses },
         },
       },
       {

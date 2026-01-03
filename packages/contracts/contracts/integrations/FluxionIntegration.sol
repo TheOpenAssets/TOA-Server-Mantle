@@ -115,19 +115,22 @@ contract FluxionIntegration is Ownable, ReentrancyGuard {
     /**
      * @notice Swap mETH for USDC with slippage protection
      * @param mETHAmount Amount of mETH to swap (18 decimals)
+     * @param mETHPriceUSD Current mETH price in USD (18 decimals, provided by backend)
      * @return usdcReceived Amount of USDC received (6 decimals)
      */
     function swapMETHToUSDC(
-        uint256 mETHAmount
+        uint256 mETHAmount,
+        uint256 mETHPriceUSD
     ) external nonReentrant whenNotPaused returns (uint256 usdcReceived) {
         require(mETHAmount > 0, "Amount must be > 0");
+        require(mETHPriceUSD > 0, "Invalid mETH price");
 
         // Get quote from DEX
         uint256 expectedUSDC = dex.getQuote(mETHAmount);
         require(expectedUSDC > 0, "Invalid quote");
 
-        // Validate quote against oracle price
-        _validatePrice(mETHAmount, expectedUSDC);
+        // Validate quote against provided price
+        _validatePrice(mETHAmount, expectedUSDC, mETHPriceUSD);
 
         // Calculate minimum output with slippage tolerance
         uint256 minUSDCOut = (expectedUSDC * (BASIS_POINTS - MAX_SLIPPAGE)) /
@@ -201,28 +204,27 @@ contract FluxionIntegration is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Validate swap price against oracle
+     * @notice Validate swap price against provided mETH price
      * @param mETHAmount mETH amount being swapped
      * @param expectedUSDC Expected USDC from DEX quote
+     * @param mETHPriceUSD mETH price provided by backend (18 decimals)
      */
-    function _validatePrice(uint256 mETHAmount, uint256 expectedUSDC) internal view {
-        uint256 oraclePrice = priceOracle.getPrice(); // USD per mETH (18 decimals)
+    function _validatePrice(uint256 mETHAmount, uint256 expectedUSDC, uint256 mETHPriceUSD) internal pure {
+        // Calculate expected USDC from provided price
+        uint256 priceExpectedUSDC = (mETHAmount * mETHPriceUSD) / 1e30; // Convert to 6 decimals
 
-        // Calculate expected USDC from oracle price
-        uint256 oracleExpectedUSDC = (mETHAmount * oraclePrice) / 1e30; // Convert to 6 decimals
-
-        // Allow 5% deviation between oracle and DEX
+        // Allow 5% deviation between provided price and DEX
         uint256 maxDeviation = 500; // 5% in basis points
         uint256 deviationBps;
 
-        if (expectedUSDC > oracleExpectedUSDC) {
+        if (expectedUSDC > priceExpectedUSDC) {
             deviationBps =
-                ((expectedUSDC - oracleExpectedUSDC) * BASIS_POINTS) /
-                oracleExpectedUSDC;
+                ((expectedUSDC - priceExpectedUSDC) * BASIS_POINTS) /
+                priceExpectedUSDC;
         } else {
             deviationBps =
-                ((oracleExpectedUSDC - expectedUSDC) * BASIS_POINTS) /
-                oracleExpectedUSDC;
+                ((priceExpectedUSDC - expectedUSDC) * BASIS_POINTS) /
+                priceExpectedUSDC;
         }
 
         require(

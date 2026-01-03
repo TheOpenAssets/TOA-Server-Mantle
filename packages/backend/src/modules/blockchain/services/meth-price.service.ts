@@ -66,27 +66,39 @@ export class MethPriceService implements OnModuleInit {
     this.logger.log(`Price will update every ${this.updateIntervalSeconds}s (${updatesPerDay.toFixed(1)} times/day)`);
     this.logger.log(`${this.historyDays} days of data will last approximately ${Math.floor(daysOfCoverage)} days of runtime`);
 
-    // Create cron expression based on interval
-    let cronExpression: string;
+    // Use setInterval for sub-minute intervals, cron for longer intervals
+    if (this.updateIntervalSeconds < 60) {
+      // Use setInterval for sub-minute intervals
+      const intervalMs = this.updateIntervalSeconds * 1000;
+      const interval = setInterval(() => {
+        this.updatePriceFromHistory();
+      }, intervalMs);
 
-    if (this.updateIntervalSeconds >= 3600) {
-      // Hourly updates: "0 */N * * *" where N is hours
-      const hours = Math.floor(this.updateIntervalSeconds / 3600);
-      cronExpression = `0 */${hours} * * *`;
+      this.schedulerRegistry.addInterval('meth-price-update', interval);
+      this.logger.log(`Scheduled price updates with interval: ${this.updateIntervalSeconds}s`);
     } else {
-      // Minute updates: "*/M * * * *" where M is minutes
-      const minutes = Math.floor(this.updateIntervalSeconds / 60);
-      cronExpression = `*/${minutes} * * * *`;
+      // Use cron for minute-based or hourly intervals
+      let cronExpression: string;
+
+      if (this.updateIntervalSeconds >= 3600) {
+        // Hourly updates: "0 */N * * *" where N is hours
+        const hours = Math.floor(this.updateIntervalSeconds / 3600);
+        cronExpression = `0 */${hours} * * *`;
+      } else {
+        // Minute updates: "*/M * * * *" where M is minutes
+        const minutes = Math.floor(this.updateIntervalSeconds / 60);
+        cronExpression = `*/${minutes} * * * *`;
+      }
+
+      const job = new CronJob(cronExpression, () => {
+        this.updatePriceFromHistory();
+      });
+
+      this.schedulerRegistry.addCronJob('meth-price-update', job);
+      job.start();
+
+      this.logger.log(`Scheduled price updates with cron expression: ${cronExpression}`);
     }
-
-    const job = new CronJob(cronExpression, () => {
-      this.updatePriceFromHistory();
-    });
-
-    this.schedulerRegistry.addCronJob('meth-price-update', job);
-    job.start();
-
-    this.logger.log(`Scheduled price updates with cron expression: ${cronExpression}`);
   }
 
   /**

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
@@ -14,6 +14,8 @@ import { NotificationService } from '../../notifications/services/notification.s
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 import { RecordSettlementDto } from '../dto/yield-ops.dto';
+import { LeveragePositionService } from '../../leverage/services/leverage-position.service';
+import { LeverageBlockchainService } from '../../leverage/services/leverage-blockchain.service';
 
 @Injectable()
 export class YieldDistributionService {
@@ -28,6 +30,10 @@ export class YieldDistributionService {
     private blockchainService: BlockchainService,
     private notificationService: NotificationService,
     private configService: ConfigService,
+    @Inject(forwardRef(() => LeveragePositionService))
+    private leveragePositionService: LeveragePositionService,
+    @Inject(forwardRef(() => LeverageBlockchainService))
+    private leverageBlockchainService: LeverageBlockchainService,
   ) {}
 
   async recordSettlement(dto: RecordSettlementDto) {
@@ -81,6 +87,14 @@ export class YieldDistributionService {
       status: SettlementStatus.PENDING_CONVERSION,
       settlementDate: new Date(dto.settlementDate),
     });
+
+    // Update asset status to YIELD_SETTLED to mark it ready for yield distribution
+    await this.assetModel.updateOne(
+      { assetId: dto.assetId },
+      { $set: { status: 'YIELD_SETTLED' } }
+    );
+
+    this.logger.log(`✅ Asset status updated to YIELD_SETTLED`);
 
     return settlement;
   }
@@ -171,6 +185,126 @@ export class YieldDistributionService {
       }`,
     );
 
+    // ========================================================================
+    // AUTOMATIC LEVERAGE POSITION SETTLEMENT
+    // ========================================================================
+    this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    this.logger.log(`🔍 Checking for leverage positions holding this asset...`);
+
+    let leveragePositionsSettled = 0;
+
+    try {
+      // Find all active leverage positions holding this asset's tokens
+      const leveragePositions = await this.leveragePositionService.getActivePositions();
+      const relevantPositions = leveragePositions.filter(
+        pos => pos.rwaTokenAddress.toLowerCase() === tokenAddress.toLowerCase()
+      );
+
+      leveragePositionsSettled = relevantPositions.length;
+
+      if (relevantPositions.length === 0) {
+        this.logger.log(`✅ No leverage positions found for this asset`);
+      } else {
+        this.logger.log(`📊 Found ${relevantPositions.length} leverage position(s) to settle`);
+
+        for (const position of relevantPositions) {
+          try {
+            this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+            this.logger.log(`🔄 Processing Position ${position.positionId}...`);
+            this.logger.log(`   User: ${position.userAddress}`);
+            this.logger.log(`   RWA Tokens: ${Number(position.rwaTokenAmount) / 1e18}`);
+
+            // Step 1: Claim yield by burning RWA tokens
+            this.logger.log(`\n🔥 Step 1: Burning RWA tokens to claim USDC from YieldVault...`);
+            const claimResult = await this.leverageBlockchainService.claimYieldFromBurn(
+              position.positionId,
+              BigInt(position.rwaTokenAmount), // Burn ALL RWA tokens
+            );
+
+            this.logger.log(`✅ Tokens burned: ${Number(claimResult.tokensBurned) / 1e18} RWA`);
+            this.logger.log(`💰 USDC received: ${Number(claimResult.usdcReceived) / 1e6} USDC`);
+            this.logger.log(`   TX: ${claimResult.hash}`);
+
+            // Record yield claim
+            await this.leveragePositionService.recordYieldClaim(position.positionId, {
+              tokensBurned: claimResult.tokensBurned.toString(),
+              usdcReceived: claimResult.usdcReceived.toString(),
+              transactionHash: claimResult.hash,
+            });
+
+            // Step 2: Process settlement waterfall
+            this.logger.log(`\n💰 Step 2: Processing settlement waterfall...`);
+            const settlementResult = await this.leverageBlockchainService.processSettlement(
+              position.positionId,
+              claimResult.usdcReceived, // Use USDC from burn
+            );
+
+            this.logger.log(`✅ Settlement waterfall completed:`);
+            this.logger.log(`   1️⃣ Senior Pool Repayment: ${Number(settlementResult.seniorRepayment) / 1e6} USDC`);
+            this.logger.log(`   2️⃣ Interest Payment: ${Number(settlementResult.interestRepayment) / 1e6} USDC`);
+            this.logger.log(`   3️⃣ User Yield (Pushed): ${Number(settlementResult.userYield) / 1e6} USDC`);
+            this.logger.log(`   4️⃣ mETH Returned: ${Number(settlementResult.mETHReturned) / 1e18} mETH`);
+            this.logger.log(`   TX: ${settlementResult.hash}`);
+
+            // Record settlement
+            await this.leveragePositionService.recordSettlement(position.positionId, {
+              settlementUSDC: claimResult.usdcReceived.toString(),
+              seniorRepayment: settlementResult.seniorRepayment.toString(),
+              interestRepayment: settlementResult.interestRepayment.toString(),
+              userYield: settlementResult.userYield.toString(),
+              mETHReturned: settlementResult.mETHReturned.toString(),
+              transactionHash: settlementResult.hash,
+            });
+
+            // Notify user
+            try {
+              const yieldFormatted = (Number(settlementResult.userYield) / 1e6).toFixed(2);
+              const mETHFormatted = (Number(settlementResult.mETHReturned) / 1e18).toFixed(4);
+              
+              await this.notificationService.create({
+                userId: position.userAddress,
+                walletAddress: position.userAddress,
+                header: 'Leverage Position Settled',
+                detail: `Your leveraged position #${position.positionId} has been settled. Net Yield: ${yieldFormatted} USDC. Collateral Returned: ${mETHFormatted} mETH.`,
+                type: NotificationType.PAYOUT_SETTLED,
+                severity: NotificationSeverity.SUCCESS,
+                action: NotificationAction.VIEW_PORTFOLIO,
+                actionMetadata: {
+                  positionId: position.positionId.toString(),
+                  assetId: position.assetId,
+                },
+              });
+            } catch (notifError) {
+              this.logger.error(`Failed to send settlement notification to ${position.userAddress}: ${notifError}`);
+            }
+
+            this.logger.log(`✅ Position ${position.positionId} settled successfully!`);
+          } catch (error) {
+            this.logger.error(`❌ Failed to settle position ${position.positionId}: ${error}`);
+            this.logger.error(`   Continuing with other positions...`);
+            // Don't throw - continue with other positions
+          }
+        }
+
+        this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+        this.logger.log(`✅ Leverage position settlement complete!`);
+      }
+    } catch (error) {
+      this.logger.error(`❌ Error processing leverage positions: ${error}`);
+      this.logger.error(`   Regular investor distribution was successful`);
+      // Don't throw - leverage settlement is additional, not critical
+    }
+
+    this.logger.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+
+    // Update asset status to ENDED to mark yield distribution complete
+    await this.assetModel.updateOne(
+      { assetId: settlement.assetId },
+      { $set: { status: 'ENDED' } }
+    );
+
+    this.logger.log(`✅ Asset status updated to ENDED - yield distribution complete`);
+
     return {
       message: 'Settlement deposited to YieldVault - investors can now burn tokens to claim',
       totalDeposited: settlement.usdcAmount,
@@ -178,6 +312,7 @@ export class YieldDistributionService {
       effectiveYield: settlement.amountRaised > 0
         ? `${(((settlement.netDistribution - settlement.amountRaised) / settlement.amountRaised) * 100).toFixed(2)}%`
         : 'N/A',
+      leveragePositionsSettled,
     };
   }
 

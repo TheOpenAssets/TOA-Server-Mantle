@@ -4,6 +4,9 @@ import { LeveragePositionService } from '../services/leverage-position.service';
 import { FluxionDEXService } from '../services/fluxion-dex.service';
 import { LeverageBlockchainService } from '../services/leverage-blockchain.service';
 import { InitiateLeveragePurchaseDto, GetSwapQuoteDto, UnwindPositionDto } from '../dto/leverage.dto';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 
 @Controller('leverage')
 @UseGuards(JwtAuthGuard)
@@ -14,6 +17,7 @@ export class LeverageController {
     private readonly positionService: LeveragePositionService,
     private readonly dexService: FluxionDEXService,
     private readonly blockchainService: LeverageBlockchainService,
+    @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) {}
 
   /**
@@ -28,13 +32,28 @@ export class LeverageController {
     this.logger.log(`📊 Leverage Purchase Request Received`);
     this.logger.log(`User: ${userAddress}`);
     this.logger.log(`Asset ID: ${dto.assetId}`);
-    this.logger.log(`Token Address: ${dto.tokenAddress}`);
-    this.logger.log(`Token Amount: ${dto.tokenAmount}`);
-    this.logger.log(`Price Per Token: ${dto.pricePerToken}`);
-    this.logger.log(`mETH Collateral: ${dto.mETHCollateral}`);
-    this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     try {
+      // Fetch Asset to get correct token address
+      const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+      if (!asset) {
+        throw new Error(`Asset ${dto.assetId} not found`);
+      }
+      if (!asset.token?.address) {
+        throw new Error(`Asset ${dto.assetId} has no token address registered`);
+      }
+      
+      const rwaTokenAddress = asset.token.address;
+      this.logger.log(`Token Address (DB): ${rwaTokenAddress}`);
+      if (dto.tokenAddress && dto.tokenAddress.toLowerCase() !== rwaTokenAddress.toLowerCase()) {
+        this.logger.warn(`⚠️ Request token address ${dto.tokenAddress} mismatch with DB ${rwaTokenAddress}. Using DB value.`);
+      }
+
+      this.logger.log(`Token Amount: ${dto.tokenAmount}`);
+      this.logger.log(`Price Per Token: ${dto.pricePerToken}`);
+      this.logger.log(`mETH Collateral: ${dto.mETHCollateral}`);
+      this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       // Calculate total USDC needed
       const tokenAmountBigInt = BigInt(dto.tokenAmount);
       const pricePerTokenBigInt = BigInt(dto.pricePerToken);
@@ -73,7 +92,7 @@ export class LeverageController {
         user: userAddress,
         mETHAmount: mETHCollateralBigInt,
         usdcToBorrow: totalUSDCNeeded,
-        rwaToken: dto.tokenAddress,
+        rwaToken: rwaTokenAddress, // Use DB value
         rwaTokenAmount: tokenAmountBigInt,
         assetId: dto.assetId,
         mETHPriceUSD, // Pass mETH price from backend
@@ -102,7 +121,7 @@ export class LeverageController {
         positionId: result.positionId,
         userAddress,
         assetId: dto.assetId,
-        rwaTokenAddress: dto.tokenAddress,
+        rwaTokenAddress: rwaTokenAddress, // Use DB value
         rwaTokenAmount: dto.tokenAmount,
         mETHCollateral: dto.mETHCollateral,
         usdcBorrowed: totalUSDCNeeded.toString(),
@@ -111,6 +130,27 @@ export class LeverageController {
       });
 
       this.logger.log(`✅ Position created successfully!`);
+
+      // Update asset listing sold count
+      this.logger.log(`📊 Updating asset listing sold count...`);
+      
+      // We already fetched asset above
+      if (asset && asset.listing) {
+        const currentSold = BigInt(asset.listing.sold || '0');
+        const newSold = (currentSold + tokenAmountBigInt).toString();
+        
+        await this.assetModel.updateOne(
+          { assetId: dto.assetId },
+          { $set: { 'listing.sold': newSold } }
+        );
+        
+        const addedTokens = Number(tokenAmountBigInt) / 1e18;
+        const totalTokens = Number(newSold) / 1e18;
+        this.logger.log(`✅ Asset listing updated: +${addedTokens} tokens sold (New Total: ${totalTokens} tokens)`);
+      } else {
+        this.logger.warn(`⚠️ Asset ${dto.assetId} has no listing, skipping sold count update`);
+      }
+
       this.logger.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
       return {

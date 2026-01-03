@@ -1,5 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { LeveragePositionService } from './leverage-position.service';
 import { LeverageBlockchainService } from './leverage-blockchain.service';
@@ -12,7 +12,7 @@ import { NotificationAction } from '../../notifications/enums/notification-actio
 /**
  * @title HarvestKeeperService
  * @notice Automated service for harvesting mETH yield and paying interest
- * @dev Runs as cron job - every 4 minutes in demo mode, 24 hours in production
+ * @dev Runs at configurable intervals (HARVEST_INTERVAL_SECONDS)
  *
  * Flow:
  * 1. Get all active positions
@@ -24,9 +24,9 @@ import { NotificationAction } from '../../notifications/enums/notification-actio
  *    - Send notification to user
  */
 @Injectable()
-export class HarvestKeeperService {
+export class HarvestKeeperService implements OnModuleInit {
   private readonly logger = new Logger(HarvestKeeperService.name);
-  private isDemoMode: boolean;
+  private readonly harvestIntervalMs: number;
 
   constructor(
     private configService: ConfigService,
@@ -34,35 +34,31 @@ export class HarvestKeeperService {
     private blockchainService: LeverageBlockchainService,
     private dexService: FluxionDEXService,
     private notificationService: NotificationService,
+    private schedulerRegistry: SchedulerRegistry,
   ) {
-    // Check if demo mode is enabled
-    this.isDemoMode = this.configService.get<string>('DEMO_MODE') === 'true';
+    // Get harvest interval from config (default: 240 seconds = 4 minutes)
+    const intervalSeconds = this.configService.get<number>('HARVEST_INTERVAL_SECONDS', 240);
+    this.harvestIntervalMs = intervalSeconds * 1000;
+
     this.logger.log(
-      `🌾 Harvest Keeper initialized (${this.isDemoMode ? 'DEMO MODE: 4 min' : 'Production: 24hr'})`,
+      `🌾 Harvest Keeper initialized (Interval: ${intervalSeconds}s = ${intervalSeconds / 60} minutes)`,
     );
   }
 
   /**
-   * Harvest cron job - every 4 minutes in demo mode
-   * In production, this would run every 24 hours
+   * Set up dynamic interval on module initialization
    */
-  @Cron('*/4 * * * *', {
-    name: 'harvest-yield-demo',
-  })
-  async harvestYieldDemo() {
-    if (!this.isDemoMode) return;
-    await this.executeHarvest();
-  }
+  onModuleInit() {
+    const callback = () => {
+      this.executeHarvest().catch((error) => {
+        this.logger.error(`Harvest cycle failed: ${error.message}`, error.stack);
+      });
+    };
 
-  /**
-   * Harvest cron job - every 24 hours in production
-   */
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, {
-    name: 'harvest-yield-production',
-  })
-  async harvestYieldProduction() {
-    if (this.isDemoMode) return;
-    await this.executeHarvest();
+    const interval = setInterval(callback, this.harvestIntervalMs);
+    this.schedulerRegistry.addInterval('harvest-yield', interval);
+
+    this.logger.log(`⏰ Harvest interval scheduled: every ${this.harvestIntervalMs / 1000}s`);
   }
 
   /**
@@ -134,7 +130,7 @@ export class HarvestKeeperService {
 
     // Execute harvest on-chain
     try {
-      const txHash = await this.blockchainService.harvestYield(positionId);
+      const harvestResult = await this.blockchainService.harvestYield(positionId);
 
       // Get harvest details from contract (or parse event)
       const position = await this.blockchainService.getPosition(positionId);
@@ -143,12 +139,12 @@ export class HarvestKeeperService {
       const healthFactorAfter =
         await this.blockchainService.getHealthFactor(positionId);
 
-      // Record harvest in database
+      // Record harvest in database with ACTUAL values from transaction event
       await this.positionService.recordHarvest(positionId, {
-        mETHSwapped: mETHWithBuffer.toString(),
-        usdcReceived: outstandingInterest.toString(),
-        interestPaid: outstandingInterest.toString(),
-        transactionHash: txHash,
+        mETHSwapped: harvestResult.mETHSwapped.toString(),
+        usdcReceived: harvestResult.usdcReceived.toString(),
+        interestPaid: harvestResult.interestPaid.toString(),
+        transactionHash: harvestResult.hash,
         healthFactorBefore,
         healthFactorAfter,
       });
@@ -163,23 +159,23 @@ export class HarvestKeeperService {
           userId: dbPosition.userAddress,
           walletAddress: dbPosition.userAddress,
           header: 'Yield Harvested',
-          detail: `${(Number(outstandingInterest) / 1e6).toFixed(2)} USDC interest paid from your mETH yield. Health factor: ${(healthFactorAfter / 100).toFixed(1)}%`,
+          detail: `${(Number(harvestResult.interestPaid) / 1e6).toFixed(2)} USDC interest paid from your mETH yield. Health factor: ${(healthFactorAfter / 100).toFixed(1)}%`,
           type: NotificationType.YIELD_DISTRIBUTED,
           severity: NotificationSeverity.INFO,
           action: NotificationAction.VIEW_PORTFOLIO,
           actionMetadata: {
             positionId,
-            mETHSwapped: mETHWithBuffer.toString(),
-            usdcReceived: outstandingInterest.toString(),
+            mETHSwapped: harvestResult.mETHSwapped.toString(),
+            usdcReceived: harvestResult.usdcReceived.toString(),
             healthFactorBefore,
             healthFactorAfter,
-            txHash,
+            txHash: harvestResult.hash,
           },
         });
       }
 
       this.logger.log(
-        `✅ Position ${positionId} harvested: ${Number(outstandingInterest) / 1e6} USDC paid`,
+        `✅ Position ${positionId} harvested: ${Number(harvestResult.interestPaid) / 1e6} USDC paid`,
       );
     } catch (error) {
       this.logger.error(`Failed to execute harvest for position ${positionId}: ${error}`);

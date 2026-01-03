@@ -2,6 +2,6 @@
 /* tslint:disable */
 /* eslint-disable */
 export type { IFluxionIntegration } from "./IFluxionIntegration";
-export type { IMETHPriceOracle } from "./IMETHPriceOracle";
+export type { IPrimaryMarket } from "./IPrimaryMarket";
 export type { ISeniorPool } from "./ISeniorPool";
 export type { LeverageVault } from "./LeverageVault";

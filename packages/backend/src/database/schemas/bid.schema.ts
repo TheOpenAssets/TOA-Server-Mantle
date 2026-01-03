@@ -4,10 +4,12 @@ import { Document } from 'mongoose';
 export type BidDocument = Bid & Document;
 
 export enum BidStatus {
-  PENDING = 'PENDING',
-  WON = 'WON',
-  LOST = 'LOST',
-  SETTLED = 'SETTLED', // Won and received tokens
+  PENDING = 'PENDING', // Bid created but not submitted
+  PLACED = 'PLACED', // Bid placed on-chain
+  FINALIZED = 'FINALIZED', // Auction ended, result pending
+  WON = 'WON', // Bid won after result declared
+  LOST = 'LOST', // Bid lost after result declared
+  SETTLED = 'SETTLED', // Rewards claimed / refunds processed
   REFUNDED = 'REFUNDED', // Lost and received full refund
 }
 

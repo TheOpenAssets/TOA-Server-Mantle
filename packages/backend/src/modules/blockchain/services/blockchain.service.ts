@@ -100,12 +100,30 @@ export class BlockchainService {
 
     this.logger.log(`Token params: supply=${Number(totalSupplyWei) / 1e18} tokens (${totalSupplyWei} wei), name=${dto.name}, symbol=${dto.symbol}, issuer=${issuer}`);
 
-    const hash = await wallet.writeContract({
-      address: address as Address,
-      abi,
-      functionName: 'deployTokenSuite',
-      args: [assetIdBytes32, totalSupplyWei, dto.name, dto.symbol, issuer],
-    });
+    // Check wallet balance before submitting transaction
+    const balance = await this.publicClient.getBalance({ address: wallet.account.address as Address });
+    this.logger.log(`Admin wallet ${wallet.account.address} balance: ${Number(balance) / 1e18} MNT`);
+
+    if (balance === 0n) {
+      throw new Error(`Admin wallet has no MNT for gas. Please fund ${wallet.account.address}`);
+    }
+
+    this.logger.log(`Submitting transaction to TokenFactory at ${address}...`);
+
+    let hash: `0x${string}`;
+    try {
+      hash = await wallet.writeContract({
+        address: address as Address,
+        abi,
+        functionName: 'deployTokenSuite',
+        args: [assetIdBytes32, totalSupplyWei, dto.name, dto.symbol, issuer],
+      });
+
+      this.logger.log(`Transaction submitted successfully: ${hash}`);
+    } catch (error) {
+      this.logger.error(`Failed to submit transaction:`, error);
+      throw error;
+    }
 
     this.logger.log(`Token deployment submitted in tx: ${hash}`);
     this.logger.log(`Waiting for transaction confirmation...`);
@@ -406,7 +424,11 @@ export class BlockchainService {
       args: [assetIdBytes32, BigInt(clearingPrice)],
     });
 
-    await this.publicClient.waitForTransactionReceipt({ hash });
+    await this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 180_000, // 3 minute timeout
+      pollingInterval: 2_000,
+    });
     this.logger.log(`Auction ended in tx: ${hash}`);
     return hash;
   }

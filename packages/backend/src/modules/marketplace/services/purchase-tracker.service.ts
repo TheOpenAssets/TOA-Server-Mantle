@@ -6,6 +6,7 @@ import { createPublicClient, http, Hash, decodeEventLog } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { Settlement, SettlementDocument } from '../../../database/schemas/settlement.schema';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
 import { NotificationService } from '../../notifications/services/notification.service';
@@ -22,6 +23,7 @@ export class PurchaseTrackerService {
     private contractLoader: ContractLoaderService,
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
+    @InjectModel(Settlement.name) private settlementModel: Model<SettlementDocument>,
     private notificationService: NotificationService,
   ) {
     this.publicClient = createPublicClient({
@@ -255,12 +257,71 @@ export class PurchaseTrackerService {
       }
     }
 
+    // Enrich portfolio with yield data
+    const portfolio = await Promise.all(
+      Array.from(portfolioMap.values()).map(async (item) => {
+        try {
+          // Check if settlement has been distributed for this asset
+          const settlement = await this.settlementModel.findOne({
+            assetId: item.assetId
+          }).sort({ createdAt: -1 });
+
+          if (settlement && settlement.usdcAmount) {
+            // Get asset details for total supply
+            const asset = await this.assetModel.findOne({ assetId: item.assetId });
+
+            if (asset && asset.tokenParams?.totalSupply) {
+              const userTokenBalance = BigInt(item.totalAmount);
+              const settlementUSDC = BigInt(settlement.usdcAmount);
+              const totalSupply = BigInt(asset.tokenParams.totalSupply);
+
+              // Calculate claimable yield: (userTokens * settlementUSDC) / totalSupply
+              const claimableYieldRaw = totalSupply > 0n
+                ? (userTokenBalance * settlementUSDC) / totalSupply
+                : 0n;
+
+              return {
+                ...item,
+                yieldInfo: {
+                  settlementDistributed: true,
+                  claimableYield: claimableYieldRaw.toString(), // in raw USDC (6 decimals)
+                  claimableYieldFormatted: `${(Number(claimableYieldRaw) / 1e6).toFixed(2)} USDC`,
+                  settlementDate: settlement.settlementDate,
+                  settlementId: settlement._id,
+                },
+              };
+            }
+          }
+
+          // No settlement yet
+          return {
+            ...item,
+            yieldInfo: {
+              settlementDistributed: false,
+              claimableYield: '0',
+              claimableYieldFormatted: '0.00 USDC',
+            },
+          };
+        } catch (error) {
+          this.logger.error(`Error calculating yield for asset ${item.assetId}: ${error}`);
+          return {
+            ...item,
+            yieldInfo: {
+              settlementDistributed: false,
+              claimableYield: '0',
+              claimableYieldFormatted: '0.00 USDC',
+            },
+          };
+        }
+      })
+    );
+
     return {
       success: true,
       investorWallet,
       totalAssets: portfolioMap.size,
       totalPurchases: purchases.length,
-      portfolio: Array.from(portfolioMap.values()),
+      portfolio,
     };
   }
 

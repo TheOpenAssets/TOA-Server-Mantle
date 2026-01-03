@@ -455,25 +455,12 @@ export class AssetOpsController {
       // Call blockchain service to end auction on-chain
       const txHash = await this.blockchainService.endAuction(assetId, clearingPrice);
 
-      // Update database with transaction hash and clearing price
-      await this.assetModel.updateOne(
-        { assetId },
-        {
-          $set: {
-            'listing.clearingPrice': clearingPrice,
-            'listing.active': false,
-            'listing.endedAt': new Date(),
-            'listing.endTransactionHash': txHash,
-          },
-        },
-      );
+      // Use asset lifecycle service to handle bid status updates and notifications
+      const result = await this.assetLifecycleService.endAuction(assetId, clearingPrice, txHash);
 
+      // Return the result from endAuction with additional explorer URL
       return {
-        success: true,
-        message: 'Auction ended on-chain successfully',
-        assetId,
-        clearingPrice,
-        transactionHash: txHash,
+        ...result,
         explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
       };
     } catch (error: any) {

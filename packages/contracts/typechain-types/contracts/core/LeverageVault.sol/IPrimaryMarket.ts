@@ -20,25 +20,22 @@ import type {
   TypedContractMethod,
 } from "../../../common";
 
-export interface IFluxionIntegrationInterface extends Interface {
-  getFunction(nameOrSignature: "swapMETHToUSDC"): FunctionFragment;
+export interface IPrimaryMarketInterface extends Interface {
+  getFunction(nameOrSignature: "buyTokens"): FunctionFragment;
 
   encodeFunctionData(
-    functionFragment: "swapMETHToUSDC",
-    values: [BigNumberish, BigNumberish]
+    functionFragment: "buyTokens",
+    values: [BytesLike, BigNumberish]
   ): string;
 
-  decodeFunctionResult(
-    functionFragment: "swapMETHToUSDC",
-    data: BytesLike
-  ): Result;
+  decodeFunctionResult(functionFragment: "buyTokens", data: BytesLike): Result;
 }
 
-export interface IFluxionIntegration extends BaseContract {
-  connect(runner?: ContractRunner | null): IFluxionIntegration;
+export interface IPrimaryMarket extends BaseContract {
+  connect(runner?: ContractRunner | null): IPrimaryMarket;
   waitForDeployment(): Promise<this>;
 
-  interface: IFluxionIntegrationInterface;
+  interface: IPrimaryMarketInterface;
 
   queryFilter<TCEvent extends TypedContractEvent>(
     event: TCEvent,
@@ -77,9 +74,9 @@ export interface IFluxionIntegration extends BaseContract {
     event?: TCEvent
   ): Promise<this>;
 
-  swapMETHToUSDC: TypedContractMethod<
-    [mETHAmount: BigNumberish, mETHPriceUSD: BigNumberish],
-    [bigint],
+  buyTokens: TypedContractMethod<
+    [assetId: BytesLike, amount: BigNumberish],
+    [void],
     "nonpayable"
   >;
 
@@ -88,10 +85,10 @@ export interface IFluxionIntegration extends BaseContract {
   ): T;
 
   getFunction(
-    nameOrSignature: "swapMETHToUSDC"
+    nameOrSignature: "buyTokens"
   ): TypedContractMethod<
-    [mETHAmount: BigNumberish, mETHPriceUSD: BigNumberish],
-    [bigint],
+    [assetId: BytesLike, amount: BigNumberish],
+    [void],
     "nonpayable"
   >;
 

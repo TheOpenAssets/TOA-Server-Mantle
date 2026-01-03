@@ -1,5 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { LeveragePositionService } from './leverage-position.service';
 import { LeverageBlockchainService } from './leverage-blockchain.service';
@@ -12,7 +12,7 @@ import { PositionHealth } from '../../../database/schemas/leverage-position.sche
 /**
  * @title HealthMonitorService
  * @notice Automated service for monitoring position health and triggering liquidations
- * @dev Runs as cron job - every 1 minute in demo mode, 5 minutes in production
+ * @dev Runs at configurable intervals (HEALTH_CHECK_INTERVAL_SECONDS)
  *
  * Health Thresholds:
  * - < 110%: Liquidatable → Execute liquidation
@@ -21,42 +21,40 @@ import { PositionHealth } from '../../../database/schemas/leverage-position.sche
  * - >= 140%: Healthy
  */
 @Injectable()
-export class HealthMonitorService {
+export class HealthMonitorService implements OnModuleInit {
   private readonly logger = new Logger(HealthMonitorService.name);
-  private isDemoMode: boolean;
+  private readonly healthCheckIntervalMs: number;
 
   constructor(
     private configService: ConfigService,
     private positionService: LeveragePositionService,
     private blockchainService: LeverageBlockchainService,
     private notificationService: NotificationService,
+    private schedulerRegistry: SchedulerRegistry,
   ) {
-    this.isDemoMode = this.configService.get<string>('DEMO_MODE') === 'true';
+    // Get health check interval from config (default: 60 seconds = 1 minute)
+    const intervalSeconds = this.configService.get<number>('HEALTH_CHECK_INTERVAL_SECONDS', 60);
+    this.healthCheckIntervalMs = intervalSeconds * 1000;
+
     this.logger.log(
-      `💊 Health Monitor initialized (${this.isDemoMode ? 'DEMO MODE: 1 min' : 'Production: 5 min'})`,
+      `💊 Health Monitor initialized (Interval: ${intervalSeconds}s = ${intervalSeconds / 60} minutes)`,
     );
   }
 
   /**
-   * Health check cron job - every 1 minute in demo mode
+   * Set up dynamic interval on module initialization
    */
-  @Cron('*/1 * * * *', {
-    name: 'health-check-demo',
-  })
-  async healthCheckDemo() {
-    if (!this.isDemoMode) return;
-    await this.executeHealthCheck();
-  }
+  onModuleInit() {
+    const callback = () => {
+      this.executeHealthCheck().catch((error) => {
+        this.logger.error(`Health check cycle failed: ${error.message}`, error.stack);
+      });
+    };
 
-  /**
-   * Health check cron job - every 5 minutes in production
-   */
-  @Cron('*/5 * * * *', {
-    name: 'health-check-production',
-  })
-  async healthCheckProduction() {
-    if (this.isDemoMode) return;
-    await this.executeHealthCheck();
+    const interval = setInterval(callback, this.healthCheckIntervalMs);
+    this.schedulerRegistry.addInterval('health-check', interval);
+
+    this.logger.log(`⏰ Health check interval scheduled: every ${this.healthCheckIntervalMs / 1000}s`);
   }
 
   /**

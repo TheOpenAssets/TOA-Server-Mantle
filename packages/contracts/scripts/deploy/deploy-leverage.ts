@@ -122,6 +122,16 @@ async function main() {
     await leverageVault.waitForDeployment();
     leverageVaultAddress = await leverageVault.getAddress();
     console.log(`✅ LeverageVault deployed: ${leverageVaultAddress}\n`);
+    
+    // Set PrimaryMarket on LeverageVault
+    const primaryMarketAddress = deployed.contracts.PrimaryMarketplace;
+    if (primaryMarketAddress) {
+      console.log(`🔗 Setting PrimaryMarket on LeverageVault: ${primaryMarketAddress}...`);
+      await leverageVault.setPrimaryMarket(primaryMarketAddress);
+      console.log('✅ PrimaryMarket set\n');
+    } else {
+      console.warn('⚠️ PrimaryMarketplace address not found in deployed_contracts.json. Please set it manually later.\n');
+    }
   } else {
     console.log(`✅ Using existing LeverageVault: ${leverageVaultAddress}\n`);
   }

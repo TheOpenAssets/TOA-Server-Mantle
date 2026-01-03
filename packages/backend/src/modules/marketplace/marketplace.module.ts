@@ -10,6 +10,7 @@ import { Settlement, SettlementSchema } from '../../database/schemas/settlement.
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { AuctionService } from './services/auction.service';
 import { BlockchainModule } from '../blockchain/blockchain.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
       { name: User.name, schema: UserSchema },
     ]),
     BlockchainModule,
+    NotificationsModule,
   ],
   controllers: [MarketplaceController],
   providers: [PurchaseTrackerService, BidTrackerService, AuctionService],

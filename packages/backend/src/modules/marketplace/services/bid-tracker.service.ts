@@ -6,6 +6,7 @@ import { createPublicClient, http, Hash, decodeEventLog } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
 import { Bid, BidDocument, BidStatus } from '../../../database/schemas/bid.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { NotifyBidDto } from '../dto/notify-bid.dto';
 import { NotifySettlementDto } from '../dto/notify-settlement.dto';
@@ -23,6 +24,7 @@ export class BidTrackerService {
     private contractLoader: ContractLoaderService,
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
+    @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     private notificationService: NotificationService,
   ) {
     this.publicClient = createPublicClient({
@@ -79,7 +81,7 @@ export class BidTrackerService {
       price: bidData.price,
       usdcDeposited: usdcDeposited.toString(),
       bidIndex: bidData.bidIndex,
-      status: BidStatus.PENDING,
+      status: BidStatus.PLACED,
       transactionHash: dto.txHash,
       // blockNumber: bidData.blockNumber,
     });
@@ -400,6 +402,70 @@ export class BidTrackerService {
     } catch (error: any) {
       this.logger.error(`Failed to send settlement notification: ${error.message}`);
       // Don't fail the settlement if notification fails
+    }
+
+    // Create purchase record if tokens were received
+    if (newStatus === BidStatus.SETTLED && settlementData.tokensReceived > 0n) {
+      try {
+        const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+        if (!asset) {
+          throw new Error(`Asset ${dto.assetId} not found`);
+        }
+
+        if (!asset.token?.address) {
+          throw new Error(`Asset ${dto.assetId} has no token address`);
+        }
+
+        const tokensReceivedNum = Number(settlementData.tokensReceived) / 1e18;
+        const totalPaidUSDC = (Number(bid.price) / 1e6) * tokensReceivedNum; // price per token * quantity
+        const totalPaidWei = BigInt(Math.floor(totalPaidUSDC * 1e6)); // Convert back to wei
+
+        this.logger.log(`Creating purchase record for ${investorWallet}: ${tokensReceivedNum} tokens at $${Number(bid.price) / 1e6} per token`);
+
+        await this.purchaseModel.create({
+          txHash: dto.txHash,
+          assetId: dto.assetId,
+          investorWallet: investorWallet,
+          tokenAddress: asset.token.address,
+          amount: settlementData.tokensReceived.toString(), // Token amount in wei
+          price: bid.price.toString(), // Price per token in USDC wei
+          totalPayment: totalPaidWei.toString(), // Total USDC paid in wei
+          status: 'CONFIRMED',
+          metadata: {
+            assetName: asset.metadata?.invoiceNumber,
+            industry: asset.metadata?.industry,
+          },
+        });
+
+        this.logger.log(`✅ Purchase record created for auction settlement: ${tokensReceivedNum} tokens`);
+
+        // Send notification about successful token acquisition
+        try {
+          const pricePerToken = Number(bid.price) / 1e6;
+          await this.notificationService.create({
+            userId: investorWallet,
+            walletAddress: investorWallet,
+            header: 'RWA Tokens Acquired Successfully',
+            detail: `You have successfully acquired ${tokensReceivedNum.toFixed(2)} ${asset.metadata?.invoiceNumber || 'RWA'} tokens at $${pricePerToken.toFixed(2)} per token. Your tokens are now available in your portfolio.`,
+            type: NotificationType.AUCTION_WON,
+            severity: NotificationSeverity.SUCCESS,
+            action: NotificationAction.VIEW_PORTFOLIO,
+            actionMetadata: {
+              assetId: dto.assetId,
+              tokensReceived: tokensReceivedNum,
+              pricePerToken: pricePerToken,
+              totalPaid: totalPaidUSDC,
+              txHash: dto.txHash,
+            },
+          });
+          this.logger.log(`Sent token acquisition notification to ${investorWallet}`);
+        } catch (notifError: any) {
+          this.logger.error(`Failed to send token acquisition notification: ${notifError.message}`);
+        }
+      } catch (error: any) {
+        this.logger.error(`Failed to create purchase record: ${error.message}`);
+        // Don't fail the settlement if purchase record creation fails
+      }
     }
 
     return {
