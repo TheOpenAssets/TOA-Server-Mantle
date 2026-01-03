@@ -1,10 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
-export type PurchaseDocument = Purchase & Document;
+export type YieldClaimDocument = YieldClaim & Document;
 
 @Schema({ timestamps: true })
-export class Purchase {
+export class YieldClaim {
   @Prop({ required: true, unique: true })
   txHash!: string;
 
@@ -18,13 +18,10 @@ export class Purchase {
   tokenAddress!: string;
 
   @Prop({ required: true })
-  amount!: string; // Token amount in wei
+  tokensBurned!: string; // Amount of tokens burned (wei format, 18 decimals)
 
   @Prop({ required: true })
-  price!: string; // Price per token at time of purchase
-
-  @Prop({ required: true })
-  totalPayment!: string; // Total USDC paid
+  usdcReceived!: string; // Amount of USDC received (wei format, 6 decimals)
 
   @Prop()
   blockNumber?: number;
@@ -33,13 +30,13 @@ export class Purchase {
   blockTimestamp?: Date;
 
   @Prop({ default: 'CONFIRMED' })
-  status!: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'CLAIMED';
+  status!: 'PENDING' | 'CONFIRMED' | 'FAILED';
 
   @Prop({ type: Object })
   metadata?: {
     assetName?: string;
     industry?: string;
-    riskTier?: string;
+    settlementId?: string;
   };
 
   // Timestamps (automatically added by Mongoose with timestamps: true)
@@ -47,8 +44,9 @@ export class Purchase {
   updatedAt?: Date;
 }
 
-export const PurchaseSchema = SchemaFactory.createForClass(Purchase);
+export const YieldClaimSchema = SchemaFactory.createForClass(YieldClaim);
 
 // Indexes
-PurchaseSchema.index({ investorWallet: 1, assetId: 1 });
-PurchaseSchema.index({ createdAt: -1 });
+YieldClaimSchema.index({ investorWallet: 1, assetId: 1 });
+YieldClaimSchema.index({ createdAt: -1 });
+YieldClaimSchema.index({ tokenAddress: 1 });

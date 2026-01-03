@@ -7,6 +7,7 @@ import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { Bid, BidSchema } from '../../database/schemas/bid.schema';
 import { Purchase, PurchaseSchema } from '../../database/schemas/purchase.schema';
 import { Settlement, SettlementSchema } from '../../database/schemas/settlement.schema';
+import { YieldClaim, YieldClaimSchema } from '../../database/schemas/yield-claim.schema';
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { AuctionService } from './services/auction.service';
 import { BlockchainModule } from '../blockchain/blockchain.module';
@@ -19,6 +20,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       { name: Bid.name, schema: BidSchema },
       { name: Purchase.name, schema: PurchaseSchema },
       { name: Settlement.name, schema: SettlementSchema },
+      { name: YieldClaim.name, schema: YieldClaimSchema },
       { name: User.name, schema: UserSchema },
     ]),
     BlockchainModule,

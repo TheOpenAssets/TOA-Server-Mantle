@@ -7,6 +7,7 @@ import { mantleSepolia } from '../../../config/mantle-chain';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Settlement, SettlementDocument } from '../../../database/schemas/settlement.schema';
+import { YieldClaim, YieldClaimDocument } from '../../../database/schemas/yield-claim.schema';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
 import { NotificationService } from '../../notifications/services/notification.service';
@@ -24,6 +25,7 @@ export class PurchaseTrackerService {
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Settlement.name) private settlementModel: Model<SettlementDocument>,
+    @InjectModel(YieldClaim.name) private yieldClaimModel: Model<YieldClaimDocument>,
     private notificationService: NotificationService,
   ) {
     this.publicClient = createPublicClient({
@@ -220,6 +222,98 @@ export class PurchaseTrackerService {
       this.logger.error(`Error validating transaction ${txHash}:`, error.message);
       return null;
     }
+  }
+
+  /**
+   * Record yield claim when investor burns tokens
+   */
+  async notifyYieldClaim(dto: any, investorWallet: string) {
+    this.logger.log(`Processing yield claim notification: ${dto.txHash}`);
+
+    // Check if already processed
+    const existing = await this.yieldClaimModel.findOne({ txHash: dto.txHash });
+    if (existing) {
+      this.logger.warn(`Yield claim ${dto.txHash} already processed`);
+      throw new ConflictException('Yield claim already recorded');
+    }
+
+    // Get asset details
+    const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+    if (!asset) {
+      throw new BadRequestException('Asset not found');
+    }
+
+    // Get settlement info for metadata
+    const settlement = await this.settlementModel.findOne({ assetId: dto.assetId }).sort({ createdAt: -1 });
+
+    // Save yield claim record
+    const yieldClaim = await this.yieldClaimModel.create({
+      txHash: dto.txHash,
+      assetId: dto.assetId,
+      investorWallet: investorWallet.toLowerCase(),
+      tokenAddress: asset.token?.address || '',
+      tokensBurned: dto.tokensBurned,
+      usdcReceived: dto.usdcReceived,
+      blockNumber: dto.blockNumber ? parseInt(dto.blockNumber) : undefined,
+      status: 'CONFIRMED',
+      metadata: {
+        assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
+        industry: asset.metadata?.industry,
+        settlementId: settlement?._id?.toString(),
+      },
+    });
+
+    this.logger.log(`Yield claim recorded: ${yieldClaim._id}`);
+
+    // Mark all purchases for this asset and investor as CLAIMED
+    const updateResult = await this.purchaseModel.updateMany(
+      {
+        investorWallet: investorWallet.toLowerCase(),
+        assetId: dto.assetId,
+        status: 'CONFIRMED',
+      },
+      {
+        $set: { status: 'CLAIMED' },
+      }
+    );
+
+    this.logger.log(`Updated ${updateResult.modifiedCount} purchase records to CLAIMED status`);
+
+    // Send notification to investor
+    try {
+      const tokensBurnedFormatted = (Number(dto.tokensBurned) / 1e18).toFixed(2);
+      const usdcReceivedFormatted = (Number(dto.usdcReceived) / 1e6).toFixed(2);
+      const assetName = `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`;
+
+      await this.notificationService.create({
+        userId: investorWallet,
+        walletAddress: investorWallet,
+        header: 'Yield Claimed Successfully',
+        detail: `You burned ${tokensBurnedFormatted} ${assetName} tokens and received ${usdcReceivedFormatted} USDC.`,
+        type: NotificationType.YIELD_DISTRIBUTED,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_PORTFOLIO,
+        actionMetadata: {
+          assetId: dto.assetId,
+          tokensBurned: dto.tokensBurned,
+          usdcReceived: dto.usdcReceived,
+          txHash: dto.txHash,
+        },
+      });
+    } catch (error: any) {
+      this.logger.error(`Failed to send yield claim notification: ${error.message}`);
+      // Don't fail the claim if notification fails
+    }
+
+    return {
+      success: true,
+      message: 'Yield claim recorded successfully',
+      yieldClaimId: yieldClaim._id,
+      assetId: dto.assetId,
+      tokensBurned: dto.tokensBurned,
+      usdcReceived: dto.usdcReceived,
+      purchasesUpdated: updateResult.modifiedCount,
+    };
   }
 
   /**

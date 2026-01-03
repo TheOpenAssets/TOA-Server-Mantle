@@ -12,6 +12,7 @@ import { BidTrackerService } from '../services/bid-tracker.service';
 import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
 import { NotifyBidDto } from '../dto/notify-bid.dto';
 import { NotifySettlementDto } from '../dto/notify-settlement.dto';
+import { NotifyYieldClaimDto } from '../dto/notify-yield-claim.dto';
 
 @Controller('marketplace')
 export class MarketplaceController {
@@ -281,10 +282,13 @@ export class MarketplaceController {
       .slice(0, limitNum)
       .map(([assetId, counts]) => ({ assetId, ...counts }));
 
-    // Fetch asset details for top assets
+    // Fetch asset details for top assets (only LISTED status)
     const assetIds = topAssetIds.map(item => item.assetId);
     const assets = await this.assetModel
-      .find({ assetId: { $in: assetIds } })
+      .find({
+        assetId: { $in: assetIds },
+        status: AssetStatus.LISTED,
+      })
       .select({
         assetId: 1,
         metadata: 1,
@@ -385,5 +389,12 @@ export class MarketplaceController {
   async notifySettlement(@Request() req: any, @Body() dto: NotifySettlementDto) {
     const investorWallet = req.user.walletAddress;
     return this.bidTracker.notifySettlement(dto, investorWallet);
+  }
+
+  @Post('yield-claim/notify')
+  @UseGuards(JwtAuthGuard)
+  async notifyYieldClaim(@Request() req: any, @Body() dto: NotifyYieldClaimDto) {
+    const investorWallet = req.user.walletAddress;
+    return this.purchaseTracker.notifyYieldClaim(dto, investorWallet);
   }
 }
