@@ -88,6 +88,14 @@ export class YieldDistributionService {
       settlementDate: new Date(dto.settlementDate),
     });
 
+    // Update asset status to YIELD_SETTLED to mark it ready for yield distribution
+    await this.assetModel.updateOne(
+      { assetId: dto.assetId },
+      { $set: { status: 'YIELD_SETTLED' } }
+    );
+
+    this.logger.log(`✅ Asset status updated to YIELD_SETTLED`);
+
     return settlement;
   }
 
@@ -288,6 +296,14 @@ export class YieldDistributionService {
     }
 
     this.logger.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+
+    // Update asset status to ENDED to mark yield distribution complete
+    await this.assetModel.updateOne(
+      { assetId: settlement.assetId },
+      { $set: { status: 'ENDED' } }
+    );
+
+    this.logger.log(`✅ Asset status updated to ENDED - yield distribution complete`);
 
     return {
       message: 'Settlement deposited to YieldVault - investors can now burn tokens to claim',
