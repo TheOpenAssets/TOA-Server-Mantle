@@ -122,6 +122,7 @@ export class EventProcessor extends WorkerHost {
       {
         $set: {
           status,
+          settlementTxHash: txHash, // Save settlement transaction hash
           settledAt: new Date(),
           tokensReceived,
           cost,
