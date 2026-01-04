@@ -978,8 +978,46 @@ export class AssetLifecycleService {
               }
             }
           );
+
+          const tokensBurnedFormatted = (Number(burnResult.tokensBurned) / 1e18).toFixed(2);
+          const oldSupplyFormatted = (Number(asset.tokenParams.totalSupply) / 1e18).toFixed(2);
+          const newSupplyFormatted = (Number(burnResult.newTotalSupply) / 1e18).toFixed(2);
+
+          // Notify originator about burned tokens
+          await this.notificationService.create({
+            userId: asset.originator,
+            walletAddress: asset.originator,
+            header: 'Unsold Tokens Burned',
+            detail: `${tokensBurnedFormatted} unsold tokens from ${asset.metadata.invoiceNumber} were burned during payout. Total supply reduced from ${oldSupplyFormatted} to ${newSupplyFormatted} tokens. Your payout is based on sold tokens only.`,
+            type: NotificationType.ASSET_STATUS,
+            severity: NotificationSeverity.INFO,
+            action: NotificationAction.VIEW_ASSET,
+            actionMetadata: { assetId, burnTxHash: burnResult.txHash },
+          });
+
+          // Notify admins about token burn
+          await this.notifyAllAdmins(
+            'Tokens Burned During Payout',
+            `${tokensBurnedFormatted} unsold tokens from asset ${asset.metadata.invoiceNumber} (${asset.assetId.slice(0, 8)}...) were burned. Supply: ${oldSupplyFormatted} → ${newSupplyFormatted}. Tx: ${burnResult.txHash}`,
+            NotificationType.ASSET_STATUS,
+            NotificationSeverity.INFO,
+            NotificationAction.VIEW_ASSET,
+            { assetId, burnTxHash: burnResult.txHash, tokensBurned: tokensBurnedFormatted }
+          );
         } else {
           this.logger.log(`✅ No unsold tokens to burn - all tokens were sold`);
+
+          // Notify originator that all tokens were sold
+          await this.notificationService.create({
+            userId: asset.originator,
+            walletAddress: asset.originator,
+            header: 'All Tokens Sold!',
+            detail: `Congratulations! All ${(Number(asset.tokenParams.totalSupply) / 1e18).toFixed(2)} tokens from ${asset.metadata.invoiceNumber} were sold. No tokens were burned.`,
+            type: NotificationType.ASSET_STATUS,
+            severity: NotificationSeverity.SUCCESS,
+            action: NotificationAction.VIEW_ASSET,
+            actionMetadata: { assetId },
+          });
         }
       } catch (error: any) {
         this.logger.error(`Failed to burn unsold tokens: ${error.message}`);

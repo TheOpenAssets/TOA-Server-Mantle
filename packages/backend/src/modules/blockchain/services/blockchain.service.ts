@@ -450,7 +450,7 @@ export class BlockchainService {
   }
 
   /**
-   * Burn unsold tokens from marketplace inventory
+   * Burn unsold tokens from custody wallet (marketplace inventory)
    * This is called during payout to ensure only sold tokens remain in circulation
    */
   async burnUnsoldTokens(tokenAddress: string, assetId: string): Promise<{
@@ -461,19 +461,23 @@ export class BlockchainService {
     const wallet = this.walletService.getPlatformWallet();
     const tokenAbi = this.contractLoader.getContractAbi('RWAToken');
 
-    // Get marketplace address and check its token balance (unsold tokens)
-    const marketplaceAddress = this.contractLoader.getContractAddress('PrimaryMarketplace');
+    // Get custody wallet address (where unsold tokens are held)
+    const custodyWalletAddress = this.configService.get<string>('blockchain.custodyAddress');
 
-    this.logger.log(`Checking unsold token balance for ${tokenAddress}...`);
+    if (!custodyWalletAddress) {
+      throw new Error('Custody wallet address not configured in .env (CUSTODY_WALLET_ADDRESS)');
+    }
+
+    this.logger.log(`Checking unsold token balance in custody wallet ${custodyWalletAddress}...`);
 
     const unsoldBalance = await this.publicClient.readContract({
       address: tokenAddress as Address,
       abi: tokenAbi,
       functionName: 'balanceOf',
-      args: [marketplaceAddress],
+      args: [custodyWalletAddress as Address],
     }) as bigint;
 
-    this.logger.log(`Marketplace holds ${unsoldBalance.toString()} wei (${Number(unsoldBalance) / 1e18} tokens)`);
+    this.logger.log(`Custody wallet holds ${unsoldBalance.toString()} wei (${Number(unsoldBalance) / 1e18} tokens)`);
 
     if (unsoldBalance === 0n) {
       this.logger.log(`✅ No unsold tokens to burn - all tokens were sold`);
@@ -489,14 +493,15 @@ export class BlockchainService {
       return { tokensBurned: 0n, newTotalSupply: totalSupply, txHash: '' };
     }
 
-    // Burn unsold tokens from marketplace
-    this.logger.log(`🔥 Burning ${Number(unsoldBalance) / 1e18} unsold tokens from marketplace...`);
+    // Burn unsold tokens from custody wallet
+    // The platform wallet should have authority to burn from custody
+    this.logger.log(`🔥 Burning ${Number(unsoldBalance) / 1e18} unsold tokens from custody wallet...`);
 
     const hash = await wallet.writeContract({
       address: tokenAddress as Address,
       abi: tokenAbi,
-      functionName: 'burn',
-      args: [unsoldBalance],
+      functionName: 'burnFrom',
+      args: [custodyWalletAddress as Address, unsoldBalance],
     });
 
     this.logger.log(`Burn transaction submitted: ${hash}`);
