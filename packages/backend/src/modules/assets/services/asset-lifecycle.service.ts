@@ -578,7 +578,7 @@ export class AssetLifecycleService {
               wonCount++;
             }
           } else {
-            // Update to LOST if not already
+            // Update to LOST if not already (includes bids AT clearing price)
             if (bid.status === 'FINALIZED') {
               await this.bidModel.updateOne(
                 { _id: bid._id },
@@ -641,7 +641,7 @@ export class AssetLifecycleService {
       const bidPrice = BigInt(bid.price);
       if (bidPrice > clearingPriceBigInt) {
         tokensSold += BigInt(bid.tokenAmount);
-        // Update bid status to WON
+        // Update bid status to WON (only bids > clearing price win)
         await this.bidModel.updateOne(
           { _id: bid._id },
           { $set: { status: 'WON' } },
