@@ -10,6 +10,8 @@ import {
   Param,
   Query,
 } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -19,11 +21,15 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { OriginatorGuard } from '../guards/originator.guard';
 import { AdminGuard } from '../../admin/guards/admin.guard';
 import { AssetStatus } from '../../../database/schemas/asset.schema';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 
 @Controller('assets')
 @UseGuards(JwtAuthGuard)
 export class AssetsController {
-  constructor(private readonly assetLifecycleService: AssetLifecycleService) {}
+  constructor(
+    private readonly assetLifecycleService: AssetLifecycleService,
+    @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
+  ) { }
 
   @Get()
   async getAllMyAssets(
@@ -80,7 +86,14 @@ export class AssetsController {
   @Post(':assetId/payout')
   @UseGuards(AdminGuard)
   async payoutOriginator(@Param('assetId') assetId: string) {
-    return this.assetLifecycleService.payoutOriginator(assetId);
+    const result = await this.assetLifecycleService.payoutOriginator(assetId);
+    if (result?.success) {
+      await this.assetModel.updateOne(
+        { assetId },
+        { $set: { status: AssetStatus.PAYOUT_COMPLETE, 'listing.phase': 'PAYOUT_COMPLETE' } },
+      );
+    }
+    return result;
   }
 
   @Get(':assetId/purchase-history')

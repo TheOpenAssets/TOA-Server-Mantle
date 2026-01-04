@@ -886,22 +886,15 @@ export class AssetLifecycleService {
 
       this.logger.log(`Found ${confirmedPurchases.length} confirmed purchases`);
     } else if (asset.listing?.type === 'AUCTION') {
-      // For AUCTION listings: sum USDC from settled bids
-      this.logger.log(`AUCTION listing detected - calculating from bids`);
-
-      settledBids = await this.bidModel.find({
+      this.logger.log(`AUCTION listing detected - calculating from purchases`);
+      confirmedPurchases = await this.purchaseModel.find({
         assetId,
-        status: { $in: ['SETTLED', 'REFUNDED'] },
+        status: { $in: ['CONFIRMED', 'CLAIMED'] },
       });
-
-      // Sum up USDC received (only from winning bids - SETTLED status means they got tokens)
-      for (const bid of settledBids) {
-        if (bid.status === 'SETTLED') {
-          totalUsdcRaised += BigInt(bid.usdcDeposited);
-        }
+      for (const purchase of confirmedPurchases) {
+        totalUsdcRaised += BigInt(purchase.totalPayment);
       }
-
-      this.logger.log(`Found ${settledBids.filter(b => b.status === 'SETTLED').length} settled bids`);
+      this.logger.log(`Found ${confirmedPurchases.length} settlement purchases for auction`);
     } else {
       throw new Error(`Unknown or missing listing type: ${asset.listing?.type}`);
     }
@@ -975,9 +968,8 @@ export class AssetLifecycleService {
       payoutData.purchaseIds = confirmedPurchases.map(p => p._id.toString());
       payoutData.purchasesCount = confirmedPurchases.length;
     } else if (asset.listing?.type === 'AUCTION') {
-      const settledBidsOnly = settledBids.filter(b => b.status === 'SETTLED');
-      payoutData.settledBidIds = settledBidsOnly.map(bid => bid._id.toString());
-      payoutData.settledBidsCount = settledBidsOnly.length;
+      payoutData.purchaseIds = confirmedPurchases.map(p => p._id.toString());
+      payoutData.purchasesCount = confirmedPurchases.length;
     }
 
     const payoutRecord = new this.payoutModel(payoutData);
@@ -1063,10 +1055,8 @@ export class AssetLifecycleService {
               tokensSold += BigInt(purchase.amount);
             }
           } else if (asset.listing?.type === 'AUCTION') {
-            for (const bid of settledBids) {
-              if (bid.status === 'SETTLED') {
-                tokensSold += BigInt(bid.tokenAmount);
-              }
+            for (const purchase of confirmedPurchases) {
+              tokensSold += BigInt(purchase.amount);
             }
           }
 
@@ -1212,25 +1202,24 @@ export class AssetLifecycleService {
         totalUSDCRaised += BigInt(purchase.totalPayment);
       }
     } else if (asset.listing?.type === 'AUCTION') {
-      // Get settled bids for AUCTION listings
-      const settledBids = await this.bidModel
-        .find({ assetId, status: 'SETTLED' })
-        .sort({ createdAt: 1 }) // Sort by time ascending
+      const settlementPurchases = await this.purchaseModel
+        .find({ assetId, status: { $in: ['CONFIRMED', 'CLAIMED'] } })
+        .sort({ createdAt: 1 })
         .exec();
 
-      for (const bid of settledBids) {
+      for (const purchase of settlementPurchases) {
         purchases.push({
-          buyer: bid.bidder,
-          tokenAmount: bid.tokenAmount,
-          price: bid.price,
-          totalPayment: bid.usdcDeposited,
-          timestamp: bid.createdAt || new Date(),
-          transactionHash: bid.transactionHash,
-          type: 'BID',
+          buyer: purchase.investorWallet,
+          tokenAmount: purchase.amount,
+          price: purchase.price,
+          totalPayment: purchase.totalPayment,
+          timestamp: purchase.createdAt,
+          transactionHash: purchase.txHash,
+          type: 'PURCHASE',
         });
 
-        totalTokensSold += BigInt(bid.tokenAmount);
-        totalUSDCRaised += BigInt(bid.usdcDeposited);
+        totalTokensSold += BigInt(purchase.amount);
+        totalUSDCRaised += BigInt(purchase.totalPayment);
       }
     }
 
