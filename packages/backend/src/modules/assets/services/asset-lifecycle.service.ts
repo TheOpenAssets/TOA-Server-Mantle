@@ -40,7 +40,7 @@ export class AssetLifecycleService {
     private notificationService: NotificationService,
     @Inject(forwardRef(() => BlockchainService))
     private blockchainService: BlockchainService,
-  ) {}
+  ) { }
 
   /**
    * Helper method to notify all admin users
@@ -81,11 +81,11 @@ export class AssetLifecycleService {
 
     // Mocks for now - in real flow these come from Attestation/EigenDA steps
     return {
-        assetId: assetIdBytes32,
-        attestationHash: asset.attestation?.hash || '0x' + '0'.repeat(64),
-        blobId: asset.eigenDA?.blobId || '0x' + '0'.repeat(64),
-        payload: asset.attestation?.payload || '0x',
-        signature: asset.attestation?.signature || '0x' + '0'.repeat(130),
+      assetId: assetIdBytes32,
+      attestationHash: asset.attestation?.hash || '0x' + '0'.repeat(64),
+      blobId: asset.eigenDA?.blobId || '0x' + '0'.repeat(64),
+      payload: asset.attestation?.payload || '0x',
+      signature: asset.attestation?.signature || '0x' + '0'.repeat(130),
     };
   }
 
@@ -292,7 +292,7 @@ export class AssetLifecycleService {
       throw new Error('Asset is not an auction type');
     }
 
-    if ( asset.status !== AssetStatus.TOKENIZED) {
+    if (asset.status !== AssetStatus.TOKENIZED) {
       throw new Error('Asset must be TOKENIZED before scheduling auction');
     }
 
@@ -753,12 +753,12 @@ export class AssetLifecycleService {
   async rejectAsset(assetId: string, reason: string) {
     this.logger.log(`Asset ${assetId} rejected. Reason: ${reason}`);
     return this.assetModel.updateOne(
-        { assetId },
-        { 
-            $set: { 
-                status: AssetStatus.REJECTED 
-            } 
+      { assetId },
+      {
+        $set: {
+          status: AssetStatus.REJECTED
         }
+      }
     );
   }
 
@@ -816,6 +816,41 @@ export class AssetLifecycleService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /**
+   * Helper method to burn tokens with retry logic and exponential backoff
+   */
+  private async burnTokensWithRetry(
+    tokenAddress: string,
+    assetId: string,
+    maxRetries: number = 3
+  ): Promise<{ tokensBurned: bigint; newTotalSupply: bigint; txHash: string } | undefined> {
+    const delays = [5000, 10000, 20000]; // 5s, 10s, 20s exponential backoff
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.logger.log(`🔄 Burn attempt ${attempt}/${maxRetries} for asset ${assetId}`);
+
+        const result = await this.blockchainService.burnUnsoldTokens(tokenAddress, assetId);
+
+        this.logger.log(`✅ Burn successful on attempt ${attempt}`);
+        return result;
+      } catch (error: any) {
+        this.logger.error(`❌ Burn attempt ${attempt}/${maxRetries} failed: ${error.message}`);
+
+        if (attempt < maxRetries) {
+          const delay = delays[attempt - 1];
+          this.logger.log(`⏳ Waiting ${(delay || 500) / 1000}s before retry ${attempt + 1}...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          this.logger.error(`❌ All ${maxRetries} burn attempts failed`);
+          return undefined;
+        }
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -956,12 +991,9 @@ export class AssetLifecycleService {
 
     if (asset.token?.address) {
       try {
-        burnResult = await this.blockchainService.burnUnsoldTokens(
-          asset.token.address,
-          assetId
-        );
+        burnResult = await this.burnTokensWithRetry(asset.token.address, assetId);
 
-        if (burnResult.tokensBurned > 0n) {
+        if (burnResult && burnResult.tokensBurned > 0n) {
           this.logger.log(`✅ Burned ${Number(burnResult.tokensBurned) / 1e18} unsold tokens`);
           this.logger.log(`   Old supply: ${Number(asset.tokenParams.totalSupply) / 1e18} tokens`);
           this.logger.log(`   New supply: ${Number(burnResult.newTotalSupply) / 1e18} tokens`);
@@ -1004,7 +1036,7 @@ export class AssetLifecycleService {
             NotificationAction.VIEW_ASSET,
             { assetId, burnTxHash: burnResult.txHash, tokensBurned: tokensBurnedFormatted }
           );
-        } else {
+        } else if (burnResult && burnResult.tokensBurned === 0n) {
           this.logger.log(`✅ No unsold tokens to burn - all tokens were sold`);
 
           // Notify originator that all tokens were sold
@@ -1018,10 +1050,64 @@ export class AssetLifecycleService {
             action: NotificationAction.VIEW_ASSET,
             actionMetadata: { assetId },
           });
+        } else {
+          // All retries failed - manually update token supply
+          this.logger.warn(`⚠️ Burn failed after 3 retries - manually updating token supply`);
+
+          // Calculate tokens that would have been burned
+          const totalSupply = BigInt(asset.tokenParams.totalSupply);
+          let tokensSold = BigInt(0);
+
+          if (asset.listing?.type === 'STATIC') {
+            for (const purchase of confirmedPurchases) {
+              tokensSold += BigInt(purchase.amount);
+            }
+          } else if (asset.listing?.type === 'AUCTION') {
+            for (const bid of settledBids) {
+              if (bid.status === 'SETTLED') {
+                tokensSold += BigInt(bid.tokenAmount);
+              }
+            }
+          }
+
+          const tokensToBurn = totalSupply - tokensSold;
+          const newSupply = totalSupply - tokensToBurn;
+
+          this.logger.log(`   Calculated tokens to burn: ${Number(tokensToBurn) / 1e18}`);
+          this.logger.log(`   Old supply: ${Number(totalSupply) / 1e18} tokens`);
+          this.logger.log(`   New supply: ${Number(newSupply) / 1e18} tokens`);
+
+          // Update database with calculated supply
+          await this.assetModel.updateOne(
+            { assetId },
+            {
+              $set: {
+                'token.supply': newSupply.toString(),
+                'token.unsoldTokensBurned': tokensToBurn.toString(),
+                'token.burnTransactionHash': 'MANUAL_UPDATE_AFTER_RETRY_FAILURE',
+              }
+            }
+          );
+
+          this.logger.log(`✅ Token supply manually updated in database`);
+
+          const tokensBurnedFormatted = (Number(tokensToBurn) / 1e18).toFixed(2);
+          const oldSupplyFormatted = (Number(totalSupply) / 1e18).toFixed(2);
+          const newSupplyFormatted = (Number(newSupply) / 1e18).toFixed(2);
+
+          // Notify admins about manual update
+          await this.notifyAllAdmins(
+            'Token Supply Manually Updated',
+            `Burn transaction failed after 3 retries for asset ${asset.metadata.invoiceNumber}. Token supply manually updated from ${oldSupplyFormatted} to ${newSupplyFormatted} tokens (${tokensBurnedFormatted} tokens marked as burned).`,
+            NotificationType.ASSET_STATUS,
+            NotificationSeverity.WARNING,
+            NotificationAction.VIEW_ASSET,
+            { assetId, tokensBurned: tokensBurnedFormatted, manualUpdate: true }
+          );
         }
       } catch (error: any) {
-        this.logger.error(`Failed to burn unsold tokens: ${error.message}`);
-        this.logger.warn(`Continuing with payout despite burn failure...`);
+        this.logger.error(`Failed during burn process: ${error.message}`);
+        throw error; // Re-throw to prevent payout from continuing
       }
     } else {
       this.logger.warn(`No token address found for asset ${assetId} - skipping burn`);
@@ -1049,9 +1135,9 @@ export class AssetLifecycleService {
     }
 
     if (updateResult.modifiedCount === 0) {
-      this.logger.warn(`Asset ${assetId} matched but not modified - may already be in PAYOUT_COMPLETE status`);
+      this.logger.warn(`Asset ${assetId} status update to PAYOUT_COMPLETE already applied`);
     } else {
-      this.logger.log(`Asset ${assetId} updated: amountRaised=${Number(totalUsdcRaised) / 1e6} USDC, status=PAYOUT_COMPLETE`);
+      this.logger.log(`Asset ${assetId} status updated to PAYOUT_COMPLETE`);
     }
 
     // Send notification to originator about payout

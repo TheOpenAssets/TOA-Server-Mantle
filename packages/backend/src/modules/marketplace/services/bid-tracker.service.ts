@@ -295,6 +295,7 @@ export class BidTrackerService {
       throw new ConflictException('Bid already settled');
     }
 
+    this.logger.log('Validating settlement transaction on-chain...');
     // Validate settlement transaction on-chain
     const settlementData = await this.validateSettlementTransaction(
       dto.txHash as Hash,
@@ -306,11 +307,19 @@ export class BidTrackerService {
     if (!settlementData) {
       throw new BadRequestException('Invalid settlement transaction');
     }
+    this.logger.log('Settlement validated on-chain', {
+      assetId: dto.assetId,
+      bidder: investorWallet,
+      tokensReceived: settlementData.tokensReceived.toString(),
+      refundAmount: settlementData.refundAmount.toString(),
+    });
 
     // Update bid status based on whether they won or were refunded
     const newStatus = settlementData.tokensReceived > 0n
       ? BidStatus.SETTLED
       : BidStatus.REFUNDED;
+
+    this.logger.log(`Bid outcome resolved: ${newStatus}`);
 
     await this.bidModel.updateOne(
       { _id: bid._id },
@@ -323,7 +332,7 @@ export class BidTrackerService {
       },
     );
 
-    this.logger.log(`Bid ${bid._id} settled with status: ${newStatus}`);
+    this.logger.log(`DB updated for bid ${bid._id} with status ${newStatus}`);
 
     // NOTE: listing.sold is updated automatically by the event processor
     // when it processes the BidSettled blockchain event (event.processor.ts)
@@ -335,6 +344,7 @@ export class BidTrackerService {
       const assetName = asset ? `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}` : dto.assetId;
 
       if (newStatus === BidStatus.SETTLED && settlementData.tokensReceived > 0n) {
+        this.logger.log('Sending auction-won notification');
         // Auction won
         const tokensReceivedFormatted = (Number(settlementData.tokensReceived) / 1e18).toFixed(2);
         const clearingPriceFormatted = (Number(bid.price) / 1e6).toFixed(2);
@@ -355,6 +365,7 @@ export class BidTrackerService {
           },
         });
       } else if (newStatus === BidStatus.REFUNDED) {
+        this.logger.log('Bid lost; processing refund notification flow');
         // Bid refunded
         const refundAmountFormatted = (Number(settlementData.refundAmount) / 1e6).toFixed(2);
 
@@ -396,10 +407,11 @@ export class BidTrackerService {
 
         this.logger.log(`Creating purchase record for ${investorWallet}: ${tokensReceivedNum} tokens at $${Number(bid.price) / 1e6} per token`);
 
+        this.logger.log('✅ Settlement confirmed; creating purchase record for portfolio visibility');
         await this.purchaseModel.create({
           txHash: dto.txHash,
           assetId: dto.assetId,
-          investorWallet: investorWallet,
+          investorWallet: investorWallet.toLowerCase(),
           tokenAddress: asset.token.address,
           amount: settlementData.tokensReceived.toString(), // Token amount in wei
           price: bid.price.toString(), // Price per token in USDC wei
@@ -410,8 +422,7 @@ export class BidTrackerService {
             industry: asset.metadata?.industry,
           },
         });
-
-        this.logger.log(`✅ Purchase record created for auction settlement: ${tokensReceivedNum} tokens`);
+        this.logger.log('Purchase record persisted; should surface in portfolio queries');
 
         // Send notification about successful token acquisition
         try {
@@ -440,6 +451,8 @@ export class BidTrackerService {
         this.logger.error(`Failed to create purchase record: ${error.message}`);
         // Don't fail the settlement if purchase record creation fails
       }
+    } else {
+      this.logger.log('No tokens received; no purchase record created (refund path)');
     }
 
     return {
@@ -493,7 +506,6 @@ export class BidTrackerService {
             data: log.data,
             topics: log.topics,
           }) as { eventName: string; args: any };
-
           if (decoded.eventName === 'BidSettled') {
             const {
               assetId: eventAssetId,
@@ -502,13 +514,16 @@ export class BidTrackerService {
               cost,
               refund,
             } = decoded.args;
-
-            // Validate this is the correct settlement
-            // Note: Event doesn't include bidIndex, so we validate by assetId and bidder
             if (
               eventAssetId.toLowerCase() === assetIdBytes32.toLowerCase() &&
               bidder.toLowerCase() === expectedBidder.toLowerCase()
             ) {
+              this.logger.log('Decoded BidSettled event', {
+                assetId: assetId,
+                bidder,
+                tokensReceived: tokensReceived.toString(),
+                refundAmount: refund.toString(),
+              });
               return {
                 tokensReceived: BigInt(tokensReceived),
                 refundAmount: BigInt(refund),

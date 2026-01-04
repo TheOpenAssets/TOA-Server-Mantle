@@ -320,11 +320,11 @@ export class PurchaseTrackerService {
    * Get investor's portfolio
    */
   async getInvestorPortfolio(investorWallet: string) {
-    const purchases = await this.purchaseModel
-      .find({
-        investorWallet: investorWallet.toLowerCase(),
-        status: ['CLAIMED', 'CONFIRMED'],
-      })
+    this.logger.log(`Building portfolio for ${investorWallet.toLowerCase()} including CONFIRMED/CLAIMED purchases`);
+    const purchases = await this.purchaseModel.find({
+      investorWallet: investorWallet.toLowerCase(),
+      status: { $in: ['CLAIMED', 'CONFIRMED'] },
+    })
       .sort({ createdAt: -1 });
 
     // Group by asset
@@ -343,7 +343,7 @@ export class PurchaseTrackerService {
           tokenAddress: purchase.tokenAddress,
           totalAmount: purchase.amount,
           totalInvested: purchase.totalPayment,
-          status:purchase.status,
+          status: purchase.status,
           purchaseCount: 1,
           firstPurchase: purchase.createdAt,
           lastPurchase: purchase.createdAt,
@@ -368,12 +368,15 @@ export class PurchaseTrackerService {
             if (asset && asset.tokenParams?.totalSupply) {
               const userTokenBalance = BigInt(item.totalAmount);
               const settlementUSDC = BigInt(settlement.usdcAmount);
-              const totalSupply = BigInt(asset.tokenParams.totalSupply);
+              const totalSupply = BigInt(asset.token?.supply || '0');
+              console.log('TOTAL SUPPLY AFTER BURNING UNSOLD TOKENS:', totalSupply.toString());
 
               // Calculate claimable yield: (userTokens * settlementUSDC) / totalSupply
               const claimableYieldRaw = totalSupply > 0n
                 ? (userTokenBalance * settlementUSDC) / totalSupply
                 : 0n;
+
+              console.log(`CALCULATED CLAIMABLE YIELD FOR ASSET ${item.assetId}: ${claimableYieldRaw.toString()} USDC`);
 
               return {
                 ...item,
@@ -410,7 +413,7 @@ export class PurchaseTrackerService {
         }
       })
     );
-
+    this.logger.log(`Portfolio ready: ${portfolioMap.size} assets, ${purchases.length} purchases`);
     return {
       success: true,
       investorWallet,
