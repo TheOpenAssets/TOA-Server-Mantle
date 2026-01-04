@@ -497,12 +497,25 @@ export class BlockchainService {
     // The platform wallet should have authority to burn from custody
     this.logger.log(`🔥 Burning ${Number(unsoldBalance) / 1e18} unsold tokens from custody wallet...`);
 
-    const hash = await wallet.writeContract({
-      address: tokenAddress as Address,
-      abi: tokenAbi,
-      functionName: 'burnFrom',
-      args: [custodyWalletAddress as Address, unsoldBalance],
-    });
+    let hash: Hash;
+    if (wallet.account.address.toLowerCase() === custodyWalletAddress.toLowerCase()) {
+      // If platform wallet IS custody wallet, use burn() directly
+      // This avoids allowance requirement for self-burn
+      hash = await wallet.writeContract({
+        address: tokenAddress as Address,
+        abi: tokenAbi,
+        functionName: 'burn',
+        args: [unsoldBalance],
+      });
+    } else {
+      // If different, use burnFrom (requires allowance)
+      hash = await wallet.writeContract({
+        address: tokenAddress as Address,
+        abi: tokenAbi,
+        functionName: 'burnFrom',
+        args: [custodyWalletAddress as Address, unsoldBalance],
+      });
+    }
 
     this.logger.log(`Burn transaction submitted: ${hash}`);
 
