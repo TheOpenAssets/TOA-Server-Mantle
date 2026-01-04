@@ -225,6 +225,8 @@ export class BidTrackerService {
         status: b.status,
         txHash: b.transactionHash,
         bidDate: b.createdAt,
+        settlementTxHash: b.settlementTxHash,
+        settledAt: b.settledAt,
       })),
     };
   }
