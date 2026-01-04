@@ -15,6 +15,9 @@ import { SolvencyBlockchainService } from '../services/solvency-blockchain.servi
 import { SolvencyPositionService } from '../services/solvency-position.service';
 import { PrivateAssetService } from '../services/private-asset.service';
 import { MintPrivateAssetDto } from '../dto/mint-private-asset.dto';
+import { ApprovePrivateAssetRequestDto } from '../dto/approve-private-asset-request.dto';
+import { RejectPrivateAssetRequestDto } from '../dto/reject-private-asset-request.dto';
+import { PrivateAssetRequestStatus } from '../../../database/schemas/private-asset-request.schema';
 import { ethers } from 'ethers';
 
 @Controller('admin/solvency')
@@ -242,6 +245,107 @@ export class SolvencyAdminController {
       success: true,
       count: assets.length,
       assets,
+    };
+  }
+
+  /**
+   * Get all private asset requests
+   */
+  @Get('private-asset/requests')
+  async getAllPrivateAssetRequests(@Query('status') status?: string) {
+    const parsedStatus = status as PrivateAssetRequestStatus | undefined;
+    const requests = await this.privateAssetService.getAllRequests(parsedStatus);
+
+    return {
+      success: true,
+      count: requests.length,
+      requests,
+    };
+  }
+
+  /**
+   * Get pending private asset requests
+   */
+  @Get('private-asset/requests/pending')
+  async getPendingPrivateAssetRequests() {
+    const requests = await this.privateAssetService.getPendingRequests();
+
+    return {
+      success: true,
+      count: requests.length,
+      requests,
+    };
+  }
+
+  /**
+   * Get private asset request details
+   */
+  @Get('private-asset/request/:id')
+  async getPrivateAssetRequestDetails(@Param('id') id: string) {
+    const request = await this.privateAssetService.getRequest(id);
+
+    return {
+      success: true,
+      request,
+    };
+  }
+
+  /**
+   * Approve private asset request
+   * Mints token and deposits directly to SolvencyVault
+   */
+  @Post('private-asset/approve/:id')
+  @HttpCode(HttpStatus.OK)
+  async approvePrivateAssetRequest(
+    @Param('id') id: string,
+    @Body() dto: ApprovePrivateAssetRequestDto,
+  ) {
+    // TODO: Get admin wallet from request context
+    const adminAddress = '0xAdminAddress'; // Replace with actual admin address from JWT
+
+    const result = await this.privateAssetService.approveRequest(
+      id,
+      adminAddress,
+      dto.finalValuation,
+      dto.notes,
+    );
+
+    return {
+      success: true,
+      message: 'Private asset request approved and token minted',
+      requestId: id,
+      tokenAddress: result.asset.tokenAddress,
+      tokenSymbol: result.asset.symbol,
+      assetId: result.asset.assetId,
+      mintTxHash: result.mintTxHash,
+      finalValuation: dto.finalValuation,
+    };
+  }
+
+  /**
+   * Reject private asset request
+   */
+  @Post('private-asset/reject/:id')
+  @HttpCode(HttpStatus.OK)
+  async rejectPrivateAssetRequest(
+    @Param('id') id: string,
+    @Body() dto: RejectPrivateAssetRequestDto,
+  ) {
+    // TODO: Get admin wallet from request context
+    const adminAddress = '0xAdminAddress'; // Replace with actual admin address from JWT
+
+    const request = await this.privateAssetService.rejectRequest(
+      id,
+      adminAddress,
+      dto.rejectionReason,
+    );
+
+    return {
+      success: true,
+      message: 'Private asset request rejected',
+      requestId: id,
+      rejectionReason: dto.rejectionReason,
+      reviewedAt: request.reviewedAt,
     };
   }
 }

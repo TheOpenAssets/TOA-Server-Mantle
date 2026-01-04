@@ -7,6 +7,7 @@ import { SolvencyPositionService } from './services/solvency-position.service';
 import { PrivateAssetService } from './services/private-asset.service';
 import { SolvencyPosition, SolvencyPositionSchema } from '../../database/schemas/solvency-position.schema';
 import { PrivateAsset, PrivateAssetSchema } from '../../database/schemas/private-asset.schema';
+import { PrivateAssetRequest, PrivateAssetRequestSchema } from '../../database/schemas/private-asset-request.schema';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 
 @Module({
@@ -14,6 +15,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
     MongooseModule.forFeature([
       { name: SolvencyPosition.name, schema: SolvencyPositionSchema },
       { name: PrivateAsset.name, schema: PrivateAssetSchema },
+      { name: PrivateAssetRequest.name, schema: PrivateAssetRequestSchema },
     ]),
     forwardRef(() => BlockchainModule),
   ],

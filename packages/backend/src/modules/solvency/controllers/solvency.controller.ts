@@ -17,6 +17,7 @@ import { DepositCollateralDto } from '../dto/deposit-collateral.dto';
 import { BorrowDto } from '../dto/borrow.dto';
 import { RepayDto } from '../dto/repay.dto';
 import { WithdrawCollateralDto } from '../dto/withdraw-collateral.dto';
+import { UploadPrivateAssetRequestDto } from '../dto/upload-private-asset-request.dto';
 
 @Controller('solvency')
 @UseGuards(JwtAuthGuard)
@@ -280,6 +281,82 @@ export class SolvencyController {
       success: true,
       asset,
       valuationHistory,
+    };
+  }
+
+  /**
+   * Upload private asset request
+   * User submits deed/bond/invoice for admin verification
+   */
+  @Post('private-asset/upload-request')
+  @HttpCode(HttpStatus.CREATED)
+  async uploadPrivateAssetRequest(
+    @Request() req: any,
+    @Body() dto: UploadPrivateAssetRequestDto,
+  ) {
+    const userAddress = req.user.walletAddress;
+    const userRole = req.user.role; // INVESTOR or ORIGINATOR
+
+    const request = await this.privateAssetService.createAssetRequest(
+      userAddress,
+      userRole,
+      {
+        name: dto.name,
+        assetType: dto.assetType,
+        location: dto.location,
+        claimedValuation: dto.claimedValuation,
+        documentHash: dto.documentHash,
+        documentUrl: dto.documentUrl,
+        description: dto.description,
+        metadata: dto.metadata,
+      },
+    );
+
+    return {
+      success: true,
+      message: 'Private asset request submitted for admin review',
+      requestId: request.requestId,
+      request: {
+        requestId: request.requestId,
+        name: request.name,
+        assetType: request.assetType,
+        claimedValuation: request.claimedValuation,
+        status: request.status,
+        createdAt: request.createdAt,
+      },
+    };
+  }
+
+  /**
+   * Get my private asset requests
+   */
+  @Get('private-asset/my-requests')
+  async getMyPrivateAssetRequests(@Request() req: any) {
+    const userAddress = req.user.walletAddress;
+    const requests = await this.privateAssetService.getUserRequests(userAddress);
+
+    return {
+      success: true,
+      count: requests.length,
+      requests,
+    };
+  }
+
+  /**
+   * Get private asset request details
+   */
+  @Get('private-asset/request/:id')
+  async getPrivateAssetRequestDetails(@Request() req: any, @Param('id') id: string) {
+    const request = await this.privateAssetService.getRequest(id);
+
+    // Verify user owns this request
+    if (request.requesterAddress !== req.user.walletAddress.toLowerCase()) {
+      throw new Error('Not authorized to view this request');
+    }
+
+    return {
+      success: true,
+      request,
     };
   }
 }

@@ -8,10 +8,16 @@ import {
   PrivateAssetDocument,
   PrivateAssetType,
 } from '../../../database/schemas/private-asset.schema';
+import {
+  PrivateAssetRequest,
+  PrivateAssetRequestDocument,
+  PrivateAssetRequestStatus,
+} from '../../../database/schemas/private-asset-request.schema';
 import { WalletService } from '../../blockchain/services/wallet.service';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { Address, createPublicClient, http, PublicClient } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class PrivateAssetService {
@@ -21,6 +27,8 @@ export class PrivateAssetService {
   constructor(
     @InjectModel(PrivateAsset.name)
     private privateAssetModel: Model<PrivateAssetDocument>,
+    @InjectModel(PrivateAssetRequest.name)
+    private privateAssetRequestModel: Model<PrivateAssetRequestDocument>,
     private walletService: WalletService,
     private contractLoader: ContractLoaderService,
     private configService: ConfigService,
@@ -357,5 +365,183 @@ export class PrivateAssetService {
       totalUsdcBorrowed: totalUsdcBorrowed.toString(),
       assetsByType,
     };
+  }
+
+  // ========== Private Asset Request Methods ==========
+
+  /**
+   * Create a new private asset upload request
+   */
+  async createAssetRequest(
+    requesterAddress: string,
+    requesterRole: string,
+    params: {
+      name: string;
+      assetType: PrivateAssetType;
+      location?: string;
+      claimedValuation: string;
+      documentHash: string;
+      documentUrl?: string;
+      description?: string;
+      metadata?: any;
+    },
+  ): Promise<PrivateAssetRequestDocument> {
+    this.logger.log(`Creating private asset request for ${requesterAddress}`);
+
+    const request = new this.privateAssetRequestModel({
+      requestId: uuidv4(),
+      requesterAddress: requesterAddress.toLowerCase(),
+      requesterRole,
+      name: params.name,
+      assetType: params.assetType,
+      location: params.location,
+      claimedValuation: params.claimedValuation,
+      documentHash: params.documentHash,
+      documentUrl: params.documentUrl,
+      description: params.description,
+      metadata: params.metadata,
+      status: PrivateAssetRequestStatus.PENDING,
+    });
+
+    await request.save();
+    this.logger.log(`Private asset request created: ${request.requestId}`);
+
+    return request;
+  }
+
+  /**
+   * Get all pending private asset requests (admin)
+   */
+  async getPendingRequests(): Promise<PrivateAssetRequest[]> {
+    return this.privateAssetRequestModel
+      .find({ status: PrivateAssetRequestStatus.PENDING })
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  /**
+   * Get all requests (admin) with optional status filter
+   */
+  async getAllRequests(status?: PrivateAssetRequestStatus): Promise<PrivateAssetRequest[]> {
+    const query = status ? { status } : {};
+    return this.privateAssetRequestModel
+      .find(query)
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  /**
+   * Get request by ID
+   */
+  async getRequest(requestId: string): Promise<PrivateAssetRequestDocument> {
+    const request = await this.privateAssetRequestModel.findOne({ requestId });
+
+    if (!request) {
+      throw new NotFoundException(`Private asset request ${requestId} not found`);
+    }
+
+    return request;
+  }
+
+  /**
+   * Get all requests by requester
+   */
+  async getUserRequests(requesterAddress: string): Promise<PrivateAssetRequest[]> {
+    return this.privateAssetRequestModel
+      .find({ requesterAddress: requesterAddress.toLowerCase() })
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  /**
+   * Approve private asset request
+   * This mints the token and deposits directly to SolvencyVault
+   */
+  async approveRequest(
+    requestId: string,
+    adminAddress: string,
+    finalValuation: string,
+    notes?: string,
+  ): Promise<{
+    request: PrivateAssetRequestDocument;
+    asset: PrivateAssetDocument;
+    mintTxHash: string;
+  }> {
+    const request = await this.getRequest(requestId);
+
+    if (request.status !== PrivateAssetRequestStatus.PENDING) {
+      throw new BadRequestException(`Request ${requestId} is not pending`);
+    }
+
+    this.logger.log(`Approving private asset request: ${requestId}`);
+    this.logger.log(`Claimed valuation: ${request.claimedValuation}, Final: ${finalValuation}`);
+
+    // Generate symbol (e.g., DEED-001)
+    const count = await this.privateAssetModel.countDocuments({ assetType: request.assetType });
+    const symbol = `${request.assetType}-${String(count + 1).padStart(3, '0')}`;
+
+    // Mint token (1 whole token = 1e18 wei)
+    const totalSupply = ethers.parseEther('1').toString();
+
+    const asset = await this.mintPrivateAsset({
+      name: request.name,
+      symbol,
+      assetType: request.assetType,
+      totalSupply,
+      valuation: finalValuation,
+      location: request.location,
+      documentHash: request.documentHash,
+      issuer: request.requesterAddress,
+    });
+
+    // Update request with approval details
+    request.status = PrivateAssetRequestStatus.APPROVED;
+    request.finalValuation = finalValuation;
+    request.reviewedBy = adminAddress.toLowerCase();
+    request.reviewedAt = new Date();
+    request.tokenAddress = asset.tokenAddress;
+    request.tokenSymbol = symbol;
+    request.assetId = asset.assetId;
+    request.mintTransactionHash = asset.deploymentTxHash;
+
+    // TODO: Deposit directly to SolvencyVault
+    // This will be implemented by calling SolvencyBlockchainService.depositCollateral
+    // and updating request with solvencyPositionId and depositTransactionHash
+
+    await request.save();
+    this.logger.log(`Private asset request approved: ${requestId}`);
+
+    return {
+      request,
+      asset,
+      mintTxHash: asset.deploymentTxHash,
+    };
+  }
+
+  /**
+   * Reject private asset request
+   */
+  async rejectRequest(
+    requestId: string,
+    adminAddress: string,
+    rejectionReason: string,
+  ): Promise<PrivateAssetRequestDocument> {
+    const request = await this.getRequest(requestId);
+
+    if (request.status !== PrivateAssetRequestStatus.PENDING) {
+      throw new BadRequestException(`Request ${requestId} is not pending`);
+    }
+
+    this.logger.log(`Rejecting private asset request: ${requestId}`);
+
+    request.status = PrivateAssetRequestStatus.REJECTED;
+    request.reviewedBy = adminAddress.toLowerCase();
+    request.reviewedAt = new Date();
+    request.rejectionReason = rejectionReason;
+
+    await request.save();
+    this.logger.log(`Private asset request rejected: ${requestId}`);
+
+    return request;
   }
 }
