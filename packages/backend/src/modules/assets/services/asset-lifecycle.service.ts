@@ -19,6 +19,7 @@ import { AnnouncementService } from '../../announcements/services/announcement.s
 import { NotificationService } from '../../notifications/services/notification.service';
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { BlockchainService } from '../../blockchain/services/blockchain.service';
 
 @Injectable()
 export class AssetLifecycleService {
@@ -37,6 +38,8 @@ export class AssetLifecycleService {
     private announcementService: AnnouncementService,
     private configService: ConfigService,
     private notificationService: NotificationService,
+    @Inject(forwardRef(() => BlockchainService))
+    private blockchainService: BlockchainService,
   ) {}
 
   /**
@@ -113,6 +116,9 @@ export class AssetLifecycleService {
     const minPricePerToken = (minRaise * BigInt(10 ** 18)) / totalSupply;
     const maxPricePerToken = (maxRaise * BigInt(10 ** 18)) / totalSupply;
 
+    // Calculate average price per token (midpoint between min and max)
+    const avgPricePerToken = (minPricePerToken + maxPricePerToken) / BigInt(2);
+
     // For STATIC assets, validate custom price if provided
     let finalPricePerToken: string | undefined;
     if (dto.assetType === 'STATIC') {
@@ -127,8 +133,8 @@ export class AssetLifecycleService {
         }
         finalPricePerToken = dto.pricePerToken;
       } else {
-        // Use min price by default for static listings (based on minimum raise requirement)
-        finalPricePerToken = minPricePerToken.toString();
+        // Use average price by default for static listings (average of min and max raise)
+        finalPricePerToken = avgPricePerToken.toString();
       }
     }
 
@@ -170,7 +176,7 @@ export class AssetLifecycleService {
     if (dto.assetType === 'AUCTION') {
       asset.listing = {
         type: 'AUCTION',
-        reservePrice: minPricePerToken.toString(),
+        reservePrice: avgPricePerToken.toString(), // Use average of min and max
         priceRange: {
           min: minPricePerToken.toString(),
           max: maxPricePerToken.toString(),
@@ -211,6 +217,7 @@ export class AssetLifecycleService {
       priceRange: {
         min: minPricePerToken.toString(),
         max: maxPricePerToken.toString(),
+        avg: avgPricePerToken.toString(), // Average price (used as default)
         minRaise: minRaise.toString(),
         maxRaise: maxRaise.toString(),
       },
@@ -571,7 +578,7 @@ export class AssetLifecycleService {
               wonCount++;
             }
           } else {
-            // Update to LOST if not already
+            // Update to LOST if not already (includes bids AT clearing price)
             if (bid.status === 'FINALIZED') {
               await this.bidModel.updateOne(
                 { _id: bid._id },
@@ -634,7 +641,7 @@ export class AssetLifecycleService {
       const bidPrice = BigInt(bid.price);
       if (bidPrice > clearingPriceBigInt) {
         tokensSold += BigInt(bid.tokenAmount);
-        // Update bid status to WON
+        // Update bid status to WON (only bids > clearing price win)
         await this.bidModel.updateOne(
           { _id: bid._id },
           { $set: { status: 'WON' } },
@@ -942,6 +949,85 @@ export class AssetLifecycleService {
 
     await payoutRecord.save();
     this.logger.log(`Payout record saved to MongoDB with ID: ${payoutRecord._id}`);
+
+    // Burn unsold tokens before completing payout
+    this.logger.log(`\n🔥 ========== BURNING UNSOLD TOKENS ==========`);
+    let burnResult: { tokensBurned: bigint; newTotalSupply: bigint; txHash: string } | undefined;
+
+    if (asset.token?.address) {
+      try {
+        burnResult = await this.blockchainService.burnUnsoldTokens(
+          asset.token.address,
+          assetId
+        );
+
+        if (burnResult.tokensBurned > 0n) {
+          this.logger.log(`✅ Burned ${Number(burnResult.tokensBurned) / 1e18} unsold tokens`);
+          this.logger.log(`   Old supply: ${Number(asset.tokenParams.totalSupply) / 1e18} tokens`);
+          this.logger.log(`   New supply: ${Number(burnResult.newTotalSupply) / 1e18} tokens`);
+          this.logger.log(`   Burn tx: ${burnResult.txHash}`);
+
+          // Update asset's token supply in database
+          await this.assetModel.updateOne(
+            { assetId },
+            {
+              $set: {
+                'token.supply': burnResult.newTotalSupply.toString(),
+                'token.unsoldTokensBurned': burnResult.tokensBurned.toString(),
+                'token.burnTransactionHash': burnResult.txHash,
+              }
+            }
+          );
+
+          const tokensBurnedFormatted = (Number(burnResult.tokensBurned) / 1e18).toFixed(2);
+          const oldSupplyFormatted = (Number(asset.tokenParams.totalSupply) / 1e18).toFixed(2);
+          const newSupplyFormatted = (Number(burnResult.newTotalSupply) / 1e18).toFixed(2);
+
+          // Notify originator about burned tokens
+          await this.notificationService.create({
+            userId: asset.originator,
+            walletAddress: asset.originator,
+            header: 'Unsold Tokens Burned',
+            detail: `${tokensBurnedFormatted} unsold tokens from ${asset.metadata.invoiceNumber} were burned during payout. Total supply reduced from ${oldSupplyFormatted} to ${newSupplyFormatted} tokens. Your payout is based on sold tokens only.`,
+            type: NotificationType.ASSET_STATUS,
+            severity: NotificationSeverity.INFO,
+            action: NotificationAction.VIEW_ASSET,
+            actionMetadata: { assetId, burnTxHash: burnResult.txHash },
+          });
+
+          // Notify admins about token burn
+          await this.notifyAllAdmins(
+            'Tokens Burned During Payout',
+            `${tokensBurnedFormatted} unsold tokens from asset ${asset.metadata.invoiceNumber} (${asset.assetId.slice(0, 8)}...) were burned. Supply: ${oldSupplyFormatted} → ${newSupplyFormatted}. Tx: ${burnResult.txHash}`,
+            NotificationType.ASSET_STATUS,
+            NotificationSeverity.INFO,
+            NotificationAction.VIEW_ASSET,
+            { assetId, burnTxHash: burnResult.txHash, tokensBurned: tokensBurnedFormatted }
+          );
+        } else {
+          this.logger.log(`✅ No unsold tokens to burn - all tokens were sold`);
+
+          // Notify originator that all tokens were sold
+          await this.notificationService.create({
+            userId: asset.originator,
+            walletAddress: asset.originator,
+            header: 'All Tokens Sold!',
+            detail: `Congratulations! All ${(Number(asset.tokenParams.totalSupply) / 1e18).toFixed(2)} tokens from ${asset.metadata.invoiceNumber} were sold. No tokens were burned.`,
+            type: NotificationType.ASSET_STATUS,
+            severity: NotificationSeverity.SUCCESS,
+            action: NotificationAction.VIEW_ASSET,
+            actionMetadata: { assetId },
+          });
+        }
+      } catch (error: any) {
+        this.logger.error(`Failed to burn unsold tokens: ${error.message}`);
+        this.logger.warn(`Continuing with payout despite burn failure...`);
+      }
+    } else {
+      this.logger.warn(`No token address found for asset ${assetId} - skipping burn`);
+    }
+
+    this.logger.log(`========================================\n`);
 
     // Update asset with amountRaised and status
     const updateResult = await this.assetModel.updateOne(

@@ -95,14 +95,22 @@ export class EventProcessor extends WorkerHost {
     );
 
     // Update status of all bids for this auction
-    await this.bidModel.updateMany(
-      { assetId, price: { $gte: clearingPrice } },
-      { $set: { status: BidStatus.WON } }
-    );
-    await this.bidModel.updateMany(
-      { assetId, price: { $lt: clearingPrice } },
-      { $set: { status: BidStatus.LOST } }
-    );
+    // IMPORTANT: Cannot use MongoDB $gte/$lt on string fields - must compare as BigInt
+    // Only bids STRICTLY GREATER than clearing price win (bids AT clearing price lose)
+    const bids = await this.bidModel.find({ assetId }).exec();
+    const clearingPriceBigInt = BigInt(clearingPrice);
+
+    for (const bid of bids) {
+      const bidPrice = BigInt(bid.price);
+      const newStatus = bidPrice > clearingPriceBigInt ? BidStatus.WON : BidStatus.LOST;
+
+      await this.bidModel.updateOne(
+        { _id: bid._id },
+        { $set: { status: newStatus } }
+      );
+    }
+
+    this.logger.log(`Updated bid statuses for ${bids.length} bids based on clearing price ${clearingPrice}`);
   }
 
   private async processBidSettled(data: any) {
@@ -122,6 +130,7 @@ export class EventProcessor extends WorkerHost {
       {
         $set: {
           status,
+          settlementTxHash: txHash, // Save settlement transaction hash
           settledAt: new Date(),
           tokensReceived,
           cost,

@@ -20,6 +20,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 contract SeniorPool is Ownable, ReentrancyGuard {
     IERC20 public usdc;
     address public leverageVault;
+    address public solvencyVault;
 
     // Pool parameters
     uint256 public constant APR = 500; // 5% APR (basis points)
@@ -54,8 +55,11 @@ contract SeniorPool is Ownable, ReentrancyGuard {
     event InterestAccrued(uint256 indexed positionId, uint256 interest);
     event DemoModeUpdated(bool enabled, uint256 multiplier);
 
-    modifier onlyLeverageVault() {
-        require(msg.sender == leverageVault, "Only LeverageVault");
+    modifier onlyAuthorizedVault() {
+        require(
+            msg.sender == leverageVault || msg.sender == solvencyVault,
+            "Only authorized vault"
+        );
         _;
     }
 
@@ -77,6 +81,16 @@ contract SeniorPool is Ownable, ReentrancyGuard {
         require(leverageVault == address(0), "LeverageVault already set");
         require(_leverageVault != address(0), "Invalid address");
         leverageVault = _leverageVault;
+    }
+
+    /**
+     * @notice Set SolvencyVault address (one-time)
+     * @param _solvencyVault SolvencyVault contract address
+     */
+    function setSolvencyVault(address _solvencyVault) external onlyOwner {
+        require(solvencyVault == address(0), "SolvencyVault already set");
+        require(_solvencyVault != address(0), "Invalid address");
+        solvencyVault = _solvencyVault;
     }
 
     /**
@@ -126,7 +140,7 @@ contract SeniorPool is Ownable, ReentrancyGuard {
      * @param positionId Unique position identifier
      * @param amount Amount to borrow (6 decimals)
      */
-    function borrow(uint256 positionId, uint256 amount) external onlyLeverageVault nonReentrant {
+    function borrow(uint256 positionId, uint256 amount) external onlyAuthorizedVault nonReentrant {
         require(amount > 0, "Amount must be > 0");
         require(amount <= DEBT_CEILING, "Exceeds debt ceiling");
         require(!loans[positionId].active, "Loan already exists");
@@ -142,8 +156,8 @@ contract SeniorPool is Ownable, ReentrancyGuard {
 
         totalBorrowed += amount;
 
-        // Transfer USDC to LeverageVault
-        require(usdc.transfer(leverageVault, amount), "USDC transfer failed");
+        // Transfer USDC to calling vault
+        require(usdc.transfer(msg.sender, amount), "USDC transfer failed");
 
         emit LoanIssued(positionId, amount);
     }
@@ -158,7 +172,7 @@ contract SeniorPool is Ownable, ReentrancyGuard {
     function repay(
         uint256 positionId,
         uint256 amount
-    ) external onlyLeverageVault nonReentrant returns (uint256 principal, uint256 interest) {
+    ) external onlyAuthorizedVault nonReentrant returns (uint256 principal, uint256 interest) {
         require(loans[positionId].active, "Loan not active");
 
         // Update interest before repayment
@@ -187,9 +201,9 @@ contract SeniorPool is Ownable, ReentrancyGuard {
         totalInterestEarned += interest;
         totalLiquidity += interest; // Interest stays in pool
 
-        // Transfer USDC from LeverageVault
+        // Transfer USDC from calling vault
         require(
-            usdc.transferFrom(leverageVault, address(this), amount),
+            usdc.transferFrom(msg.sender, address(this), amount),
             "USDC transfer failed"
         );
 

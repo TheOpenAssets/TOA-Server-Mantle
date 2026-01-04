@@ -11,15 +11,58 @@ export class NotificationsController {
     private readonly sseService: SseEmitterService,
   ) {}
 
-  @Get('stream')
-  // We handle auth manually here via query param token or cookie usually for SSE,
-  // but for simplicity assuming header auth works or handling basic connect
-  // SSE often requires token in query param: /stream?token=...
-  // For this prototype, we'll assume the client sends the token and we validate via Guard if possible,
-  // or logic inside. Let's use a custom logic to allow extracting user from req.
+  @Get('test-auth')
   @UseGuards(JwtAuthGuard)
-  stream(@Req() req: any, @Res() res: Response) {
-    this.sseService.addConnection(req.user.walletAddress, res);
+  testAuth(@Req() req: any) {
+    return {
+      success: true,
+      message: 'JWT Auth working',
+      user: {
+        walletAddress: req.user.walletAddress,
+        role: req.user.role,
+        kyc: req.user.kyc,
+      },
+    };
+  }
+
+  @Get('stream')
+  @UseGuards(JwtAuthGuard)
+  async stream(@Req() req: any, @Res() res: Response) {
+    try {
+      // Normalize wallet address to lowercase for consistent matching
+      const normalizedWallet = req.user.walletAddress.toLowerCase();
+
+      console.log(`[SSE] Connection request from: ${req.user?.walletAddress || 'unknown'}`);
+      console.log(`[SSE] Normalized wallet: ${normalizedWallet}`);
+
+      // Set SSE headers
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no'); // Disable buffering for nginx
+
+      // Write status code
+      res.status(200);
+
+      // Add connection with LOWERCASE wallet address
+      this.sseService.addConnection(normalizedWallet, res);
+
+      console.log(`[SSE] Connection established for: ${req.user.walletAddress}`);
+
+      // Keep the connection alive - don't let NestJS close it
+      // Wait indefinitely until the client disconnects
+      await new Promise((resolve) => {
+        res.on('close', () => {
+          console.log(`[SSE] Client disconnected: ${normalizedWallet}`);
+          resolve(null);
+        });
+      });
+    } catch (error: any) {
+      console.error(`[SSE] Connection error:`, error.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to establish SSE connection' });
+      }
+    }
   }
 
   @Get()

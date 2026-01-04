@@ -30,6 +30,12 @@ export class HarvestRecord {
   interestPaid!: string; // Wei format (6 decimals)
 
   @Prop({ required: true })
+  interestAccrued!: string; // Wei format (6 decimals) - Outstanding interest at time of harvest
+
+  @Prop({ required: true })
+  mETHPrice!: string; // Wei format (6 decimals) - Price at time of harvest
+
+  @Prop({ required: true })
   transactionHash!: string;
 
   @Prop({ required: true })

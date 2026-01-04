@@ -449,6 +449,101 @@ export class BlockchainService {
     return hash;
   }
 
+  /**
+   * Burn unsold tokens from custody wallet (marketplace inventory)
+   * This is called during payout to ensure only sold tokens remain in circulation
+   */
+  async burnUnsoldTokens(tokenAddress: string, assetId: string): Promise<{
+    tokensBurned: bigint;
+    newTotalSupply: bigint;
+    txHash: string;
+  }> {
+    const wallet = this.walletService.getPlatformWallet();
+    const tokenAbi = this.contractLoader.getContractAbi('RWAToken');
+
+    // Get custody wallet address (where unsold tokens are held)
+    const custodyWalletAddress = this.configService.get<string>('blockchain.custodyAddress');
+
+    if (!custodyWalletAddress) {
+      throw new Error('Custody wallet address not configured in .env (CUSTODY_WALLET_ADDRESS)');
+    }
+
+    this.logger.log(`Checking unsold token balance in custody wallet ${custodyWalletAddress}...`);
+
+    const unsoldBalance = await this.publicClient.readContract({
+      address: tokenAddress as Address,
+      abi: tokenAbi,
+      functionName: 'balanceOf',
+      args: [custodyWalletAddress as Address],
+    }) as bigint;
+
+    this.logger.log(`Custody wallet holds ${unsoldBalance.toString()} wei (${Number(unsoldBalance) / 1e18} tokens)`);
+
+    if (unsoldBalance === 0n) {
+      this.logger.log(`✅ No unsold tokens to burn - all tokens were sold`);
+
+      // Get current total supply
+      const totalSupply = await this.publicClient.readContract({
+        address: tokenAddress as Address,
+        abi: tokenAbi,
+        functionName: 'totalSupply',
+        args: [],
+      }) as bigint;
+
+      return { tokensBurned: 0n, newTotalSupply: totalSupply, txHash: '' };
+    }
+
+    // Burn unsold tokens from custody wallet
+    // The platform wallet should have authority to burn from custody
+    this.logger.log(`🔥 Burning ${Number(unsoldBalance) / 1e18} unsold tokens from custody wallet...`);
+
+    let hash: Hash;
+    if (wallet.account.address.toLowerCase() === custodyWalletAddress.toLowerCase()) {
+      // If platform wallet IS custody wallet, use burn() directly
+      // This avoids allowance requirement for self-burn
+      hash = await wallet.writeContract({
+        address: tokenAddress as Address,
+        abi: tokenAbi,
+        functionName: 'burn',
+        args: [unsoldBalance],
+      });
+    } else {
+      // If different, use burnFrom (requires allowance)
+      hash = await wallet.writeContract({
+        address: tokenAddress as Address,
+        abi: tokenAbi,
+        functionName: 'burnFrom',
+        args: [custodyWalletAddress as Address, unsoldBalance],
+      });
+    }
+
+    this.logger.log(`Burn transaction submitted: ${hash}`);
+
+    await this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 180_000,
+      pollingInterval: 2_000,
+    });
+
+    this.logger.log(`✅ Burn transaction confirmed in tx: ${hash}`);
+
+    // Get new total supply after burn
+    const newTotalSupply = await this.publicClient.readContract({
+      address: tokenAddress as Address,
+      abi: tokenAbi,
+      functionName: 'totalSupply',
+      args: [],
+    }) as bigint;
+
+    this.logger.log(`New total supply: ${newTotalSupply.toString()} wei (${Number(newTotalSupply) / 1e18} tokens)`);
+
+    return {
+      tokensBurned: unsoldBalance,
+      newTotalSupply,
+      txHash: hash,
+    };
+  }
+
   // Read Methods
   async isVerified(walletAddress: string): Promise<boolean> {
     const address = this.contractLoader.getContractAddress('IdentityRegistry');
