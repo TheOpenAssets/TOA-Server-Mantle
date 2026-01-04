@@ -325,37 +325,9 @@ export class BidTrackerService {
 
     this.logger.log(`Bid ${bid._id} settled with status: ${newStatus}`);
 
-    // Update asset.listing.sold with verified tokens received from settlement transaction
-    if (newStatus === BidStatus.SETTLED && settlementData.tokensReceived > 0n) {
-      try {
-        const asset = await this.assetModel.findOne({ assetId: dto.assetId });
-        if (asset) {
-          const currentSold = BigInt(asset.listing?.sold || '0');
-          const tokensReceived = settlementData.tokensReceived;
-          const newSoldAmount = currentSold + tokensReceived;
-
-          const updateResult = await this.assetModel.updateOne(
-            { assetId: dto.assetId },
-            {
-              $set: {
-                'listing.sold': newSoldAmount.toString(),
-              },
-            },
-          );
-
-          if (updateResult.modifiedCount > 0) {
-            this.logger.log(
-              `Asset ${dto.assetId} listing.sold updated: ${Number(tokensReceived) / 1e18} tokens added, total sold: ${Number(newSoldAmount) / 1e18} tokens`,
-            );
-          } else {
-            this.logger.warn(`Failed to update asset.listing.sold for ${dto.assetId}`);
-          }
-        }
-      } catch (error: any) {
-        this.logger.error(`Error updating asset.listing.sold: ${error.message}`);
-        // Don't fail the settlement if sold tracking update fails
-      }
-    }
+    // NOTE: listing.sold is updated automatically by the event processor
+    // when it processes the BidSettled blockchain event (event.processor.ts)
+    // No need to update it here to avoid double counting
 
     // Send notification to bidder based on settlement outcome
     try {
