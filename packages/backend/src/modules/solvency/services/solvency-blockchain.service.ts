@@ -75,7 +75,7 @@ export class SolvencyBlockchainService {
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000,
+      timeout: 300_000, // 5 minutes timeout for Mantle Sepolia
     });
 
     this.logger.log(`Deposit confirmed in block ${receipt.blockNumber}`);
@@ -109,6 +109,43 @@ export class SolvencyBlockchainService {
   }
 
   /**
+   * Get position details from chain
+   */
+  async getPositionFromChain(positionId: number): Promise<{
+    user: string;
+    collateralToken: string;
+    collateralAmount: bigint;
+    usdcBorrowed: bigint;
+    tokenValueUSD: bigint;
+    createdAt: bigint;
+    active: boolean;
+    tokenType: number;
+  }> {
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+    const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
+
+    this.logger.log(`Fetching position ${positionId} from chain`);
+
+    const position = await this.publicClient.readContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'positions',
+      args: [BigInt(positionId)],
+    }) as any;
+
+    return {
+      user: position[0],
+      collateralToken: position[1],
+      collateralAmount: position[2],
+      usdcBorrowed: position[3],
+      tokenValueUSD: position[4],
+      createdAt: position[5],
+      active: position[6],
+      tokenType: position[7],
+    };
+  }
+
+  /**
    * Borrow USDC against collateral
    */
   async borrowUSDC(
@@ -136,7 +173,7 @@ export class SolvencyBlockchainService {
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000,
+      timeout: 300_000, // 5 minutes timeout
     });
 
     this.logger.log(`Borrow confirmed in block ${receipt.blockNumber}`);

@@ -8,6 +8,7 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { SolvencyBlockchainService } from '../services/solvency-blockchain.service';
@@ -201,6 +202,48 @@ export class SolvencyController {
       txHash: result.txHash,
       blockNumber: result.blockNumber,
       position: updatedPosition,
+    };
+  }
+
+  /**
+   * Sync on-chain position with backend database
+   * Called after investor deposits collateral directly via contract
+   */
+  @Post('sync-position')
+  @HttpCode(HttpStatus.CREATED)
+  async syncPosition(@Request() req: any, @Body() dto: { positionId: string; txHash: string; blockNumber: number }) {
+    const userAddress = req.user.walletAddress;
+
+    if (!dto.positionId || !dto.txHash) {
+      throw new BadRequestException('Missing required fields: positionId, txHash');
+    }
+
+    // Fetch position details from chain
+    const positionId = parseInt(dto.positionId);
+    const positionData = await this.blockchainService.getPositionFromChain(positionId);
+
+    // Verify position belongs to user
+    if (positionData.user.toLowerCase() !== userAddress.toLowerCase()) {
+      throw new BadRequestException('Position does not belong to authenticated user');
+    }
+
+    // Create database record
+    const position = await this.positionService.createPosition(
+      positionId,
+      positionData.user,
+      positionData.collateralToken,
+      positionData.tokenType === 0 ? 'RWA' : 'PRIVATE_ASSET',
+      positionData.collateralAmount.toString(),
+      positionData.tokenValueUSD.toString(),
+      dto.txHash,
+      dto.blockNumber || 0,
+      false, // OAID issuance tracked separately
+    );
+
+    return {
+      success: true,
+      message: 'Position synced with backend',
+      position,
     };
   }
 
