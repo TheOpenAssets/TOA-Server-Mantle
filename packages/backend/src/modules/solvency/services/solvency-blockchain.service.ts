@@ -518,4 +518,94 @@ export class SolvencyBlockchainService {
       txHash: hash,
     };
   }
+
+  
+  /**
+   * Get all OAID credit lines for a user
+   */
+  async getOAIDCreditLines(userAddress: string): Promise<{
+    totalCreditLimit: string;
+    totalCreditUsed: string;
+    totalAvailableCredit: string;
+    creditLines: Array<{
+      creditLineId: number;
+      collateralToken: string;
+      collateralAmount: string;
+      creditLimit: string;
+      creditUsed: string;
+      availableCredit: string;
+      solvencyPositionId: number;
+      issuedAt: number;
+      active: boolean;
+    }>;
+  }> {
+    try {
+      const oaidAddress = this.contractLoader.getContractAddress('OAID');
+      if (!oaidAddress) {
+        throw new Error('OAID contract address not found');
+      }
+
+      const oaidAbi = this.contractLoader.getContractAbi('OAID');
+
+      // Get all credit line IDs for user
+      const creditLineIds = await this.publicClient.readContract({
+        address: oaidAddress as Address,
+        abi: oaidAbi,
+        functionName: 'getUserCreditLines',
+        args: [userAddress as Address],
+      }) as bigint[];
+
+      this.logger.log(`Found ${creditLineIds.length} credit lines for ${userAddress}`);
+
+      // Fetch details for each credit line
+      const creditLines = await Promise.all(
+        creditLineIds.map(async (id) => {
+          const creditLine = await this.publicClient.readContract({
+            address: oaidAddress as Address,
+            abi: oaidAbi,
+            functionName: 'getCreditLine',
+            args: [id],
+          }) as any;
+
+          const availableCredit = creditLine.active
+            ? BigInt(creditLine.creditLimit) - BigInt(creditLine.creditUsed)
+            : BigInt(0);
+
+          return {
+            creditLineId: Number(id),
+            collateralToken: creditLine.collateralToken,
+            collateralAmount: creditLine.collateralAmount.toString(),
+            creditLimit: creditLine.creditLimit.toString(),
+            creditUsed: creditLine.creditUsed.toString(),
+            availableCredit: availableCredit.toString(),
+            solvencyPositionId: Number(creditLine.solvencyPositionId),
+            issuedAt: Number(creditLine.issuedAt),
+            active: creditLine.active,
+          };
+        })
+      );
+
+      // Calculate totals (only active lines)
+      const activeLines = creditLines.filter(line => line.active);
+      const totalCreditLimit = activeLines.reduce(
+        (sum, line) => sum + BigInt(line.creditLimit),
+        BigInt(0)
+      );
+      const totalCreditUsed = activeLines.reduce(
+        (sum, line) => sum + BigInt(line.creditUsed),
+        BigInt(0)
+      );
+      const totalAvailableCredit = totalCreditLimit - totalCreditUsed;
+
+      return {
+        totalCreditLimit: totalCreditLimit.toString(),
+        totalCreditUsed: totalCreditUsed.toString(),
+        totalAvailableCredit: totalAvailableCredit.toString(),
+        creditLines,
+      };
+    } catch (error) {
+      this.logger.error(`Error fetching OAID credit lines: ${error}`);
+      throw error;
+    }
+  }
 }

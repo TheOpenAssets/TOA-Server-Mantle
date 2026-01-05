@@ -358,6 +358,48 @@ async function syncPositionWithBackend(positionId, depositData, jwt) {
   }
 }
 
+async function fetchOAIDCredit(jwt) {
+  logSection('Fetch OAID Credit Details');
+  logInfo('Fetching your OAID credit lines from backend...');
+
+  try {
+    const response = await fetch(`${BACKEND_URL}/solvency/oaid/my-credit`, {
+      headers: { 'Authorization': `Bearer ${jwt}` },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to fetch credit details');
+    }
+
+    const data = await response.json();
+    
+    logSuccess('OAID credit details retrieved');
+    console.log('\n' + '═'.repeat(60));
+    log('OAID Credit Summary', colors.bright + colors.blue);
+    console.log(`  Total Credit Limit: $${ethers.formatUnits(data.totalCreditLimit, 6)} USDC`);
+    console.log(`  Total Credit Used:  $${ethers.formatUnits(data.totalCreditUsed, 6)} USDC`);
+    console.log(`  Available Credit:   $${ethers.formatUnits(data.totalAvailableCredit, 6)} USDC`);
+    console.log(`  Utilization Rate:   ${data.summary.utilizationRate}`);
+    console.log(`  Active Credit Lines: ${data.summary.activeCreditLines} / ${data.summary.totalCreditLines}`);
+    console.log('═'.repeat(60));
+
+    if (data.creditLines && data.creditLines.length > 0) {
+      console.log('\nActive Credit Lines:');
+      data.creditLines.forEach((line, index) => {
+        if (line.active) {
+          console.log(`  ${index + 1}. Position #${line.solvencyPositionId}: $${ethers.formatUnits(line.creditLimit, 6)} limit`);
+        }
+      });
+    }
+
+    return data;
+  } catch (error) {
+    logError(`Failed to fetch credit details: ${error.message}`);
+    return null;
+  }
+}
+
 async function main() {
   logSection('Deposit to Solvency Vault & Borrow USDC');
 
@@ -505,6 +547,9 @@ async function main() {
     console.log('═'.repeat(60));
   }
 
+  // Fetch and show OAID credit details
+  await fetchOAIDCredit(jwt);
+
   logSection('✨ Complete!');
   logSuccess(`Position ID: ${depositResult.positionId}`);
   logSuccess(`Deposited: ${depositAmount} ${symbol}`);
@@ -514,7 +559,7 @@ async function main() {
 
   console.log('\n📋 Next Steps:');
   console.log('  • Monitor your position: GET /solvency/position/' + depositResult.positionId);
-  console.log('  • Check your OAID credit line: Your position created an on-chain credit line');
+  console.log('  • Check your OAID credit line: GET /solvency/oaid/my-credit');
   if (borrowAmount) {
     console.log('  • Repay loan: POST /solvency/repay');
     console.log('  • Borrow more (if under LTV): Call borrowUSDC(' + depositResult.positionId + ', amount)');

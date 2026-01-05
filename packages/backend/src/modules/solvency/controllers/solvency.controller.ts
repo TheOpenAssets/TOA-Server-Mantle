@@ -19,6 +19,7 @@ import { BorrowDto } from '../dto/borrow.dto';
 import { RepayDto } from '../dto/repay.dto';
 import { WithdrawCollateralDto } from '../dto/withdraw-collateral.dto';
 import { UploadPrivateAssetRequestDto } from '../dto/upload-private-asset-request.dto';
+import { TokenType } from 'src/database/schemas/solvency-position.schema';
 
 @Controller('solvency')
 @UseGuards(JwtAuthGuard)
@@ -232,7 +233,7 @@ export class SolvencyController {
       positionId,
       positionData.user,
       positionData.collateralToken,
-      positionData.tokenType === 0 ? 'RWA' : 'PRIVATE_ASSET',
+      positionData.tokenType === 0 ? TokenType.RWA : TokenType.PRIVATE_ASSET,
       positionData.collateralAmount.toString(),
       positionData.tokenValueUSD.toString(),
       dto.txHash,
@@ -295,6 +296,32 @@ export class SolvencyController {
     return {
       success: true,
       ...stats,
+    };
+  }
+
+  /**
+   * Get my OAID credit line details
+   */
+  @Get('oaid/my-credit')
+  async getMyOAIDCredit(@Request() req: any) {
+    const userAddress = req.user.walletAddress;
+
+    const creditData = await this.blockchainService.getOAIDCreditLines(userAddress);
+
+    return {
+      success: true,
+      userAddress,
+      totalCreditLimit: creditData.totalCreditLimit,
+      totalCreditUsed: creditData.totalCreditUsed,
+      totalAvailableCredit: creditData.totalAvailableCredit,
+      creditLines: creditData.creditLines,
+      summary: {
+        activeCreditLines: creditData.creditLines.filter(line => line.active).length,
+        totalCreditLines: creditData.creditLines.length,
+        utilizationRate: creditData.totalCreditLimit !== '0'
+          ? ((Number(creditData.totalCreditUsed) / Number(creditData.totalCreditLimit)) * 100).toFixed(2) + '%'
+          : '0%',
+      },
     };
   }
 
