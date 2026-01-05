@@ -24,6 +24,7 @@ import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
 import { FaucetModule } from './modules/faucet/faucet.module';
 import { LeverageModule } from './modules/leverage/leverage.module';
+import { SolvencyModule } from './modules/solvency/solvency.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { LeverageModule } from './modules/leverage/leverage.module';
     AnnouncementsModule,
     FaucetModule,
     LeverageModule,
+    SolvencyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

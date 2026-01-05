@@ -45,14 +45,26 @@ contract PrimaryMarket {
     address public factory;
     address public owner;
 
+    // Authorized vaults for creating liquidation listings
+    mapping(address => bool) public authorizedVaults;
+
     event ListingCreated(bytes32 indexed assetId, address tokenAddress, ListingType listingType, uint256 priceOrReserve);
     event TokensPurchased(bytes32 indexed assetId, address indexed buyer, uint256 amount, uint256 price, uint256 totalPayment);
     event BidSubmitted(bytes32 indexed assetId, address indexed bidder, uint256 tokenAmount, uint256 price, uint256 bidIndex);
     event AuctionEnded(bytes32 indexed assetId, uint256 clearingPrice, uint256 totalTokensSold);
     event BidSettled(bytes32 indexed assetId, address indexed bidder, uint256 tokensReceived, uint256 cost, uint256 refund);
+    event VaultAuthorized(address indexed vault, bool authorized);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner");
+        _;
+    }
+
+    modifier onlyOwnerOrAuthorizedVault() {
+        require(
+            msg.sender == owner || authorizedVaults[msg.sender],
+            "Only owner or authorized vault"
+        );
         _;
     }
 
@@ -63,6 +75,17 @@ contract PrimaryMarket {
         USDC = IERC20(_USDC);
     }
 
+    /**
+     * @notice Authorize or deauthorize vault for creating listings
+     * @param vault Vault address
+     * @param authorized Authorization status
+     */
+    function authorizeVault(address vault, bool authorized) external onlyOwner {
+        require(vault != address(0), "Invalid vault address");
+        authorizedVaults[vault] = authorized;
+        emit VaultAuthorized(vault, authorized);
+    }
+
     function createListing(
         bytes32 assetId,
         address tokenAddress,
@@ -71,7 +94,7 @@ contract PrimaryMarket {
         uint256 duration,
         uint256 totalSupply,
         uint256 minInvestment
-    ) external onlyOwner {
+    ) external onlyOwnerOrAuthorizedVault {
         require(!listings[assetId].active, "Already listed");
 
         Listing storage newListing = listings[assetId];

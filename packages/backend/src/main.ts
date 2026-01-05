@@ -20,7 +20,20 @@ async function bootstrap() {
       'https://openassets.xyz'
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization','ngrok-skip-browser-warning'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'ngrok-skip-browser-warning',
+      'Cache-Control',
+      'Accept',
+      'X-Requested-With',
+    ],
+    exposedHeaders: [
+      'Content-Type',
+      'Cache-Control',
+      'Connection',
+      'X-Accel-Buffering',
+    ],
     credentials: true,
   });
 

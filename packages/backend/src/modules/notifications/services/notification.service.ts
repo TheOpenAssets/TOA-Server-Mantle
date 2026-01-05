@@ -51,12 +51,21 @@ export class NotificationService {
         { upsert: true }
       );
 
-      // 3. Emit SSE (use original casing for SSE)
+      // 3. Emit SSE (use normalized wallet address)
+      this.logger.log(`[SSE] Emitting notification to wallet: ${normalizedWallet}`);
+      this.logger.log(`[SSE] Original wallet: ${dto.walletAddress}`);
+      this.logger.log(`[SSE] Notification type: ${dto.type}, header: ${dto.header}`);
+
       this.sseService.emitToUser(normalizedWallet, 'notification', {
         id: notification._id,
+        walletAddress: dto.walletAddress, // User wallet address (to whom this event is meant for)
+        summary: dto.header, // One-liner summary of the notification
         header: dto.header,
+        detail: dto.detail,
         severity: dto.severity,
         type: dto.type,
+        action: dto.action || NotificationAction.NONE,
+        actionMetadata: dto.actionMetadata,
         timestamp: new Date(),
       });
 

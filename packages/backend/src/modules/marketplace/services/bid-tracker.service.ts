@@ -225,6 +225,8 @@ export class BidTrackerService {
         status: b.status,
         txHash: b.transactionHash,
         bidDate: b.createdAt,
+        settlementTxHash: b.settlementTxHash,
+        settledAt: b.settledAt,
       })),
     };
   }
@@ -293,6 +295,7 @@ export class BidTrackerService {
       throw new ConflictException('Bid already settled');
     }
 
+    this.logger.log('Validating settlement transaction on-chain...');
     // Validate settlement transaction on-chain
     const settlementData = await this.validateSettlementTransaction(
       dto.txHash as Hash,
@@ -304,11 +307,22 @@ export class BidTrackerService {
     if (!settlementData) {
       throw new BadRequestException('Invalid settlement transaction');
     }
-
+    this.logger.log('Settlement validated on-chain', {
+      assetId: dto.assetId,
+      bidder: investorWallet,
+      tokensReceived: settlementData.tokensReceived.toString(),
+      refundAmount: settlementData.refundAmount.toString(),
+    });
+    const pricePerTokenWei =
+      settlementData.tokensReceived > 0n
+        ? (settlementData.cost * 10n ** 18n) / settlementData.tokensReceived
+        : 0n;
     // Update bid status based on whether they won or were refunded
     const newStatus = settlementData.tokensReceived > 0n
       ? BidStatus.SETTLED
       : BidStatus.REFUNDED;
+
+    this.logger.log(`Bid outcome resolved: ${newStatus}`);
 
     await this.bidModel.updateOne(
       { _id: bid._id },
@@ -321,39 +335,11 @@ export class BidTrackerService {
       },
     );
 
-    this.logger.log(`Bid ${bid._id} settled with status: ${newStatus}`);
+    this.logger.log(`DB updated for bid ${bid._id} with status ${newStatus}`);
 
-    // Update asset.listing.sold with verified tokens received from settlement transaction
-    if (newStatus === BidStatus.SETTLED && settlementData.tokensReceived > 0n) {
-      try {
-        const asset = await this.assetModel.findOne({ assetId: dto.assetId });
-        if (asset) {
-          const currentSold = BigInt(asset.listing?.sold || '0');
-          const tokensReceived = settlementData.tokensReceived;
-          const newSoldAmount = currentSold + tokensReceived;
-
-          const updateResult = await this.assetModel.updateOne(
-            { assetId: dto.assetId },
-            {
-              $set: {
-                'listing.sold': newSoldAmount.toString(),
-              },
-            },
-          );
-
-          if (updateResult.modifiedCount > 0) {
-            this.logger.log(
-              `Asset ${dto.assetId} listing.sold updated: ${Number(tokensReceived) / 1e18} tokens added, total sold: ${Number(newSoldAmount) / 1e18} tokens`,
-            );
-          } else {
-            this.logger.warn(`Failed to update asset.listing.sold for ${dto.assetId}`);
-          }
-        }
-      } catch (error: any) {
-        this.logger.error(`Error updating asset.listing.sold: ${error.message}`);
-        // Don't fail the settlement if sold tracking update fails
-      }
-    }
+    // NOTE: listing.sold is updated automatically by the event processor
+    // when it processes the BidSettled blockchain event (event.processor.ts)
+    // No need to update it here to avoid double counting
 
     // Send notification to bidder based on settlement outcome
     try {
@@ -361,9 +347,10 @@ export class BidTrackerService {
       const assetName = asset ? `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}` : dto.assetId;
 
       if (newStatus === BidStatus.SETTLED && settlementData.tokensReceived > 0n) {
+        this.logger.log('Sending auction-won notification');
         // Auction won
         const tokensReceivedFormatted = (Number(settlementData.tokensReceived) / 1e18).toFixed(2);
-        const clearingPriceFormatted = (Number(bid.price) / 1e6).toFixed(2);
+        const clearingPriceFormatted = (Number(pricePerTokenWei) / 1e6).toFixed(2);
 
         await this.notificationService.create({
           userId: investorWallet,
@@ -377,10 +364,11 @@ export class BidTrackerService {
             assetId: dto.assetId,
             bidId: bid._id.toString(),
             tokensReceived: settlementData.tokensReceived.toString(),
-            clearingPrice: bid.price,
+            clearingPrice: pricePerTokenWei.toString(),
           },
         });
       } else if (newStatus === BidStatus.REFUNDED) {
+        this.logger.log('Bid lost; processing refund notification flow');
         // Bid refunded
         const refundAmountFormatted = (Number(settlementData.refundAmount) / 1e6).toFixed(2);
 
@@ -417,31 +405,34 @@ export class BidTrackerService {
         }
 
         const tokensReceivedNum = Number(settlementData.tokensReceived) / 1e18;
-        const totalPaidUSDC = (Number(bid.price) / 1e6) * tokensReceivedNum; // price per token * quantity
-        const totalPaidWei = BigInt(Math.floor(totalPaidUSDC * 1e6)); // Convert back to wei
+        const totalPaidUSDC = Number(settlementData.cost) / 1e6; // actual on-chain cost
+        // pricePerTokenWei is already computed above
 
-        this.logger.log(`Creating purchase record for ${investorWallet}: ${tokensReceivedNum} tokens at $${Number(bid.price) / 1e6} per token`);
+        this.logger.log(
+          `Creating purchase record for ${investorWallet}: ${tokensReceivedNum} tokens at clearing price ${Number(pricePerTokenWei) / 1e6} USDC`,
+        );
 
+        this.logger.log('✅ Settlement confirmed; creating purchase record for portfolio visibility');
         await this.purchaseModel.create({
           txHash: dto.txHash,
           assetId: dto.assetId,
-          investorWallet: investorWallet,
+          investorWallet: investorWallet.toLowerCase(),
           tokenAddress: asset.token.address,
           amount: settlementData.tokensReceived.toString(), // Token amount in wei
-          price: bid.price.toString(), // Price per token in USDC wei
-          totalPayment: totalPaidWei.toString(), // Total USDC paid in wei
+          price: pricePerTokenWei.toString(), // Clearing price per token in USDC wei
+          totalPayment: settlementData.cost.toString(), // Actual USDC paid in wei
           status: 'CONFIRMED',
           metadata: {
             assetName: asset.metadata?.invoiceNumber,
             industry: asset.metadata?.industry,
           },
         });
-
-        this.logger.log(`✅ Purchase record created for auction settlement: ${tokensReceivedNum} tokens`);
+        this.logger.log('Purchase record persisted; should surface in portfolio queries');
+        await this.syncListingSold(dto.assetId);
 
         // Send notification about successful token acquisition
         try {
-          const pricePerToken = Number(bid.price) / 1e6;
+          const pricePerToken = Number(pricePerTokenWei) / 1e6;
           await this.notificationService.create({
             userId: investorWallet,
             walletAddress: investorWallet,
@@ -466,6 +457,8 @@ export class BidTrackerService {
         this.logger.error(`Failed to create purchase record: ${error.message}`);
         // Don't fail the settlement if purchase record creation fails
       }
+    } else {
+      this.logger.log('No tokens received; no purchase record created (refund path)');
     }
 
     return {
@@ -491,6 +484,7 @@ export class BidTrackerService {
   ): Promise<{
     tokensReceived: bigint;
     refundAmount: bigint;
+    cost: bigint;
   } | null> {
     try {
       // Get transaction receipt
@@ -519,7 +513,6 @@ export class BidTrackerService {
             data: log.data,
             topics: log.topics,
           }) as { eventName: string; args: any };
-
           if (decoded.eventName === 'BidSettled') {
             const {
               assetId: eventAssetId,
@@ -528,16 +521,20 @@ export class BidTrackerService {
               cost,
               refund,
             } = decoded.args;
-
-            // Validate this is the correct settlement
-            // Note: Event doesn't include bidIndex, so we validate by assetId and bidder
             if (
               eventAssetId.toLowerCase() === assetIdBytes32.toLowerCase() &&
               bidder.toLowerCase() === expectedBidder.toLowerCase()
             ) {
+              this.logger.log('Decoded BidSettled event', {
+                assetId: assetId,
+                bidder,
+                tokensReceived: tokensReceived.toString(),
+                refundAmount: refund.toString(),
+              });
               return {
                 tokensReceived: BigInt(tokensReceived),
                 refundAmount: BigInt(refund),
+                cost: BigInt(cost),
               };
             }
           }
@@ -552,6 +549,28 @@ export class BidTrackerService {
     } catch (error: any) {
       this.logger.error(`Error validating settlement transaction ${txHash}:`, error.message);
       return null;
+    }
+  }
+
+  private async syncListingSold(assetId: string) {
+    try {
+      const purchases = await this.purchaseModel.find({
+        assetId,
+        status: { $in: ['CONFIRMED', 'CLAIMED'] },
+      }).select({ amount: 1 });
+      const totalSold = purchases.reduce(
+        (acc, p) => acc + BigInt(p.amount || '0'),
+        0n,
+      );
+      await this.assetModel.updateOne(
+        { assetId },
+        { $set: { 'listing.sold': totalSold.toString() } },
+      );
+      this.logger.log(
+        `listing.sold synced for ${assetId}: ${Number(totalSold) / 1e18} tokens`,
+      );
+    } catch (error: any) {
+      this.logger.error(`Failed to sync listing.sold for ${assetId}: ${error.message}`);
     }
   }
 }

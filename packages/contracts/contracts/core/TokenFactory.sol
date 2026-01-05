@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./RWAToken.sol";
+import "./PrivateAssetToken.sol";
 import "./ComplianceModule.sol";
 import "./YieldVault.sol";
 import "./AttestationRegistry.sol";
@@ -26,6 +27,14 @@ contract TokenFactory {
     uint256 public tokenCount;
 
     event TokenSuiteDeployed(bytes32 indexed assetId, address token, address compliance, uint256 totalSupply);
+    event PrivateAssetTokenDeployed(
+        bytes32 indexed assetId,
+        address token,
+        address compliance,
+        uint256 totalSupply,
+        string assetType,
+        uint256 valuation
+    );
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner");
@@ -94,6 +103,79 @@ contract TokenFactory {
         tokenCount++;
 
         emit TokenSuiteDeployed(assetId, address(token), address(compliance), totalSupply);
+    }
+
+    /**
+     * @notice Deploy PrivateAssetToken suite with metadata
+     * @param assetId Unique asset identifier
+     * @param totalSupply Total token supply (usually 1e18 for whole asset)
+     * @param name Token name
+     * @param symbol Token symbol
+     * @param issuer Issuer address
+     * @param assetType Asset type ("DEED", "BOND", "INVOICE", etc.)
+     * @param location Physical location
+     * @param valuation Initial USD valuation (6 decimals)
+     * @param documentHash IPFS hash for documents
+     */
+    function deployPrivateAssetTokenSuite(
+        bytes32 assetId,
+        uint256 totalSupply,
+        string memory name,
+        string memory symbol,
+        address issuer,
+        string memory assetType,
+        string memory location,
+        uint256 valuation,
+        string memory documentHash
+    ) external onlyOwner {
+        require(deployedTokens[assetId].token == address(0), "Asset already tokenized");
+        require(valuation > 0, "Valuation must be > 0");
+
+        // 1. Deploy Compliance
+        ComplianceModule compliance = new ComplianceModule(
+            identityRegistry,
+            attestationRegistry,
+            assetId
+        );
+
+        // 2. Deploy PrivateAssetToken
+        PrivateAssetToken token = new PrivateAssetToken(
+            assetId,
+            address(compliance),
+            identityRegistry,
+            totalSupply,
+            platformCustody,
+            name,
+            symbol,
+            issuer,
+            assetType,
+            location,
+            valuation,
+            documentHash
+        );
+
+        // 3. Register in YieldVault (same as RWA tokens)
+        YieldVault(yieldVault).registerAsset(address(token), assetId, issuer);
+
+        // 4. Store Suite
+        deployedTokens[assetId] = TokenSuite({
+            token: address(token),
+            compliance: address(compliance),
+            deployedAt: block.timestamp,
+            totalSupply: totalSupply
+        });
+
+        allTokens.push(address(token));
+        tokenCount++;
+
+        emit PrivateAssetTokenDeployed(
+            assetId,
+            address(token),
+            address(compliance),
+            totalSupply,
+            assetType,
+            valuation
+        );
     }
 
     function getTokenByAssetId(bytes32 assetId) external view returns (TokenSuite memory) {

@@ -13,14 +13,14 @@ export class SseEmitterService {
   private connections: Map<string, SseConnection[]> = new Map();
 
   addConnection(walletAddress: string, res: Response) {
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    });
-
+    // Headers are already set in the controller
     const keepAliveInterval = setInterval(() => {
-      res.write(': keep-alive\n\n');
+      try {
+        res.write(': keep-alive\n\n');
+      } catch (e) {
+        // Connection might be closed
+        clearInterval(keepAliveInterval);
+      }
     }, 30000);
 
     const connection: SseConnection = { res, keepAliveInterval };
@@ -40,7 +40,7 @@ export class SseEmitterService {
     });
 
     // Send initial connection confirmation
-    this.sendToClient(res, 'connected', { connected: true });
+    this.sendToClient(res, 'connected', { connected: true, walletAddress });
   }
 
   private removeConnection(walletAddress: string, connection: SseConnection) {
@@ -59,9 +59,16 @@ export class SseEmitterService {
   }
 
   emitToUser(walletAddress: string, event: string, data: any) {
-    const userConns = this.connections.get(walletAddress);
-    if (!userConns) return; // User not connected, stored in DB anyway
+    this.logger.log(`[SSE] Attempting to emit '${event}' to wallet: ${walletAddress}`);
+    this.logger.log(`[SSE] Active connections: ${Array.from(this.connections.keys()).join(', ')}`);
 
+    const userConns = this.connections.get(walletAddress);
+    if (!userConns) {
+      this.logger.warn(`[SSE] No active connection found for wallet: ${walletAddress}`);
+      return; // User not connected, stored in DB anyway
+    }
+
+    this.logger.log(`[SSE] Found ${userConns.length} connection(s) for wallet: ${walletAddress}`);
     userConns.forEach(conn => {
       this.sendToClient(conn.res, event, data);
     });

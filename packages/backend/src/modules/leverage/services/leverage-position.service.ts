@@ -142,6 +142,8 @@ export class LeveragePositionService {
       mETHSwapped: string;
       usdcReceived: string;
       interestPaid: string;
+      interestAccrued: string;
+      mETHPrice: string;
       transactionHash: string;
       healthFactorBefore: number;
       healthFactorAfter: number;
@@ -157,6 +159,8 @@ export class LeveragePositionService {
       mETHSwapped: harvest.mETHSwapped,
       usdcReceived: harvest.usdcReceived,
       interestPaid: harvest.interestPaid,
+      interestAccrued: harvest.interestAccrued,
+      mETHPrice: harvest.mETHPrice,
       transactionHash: harvest.transactionHash,
       healthFactorBefore: harvest.healthFactorBefore,
       healthFactorAfter: harvest.healthFactorAfter,
