@@ -468,7 +468,7 @@ export interface LeverageVault extends BaseContract {
   claimYieldFromBurn: TypedContractMethod<
     [
       positionId: BigNumberish,
-      yieldVault: AddressLike,
+      _yieldVault: AddressLike,
       rwaToken: AddressLike,
       tokenAmount: BigNumberish
     ],
@@ -624,7 +624,7 @@ export interface LeverageVault extends BaseContract {
   ): TypedContractMethod<
     [
       positionId: BigNumberish,
-      yieldVault: AddressLike,
+      _yieldVault: AddressLike,
       rwaToken: AddressLike,
       tokenAmount: BigNumberish
     ],

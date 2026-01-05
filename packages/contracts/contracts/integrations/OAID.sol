@@ -10,8 +10,8 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * @dev External protocols can verify credit lines and extend credit based on collateral
  *
  * Flow:
- * 1. SolvencyVault calls issueCreditLine() when user deposits collateral
- * 2. OAID mints credit line with limit = 70% of collateral value
+ * 1. User completes KYC → registerUser() creates OAID profile
+ * 2. User deposits collateral → SolvencyVault calls issueCreditLine()
  * 3. External protocols query credit availability
  * 4. When SolvencyVault position is liquidated, credit line is revoked
  */
@@ -31,6 +31,10 @@ contract OAID is Ownable, ReentrancyGuard {
     // Authorized vaults
     address public solvencyVault;
 
+    // User registration
+    mapping(address => bool) public registeredUsers;
+    mapping(address => uint256) public userRegistrationTime;
+
     // Credit line management
     mapping(uint256 => CreditLine) public creditLines;
     uint256 public nextCreditLineId;
@@ -39,6 +43,10 @@ contract OAID is Ownable, ReentrancyGuard {
     mapping(address => uint256[]) public userCreditLines;
 
     // Events
+    event UserRegistered(
+        address indexed user,
+        uint256 timestamp
+    );
     event CreditLineIssued(
         uint256 indexed creditLineId,
         address indexed user,
@@ -46,6 +54,11 @@ contract OAID is Ownable, ReentrancyGuard {
         uint256 collateralAmount,
         uint256 creditLimit,
         uint256 solvencyPositionId
+    );
+    event CreditLineUpdated(
+        uint256 indexed creditLineId,
+        uint256 oldCreditLimit,
+        uint256 newCreditLimit
     );
     event CreditUsed(
         uint256 indexed creditLineId,
@@ -85,7 +98,30 @@ contract OAID is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Issue credit line backed by collateral
+     * @notice Register user (called after KYC verification)
+     * @param user User address to register
+     */
+    function registerUser(address user) external onlyOwner {
+        require(user != address(0), "Invalid user address");
+        require(!registeredUsers[user], "User already registered");
+
+        registeredUsers[user] = true;
+        userRegistrationTime[user] = block.timestamp;
+
+        emit UserRegistered(user, block.timestamp);
+    }
+
+    /**
+     * @notice Check if user is registered
+     * @param user User address
+     * @return bool Registration status
+     */
+    function isUserRegistered(address user) external view returns (bool) {
+        return registeredUsers[user];
+    }
+
+    /**
+     * @notice Issue credit line backed by collateral (only for registered users)
      * @param user Borrower address
      * @param collateralToken Token address
      * @param collateralAmount Token amount (18 decimals)
@@ -100,7 +136,7 @@ contract OAID is Ownable, ReentrancyGuard {
         uint256 valueUSD,
         uint256 solvencyPositionId
     ) external onlySolvencyVault nonReentrant returns (uint256 creditLineId) {
-        require(user != address(0), "Invalid user");
+        require(registeredUsers[user], "User not registered");
         require(collateralToken != address(0), "Invalid token");
         require(collateralAmount > 0, "Amount must be > 0");
         require(valueUSD > 0, "Value must be > 0");
@@ -108,6 +144,46 @@ contract OAID is Ownable, ReentrancyGuard {
         // Calculate credit limit (70% of collateral value)
         uint256 creditLimit = (valueUSD * 7000) / 10000;
 
+        creditLineId = _createCreditLine(
+            user,
+            collateralToken,
+            collateralAmount,
+            creditLimit,
+            solvencyPositionId
+        );
+    }
+
+    /**
+     * @notice Update existing credit line when collateral value changes
+     * @param creditLineId Credit line ID to update
+     * @param newValueUSD New collateral value in USD (6 decimals)
+     */
+    function updateCreditLine(
+        uint256 creditLineId,
+        uint256 newValueUSD
+    ) external onlySolvencyVault nonReentrant {
+        CreditLine storage creditLine = creditLines[creditLineId];
+        require(creditLine.active, "Credit line not active");
+        require(newValueUSD > 0, "Value must be > 0");
+
+        uint256 oldCreditLimit = creditLine.creditLimit;
+        uint256 newCreditLimit = (newValueUSD * 7000) / 10000;
+
+        creditLine.creditLimit = newCreditLimit;
+
+        emit CreditLineUpdated(creditLineId, oldCreditLimit, newCreditLimit);
+    }
+
+    /**
+     * @notice Internal function to create credit line
+     */
+    function _createCreditLine(
+        address user,
+        address collateralToken,
+        uint256 collateralAmount,
+        uint256 creditLimit,
+        uint256 solvencyPositionId
+    ) internal returns (uint256 creditLineId) {
         // Create credit line
         creditLineId = nextCreditLineId++;
         creditLines[creditLineId] = CreditLine({

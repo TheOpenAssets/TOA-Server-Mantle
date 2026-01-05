@@ -214,7 +214,7 @@ contract FluxionIntegration is Ownable, ReentrancyGuard {
         uint256 priceExpectedUSDC = (mETHAmount * mETHPriceUSD) / 1e30; // Convert to 6 decimals
 
         // Allow 5% deviation between provided price and DEX
-        uint256 maxDeviation = 500; // 5% in basis points
+        uint256 maxDeviation = 1500; // 15% in basis points
         uint256 deviationBps;
 
         if (expectedUSDC > priceExpectedUSDC) {

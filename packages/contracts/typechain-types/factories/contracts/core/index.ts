@@ -2,10 +2,12 @@
 /* tslint:disable */
 /* eslint-disable */
 export * as leverageVaultSol from "./LeverageVault.sol";
+export * as solvencyVaultSol from "./SolvencyVault.sol";
 export * as yieldVaultSol from "./YieldVault.sol";
 export { AttestationRegistry__factory } from "./AttestationRegistry__factory";
 export { ComplianceModule__factory } from "./ComplianceModule__factory";
 export { IdentityRegistry__factory } from "./IdentityRegistry__factory";
+export { PrivateAssetToken__factory } from "./PrivateAssetToken__factory";
 export { RWAToken__factory } from "./RWAToken__factory";
 export { SeniorPool__factory } from "./SeniorPool__factory";
 export { TokenFactory__factory } from "./TokenFactory__factory";

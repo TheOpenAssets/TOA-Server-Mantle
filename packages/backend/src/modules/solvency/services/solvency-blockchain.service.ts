@@ -414,4 +414,71 @@ export class SolvencyBlockchainService {
 
     return maxBorrow.toString();
   }
+
+  /**
+   * Check if user has existing OAID registration
+   */
+  async hasOAIDCreditLine(userAddress: string): Promise<boolean> {
+    try {
+      const oaidAddress = this.contractLoader.getContractAddress('OAID');
+      if (!oaidAddress) {
+        this.logger.warn('OAID contract address not found');
+        return false;
+      }
+
+      const oaidAbi = this.contractLoader.getContractAbi('OAID');
+
+      const isRegistered = await this.publicClient.readContract({
+        address: oaidAddress as Address,
+        abi: oaidAbi,
+        functionName: 'isUserRegistered',
+        args: [userAddress as Address],
+      }) as boolean;
+
+      return isRegistered;
+    } catch (error) {
+      this.logger.error(`Error checking OAID registration: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Register user in OAID system (after KYC verification)
+   * This creates initial registration, credit lines will be added when they deposit collateral
+   */
+  async registerUserInOAID(userAddress: string): Promise<{
+    txHash: string;
+  }> {
+    const wallet = this.walletService.getPlatformWallet();
+    const oaidAddress = this.contractLoader.getContractAddress('OAID');
+    
+    if (!oaidAddress) {
+      throw new Error('OAID contract address not found in deployed_contracts.json');
+    }
+
+    const oaidAbi = this.contractLoader.getContractAbi('OAID');
+
+    this.logger.log(`Registering user ${userAddress} in OAID system...`);
+
+    // Register user
+    const hash = await wallet.writeContract({
+      address: oaidAddress as Address,
+      abi: oaidAbi,
+      functionName: 'registerUser',
+      args: [userAddress as Address],
+    });
+
+    this.logger.log(`OAID registration transaction submitted: ${hash}`);
+
+    const receipt = await this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 180_000,
+    });
+
+    this.logger.log(`User registered in OAID at block ${receipt.blockNumber}`);
+
+    return {
+      txHash: hash,
+    };
+  }
 }

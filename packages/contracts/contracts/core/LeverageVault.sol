@@ -332,14 +332,14 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     /**
      * @notice Claim USDC yield by burning RWA tokens held by this vault
      * @param positionId Position ID
-     * @param yieldVault YieldVault contract address
+     * @param _yieldVault YieldVault contract address
      * @param rwaToken RWA token address
      * @param tokenAmount Amount of RWA tokens to burn
      * @return usdcReceived Amount of USDC received from YieldVault
      */
     function claimYieldFromBurn(
         uint256 positionId,
-        address yieldVault,
+        address _yieldVault,
         address rwaToken,
         uint256 tokenAmount
     ) external onlyOwner nonReentrant returns (uint256 usdcReceived) {
@@ -349,13 +349,13 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         require(tokenAmount <= position.rwaTokenAmount, "Insufficient RWA tokens");
 
         // Approve YieldVault to burn tokens from this contract
-        IERC20(rwaToken).approve(yieldVault, tokenAmount);
+        IERC20(rwaToken).approve(_yieldVault, tokenAmount);
 
         // Get USDC balance before claim
         uint256 balanceBefore = usdc.balanceOf(address(this));
 
         // Call YieldVault.claimYield to burn tokens and receive USDC
-        (bool success, ) = yieldVault.call(
+        (bool success, ) = _yieldVault.call(
             abi.encodeWithSignature("claimYield(address,uint256)", rwaToken, tokenAmount)
         );
         require(success, "YieldVault claim failed");

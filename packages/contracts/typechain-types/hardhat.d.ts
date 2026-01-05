@@ -90,6 +90,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.LeverageVault__factory>;
     getContractFactory(
+      name: "PrivateAssetToken",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.PrivateAssetToken__factory>;
+    getContractFactory(
       name: "RWAToken",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.RWAToken__factory>;
@@ -97,6 +101,22 @@ declare module "hardhat/types/runtime" {
       name: "SeniorPool",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.SeniorPool__factory>;
+    getContractFactory(
+      name: "IOAID",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IOAID__factory>;
+    getContractFactory(
+      name: "IPrimaryMarket",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IPrimaryMarket__factory>;
+    getContractFactory(
+      name: "ISeniorPool",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.ISeniorPool__factory>;
+    getContractFactory(
+      name: "SolvencyVault",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.SolvencyVault__factory>;
     getContractFactory(
       name: "TokenFactory",
       signerOrOptions?: ethers.Signer | FactoryOptions
@@ -125,6 +145,10 @@ declare module "hardhat/types/runtime" {
       name: "IMETHPriceOracle",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.IMETHPriceOracle__factory>;
+    getContractFactory(
+      name: "OAID",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.OAID__factory>;
     getContractFactory(
       name: "PrimaryMarket",
       signerOrOptions?: ethers.Signer | FactoryOptions
@@ -254,6 +278,11 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.LeverageVault>;
     getContractAt(
+      name: "PrivateAssetToken",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.PrivateAssetToken>;
+    getContractAt(
       name: "RWAToken",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -263,6 +292,26 @@ declare module "hardhat/types/runtime" {
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.SeniorPool>;
+    getContractAt(
+      name: "IOAID",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IOAID>;
+    getContractAt(
+      name: "IPrimaryMarket",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IPrimaryMarket>;
+    getContractAt(
+      name: "ISeniorPool",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.ISeniorPool>;
+    getContractAt(
+      name: "SolvencyVault",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.SolvencyVault>;
     getContractAt(
       name: "TokenFactory",
       address: string | ethers.Addressable,
@@ -298,6 +347,11 @@ declare module "hardhat/types/runtime" {
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.IMETHPriceOracle>;
+    getContractAt(
+      name: "OAID",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.OAID>;
     getContractAt(
       name: "PrimaryMarket",
       address: string | ethers.Addressable,
@@ -416,6 +470,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.LeverageVault>;
     deployContract(
+      name: "PrivateAssetToken",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.PrivateAssetToken>;
+    deployContract(
       name: "RWAToken",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.RWAToken>;
@@ -423,6 +481,22 @@ declare module "hardhat/types/runtime" {
       name: "SeniorPool",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.SeniorPool>;
+    deployContract(
+      name: "IOAID",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IOAID>;
+    deployContract(
+      name: "IPrimaryMarket",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IPrimaryMarket>;
+    deployContract(
+      name: "ISeniorPool",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.ISeniorPool>;
+    deployContract(
+      name: "SolvencyVault",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.SolvencyVault>;
     deployContract(
       name: "TokenFactory",
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -451,6 +525,10 @@ declare module "hardhat/types/runtime" {
       name: "IMETHPriceOracle",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IMETHPriceOracle>;
+    deployContract(
+      name: "OAID",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.OAID>;
     deployContract(
       name: "PrimaryMarket",
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -580,6 +658,11 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.LeverageVault>;
     deployContract(
+      name: "PrivateAssetToken",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.PrivateAssetToken>;
+    deployContract(
       name: "RWAToken",
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -589,6 +672,26 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.SeniorPool>;
+    deployContract(
+      name: "IOAID",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IOAID>;
+    deployContract(
+      name: "IPrimaryMarket",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IPrimaryMarket>;
+    deployContract(
+      name: "ISeniorPool",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.ISeniorPool>;
+    deployContract(
+      name: "SolvencyVault",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.SolvencyVault>;
     deployContract(
       name: "TokenFactory",
       args: any[],
@@ -624,6 +727,11 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IMETHPriceOracle>;
+    deployContract(
+      name: "OAID",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.OAID>;
     deployContract(
       name: "PrimaryMarket",
       args: any[],

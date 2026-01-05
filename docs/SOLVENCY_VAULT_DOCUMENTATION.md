@@ -17,15 +17,16 @@
 The Solvency Vault is a collateralized lending system that enables users to:
 - Deposit RWA tokens or Private Asset tokens as collateral
 - Borrow USDC against their collateral at competitive rates
-- Repay loans and withdraw collateral
-- Obtain OAID (On-chain Asset Identity) credit lines backed by their positions
+- Repay loans and withdraw collateral (withdrawal reduces OAID credit line)
+- Automatically receive OAID (On-chain Asset Identity) credit lines for use on partnered platforms
 
 ### Key Features
 - **Multi-Asset Support**: Accepts both RWA tokens (tokenized real-world assets) and Private Asset tokens (platform-minted tokens representing physical assets like deeds, bonds, invoices)
 - **Conservative LTV Ratios**: 70% for RWA tokens, 60% for private assets
 - **5% APR**: Borrows USDC from the existing SeniorPool at platform rate
 - **Manual Liquidation**: Admin-triggered liquidation at 110% health threshold
-- **OAID Integration**: Issues verifiable credit lines for external protocols
+- **Automatic OAID Creation**: OAID credit lines are created automatically for ALL users upon registration (INVESTOR or ORIGINATOR), not optional
+- **Private Asset Upload Flow**: Users upload private asset requests → Admin verifies → Admin approves with final valuation → Token minted and deposited automatically
 
 ---
 
@@ -68,12 +69,30 @@ The Solvency Vault is a collateralized lending system that enables users to:
 
 ### Data Flow
 
-**Deposit Flow**:
-1. User approves token spending to SolvencyVault
-2. Backend calls `depositCollateral(token, amount, valueUSD)`
-3. Vault transfers tokens from user to vault custody
-4. Position created in database with LTV calculations
-5. User notified of successful deposit
+**OAID Creation (Automatic)**:
+1. User completes auth/challenge (INVESTOR or ORIGINATOR)
+2. Backend automatically creates OAID for user
+3. OAID credit line initialized with 0 limit, 0 used
+4. Credit line activated when collateral deposited
+
+**Private Asset Request Flow**:
+1. User uploads private asset request via API with documents (deed, bond, invoice, etc.)
+2. User provides claimed valuation, asset details, IPFS document hash
+3. Admin reviews request and verifies documents off-chain
+4. Admin approves with final valuation (admin's decision overrides user's claimed valuation)
+5. Backend mints 1 whole token (non-fractionalized: 1 token = 1 physical asset)
+6. Token automatically deposited to SolvencyVault on user's behalf
+7. OAID credit line created with 60% LTV of admin's final valuation
+8. User can now borrow on partnered platforms using OAID credit
+
+**RWA Token Deposit Flow**:
+1. User purchases RWA tokens on Primary/Secondary Market
+2. User approves token spending to SolvencyVault
+3. User calls deposit endpoint via API
+4. Vault transfers tokens from user to vault custody
+5. Position created in database with LTV calculations
+6. OAID credit line created/updated with 70% LTV
+7. User notified of successful deposit
 
 **Borrow Flow**:
 1. User requests USDC loan via API
@@ -88,6 +107,13 @@ The Solvency Vault is a collateralized lending system that enables users to:
 3. Vault transfers USDC to SeniorPool
 4. Position debt reduced, health factor improved
 5. User can withdraw collateral if fully repaid
+
+**Withdrawal Flow** (IMPORTANT):
+1. User requests withdrawal from vault
+2. Backend validates debt is 0 (fully repaid)
+3. Vault transfers collateral back to user
+4. **OAID credit line is reduced** by the withdrawn amount
+5. Position closed or amount updated
 
 **Liquidation Flow**:
 1. Admin monitors positions with health < 110%
@@ -136,13 +162,20 @@ If collateral drops to $7,000:
 
 ### Private Asset Valuation
 
-Private assets (deeds, bonds, invoices) are valued at mint time:
+Private assets (deeds, bonds, invoices) are valued through a request/approval workflow:
+
+**Initial Valuation**:
+- User submits private asset request with **claimed valuation** (e.g., "I think my deed is worth $500k")
+- User provides IPFS document hash for off-chain verification
+- **Admin reviews documents and determines final valuation**
+- Admin's final valuation may differ from user's claim (e.g., admin decides $450k instead of $500k)
+- Token minted with admin's final valuation
 
 ```solidity
 struct AssetMetadata {
     string assetType;        // "DEED", "BOND", "INVOICE", "EQUIPMENT"
     string location;         // Physical location/jurisdiction
-    uint256 valuation;       // USD value (6 decimals)
+    uint256 valuation;       // USD value (6 decimals) - ADMIN'S DECISION
     uint256 valuationDate;   // Timestamp
     string documentHash;     // IPFS hash for verification
     bool isActive;
@@ -497,6 +530,111 @@ Get all user positions.
 }
 ```
 
+#### POST /solvency/private-asset/upload-request
+Upload private asset request for admin review.
+
+**Request**:
+```json
+{
+  "name": "123 Main St Property Deed",
+  "assetType": "DEED",  // DEED, BOND, INVOICE, EQUIPMENT, OTHER
+  "location": "California, USA",
+  "claimedValuation": "500000000000",  // User's claimed value: $500,000 (6 decimals)
+  "documentHash": "QmX4H8Yp9kqZ...",   // IPFS hash of documents
+  "documentUrl": "https://ipfs.io/ipfs/QmX4H8Yp9kqZ...",  // Optional
+  "description": "Single-family home, 3 bed 2 bath",
+  "metadata": {
+    "fileSize": 2048576,
+    "fileType": "application/pdf",
+    "additionalNotes": "Recent appraisal included"
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Private asset request submitted for admin review",
+  "requestId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "request": {
+    "requestId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "123 Main St Property Deed",
+    "assetType": "DEED",
+    "claimedValuation": "500000000000",
+    "status": "PENDING",
+    "createdAt": "2026-01-04T10:00:00Z"
+  }
+}
+```
+
+#### GET /solvency/private-asset/my-requests
+Get all private asset requests submitted by the user.
+
+**Response**:
+```json
+{
+  "success": true,
+  "count": 2,
+  "requests": [
+    {
+      "requestId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "123 Main St Property Deed",
+      "assetType": "DEED",
+      "claimedValuation": "500000000000",
+      "status": "APPROVED",
+      "finalValuation": "450000000000",  // Admin decided $450k
+      "tokenAddress": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+      "tokenSymbol": "DEED-001",
+      "solvencyPositionId": 5,
+      "reviewedAt": "2026-01-04T12:00:00Z",
+      "createdAt": "2026-01-04T10:00:00Z"
+    },
+    {
+      "requestId": "b2c3d4e5-f6g7-8901-bcde-fg2345678901",
+      "name": "Corporate Bond Series A",
+      "assetType": "BOND",
+      "claimedValuation": "1000000000000",
+      "status": "PENDING",
+      "createdAt": "2026-01-04T11:00:00Z"
+    }
+  ]
+}
+```
+
+#### GET /solvency/private-asset/request/:id
+Get details of a specific private asset request.
+
+**Response**:
+```json
+{
+  "success": true,
+  "request": {
+    "requestId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "requesterAddress": "0xCFCC97f7Ed394CB0a454345465996CC9f12F0e25",
+    "requesterRole": "ORIGINATOR",
+    "name": "123 Main St Property Deed",
+    "assetType": "DEED",
+    "location": "California, USA",
+    "claimedValuation": "500000000000",
+    "documentHash": "QmX4H8Yp9kqZ...",
+    "description": "Single-family home, 3 bed 2 bath",
+    "status": "APPROVED",
+    "finalValuation": "450000000000",
+    "reviewedBy": "0xAdminAddress...",
+    "reviewedAt": "2026-01-04T12:00:00Z",
+    "tokenAddress": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+    "tokenSymbol": "DEED-001",
+    "assetId": "0x7d5a99f603f231d53a4f39d1521f98d2e8bb279cf29bebfd0687dc98458e7f89",
+    "mintTransactionHash": "0xmno345...",
+    "solvencyPositionId": 5,
+    "depositTransactionHash": "0xpqr678...",
+    "createdAt": "2026-01-04T10:00:00Z",
+    "updatedAt": "2026-01-04T12:00:00Z"
+  }
+}
+```
+
 #### GET /solvency/position/:id
 Get detailed position information.
 
@@ -542,8 +680,137 @@ Get detailed position information.
 
 ### Admin Endpoints
 
+#### GET /admin/solvency/private-asset/requests
+Get all private asset requests with optional status filter.
+
+**Query Parameters**:
+- `status`: Filter by status (PENDING, APPROVED, REJECTED)
+
+**Response**:
+```json
+{
+  "success": true,
+  "count": 3,
+  "requests": [
+    {
+      "requestId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "requesterAddress": "0xUser123...",
+      "requesterRole": "ORIGINATOR",
+      "name": "123 Main St Property Deed",
+      "assetType": "DEED",
+      "claimedValuation": "500000000000",
+      "status": "PENDING",
+      "documentHash": "QmX4H8Yp9kqZ...",
+      "createdAt": "2026-01-04T10:00:00Z"
+    }
+  ]
+}
+```
+
+#### GET /admin/solvency/private-asset/requests/pending
+Get only pending private asset requests.
+
+**Response**:
+```json
+{
+  "success": true,
+  "count": 1,
+  "requests": [
+    {
+      "requestId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "123 Main St Property Deed",
+      "assetType": "DEED",
+      "location": "California, USA",
+      "claimedValuation": "500000000000",
+      "documentHash": "QmX4H8Yp9kqZ...",
+      "description": "Single-family home, 3 bed 2 bath",
+      "status": "PENDING",
+      "createdAt": "2026-01-04T10:00:00Z"
+    }
+  ]
+}
+```
+
+#### POST /admin/solvency/private-asset/approve/:id
+Approve private asset request (mints token and deposits to vault automatically).
+
+**Request**:
+```json
+{
+  "finalValuation": "450000000000",  // Admin's final decision (overrides user's $500k claim)
+  "notes": "Approved based on recent appraisal, reduced from claimed $500k to $450k market value"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Private asset request approved and token minted",
+  "tokenAddress": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+  "tokenSymbol": "DEED-001",
+  "mintTxHash": "0xmno345...",
+  "finalValuation": "450000000000",
+  "depositTxHash": "0xpqr678...",
+  "solvencyPositionId": 5,
+  "oaidCreditLimit": "270000000000"  // 60% LTV = $270k
+}
+```
+
+**Important**: This endpoint:
+1. Mints 1 whole token (non-fractionalized)
+2. Automatically deposits to SolvencyVault on user's behalf
+3. Creates OAID credit line with 60% LTV
+4. User does NOT need to manually deposit
+
+#### POST /admin/solvency/private-asset/reject/:id
+Reject private asset request.
+
+**Request**:
+```json
+{
+  "rejectionReason": "Insufficient documentation provided. Please submit certified appraisal."
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Private asset request rejected",
+  "rejectionReason": "Insufficient documentation provided. Please submit certified appraisal.",
+  "reviewedAt": "2026-01-04T12:00:00Z"
+}
+```
+
+#### GET /admin/solvency/private-asset/request/:id
+Get detailed information about a specific private asset request.
+
+**Response**:
+```json
+{
+  "success": true,
+  "request": {
+    "requestId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "requesterAddress": "0xUser123...",
+    "requesterRole": "ORIGINATOR",
+    "name": "123 Main St Property Deed",
+    "assetType": "DEED",
+    "location": "California, USA",
+    "claimedValuation": "500000000000",
+    "documentHash": "QmX4H8Yp9kqZ...",
+    "documentUrl": "https://ipfs.io/ipfs/QmX4H8Yp9kqZ...",
+    "description": "Single-family home, 3 bed 2 bath",
+    "status": "PENDING",
+    "createdAt": "2026-01-04T10:00:00Z"
+  }
+}
+```
+
 #### POST /admin/solvency/private-asset/mint
-Mint new private asset token.
+Mint new private asset token (LEGACY - use approval flow instead).
+
+**Note**: This endpoint is for direct minting. The preferred flow is user upload → admin approval which handles minting + deposit automatically.
 
 **Request**:
 ```json

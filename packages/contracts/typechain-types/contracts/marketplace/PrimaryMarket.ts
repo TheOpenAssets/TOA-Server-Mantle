@@ -27,6 +27,8 @@ export interface PrimaryMarketInterface extends Interface {
   getFunction(
     nameOrSignature:
       | "USDC"
+      | "authorizeVault"
+      | "authorizedVaults"
       | "bids"
       | "buyTokens"
       | "closeListing"
@@ -48,9 +50,18 @@ export interface PrimaryMarketInterface extends Interface {
       | "BidSubmitted"
       | "ListingCreated"
       | "TokensPurchased"
+      | "VaultAuthorized"
   ): EventFragment;
 
   encodeFunctionData(functionFragment: "USDC", values?: undefined): string;
+  encodeFunctionData(
+    functionFragment: "authorizeVault",
+    values: [AddressLike, boolean]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "authorizedVaults",
+    values: [AddressLike]
+  ): string;
   encodeFunctionData(
     functionFragment: "bids",
     values: [BytesLike, BigNumberish]
@@ -100,6 +111,14 @@ export interface PrimaryMarketInterface extends Interface {
   ): string;
 
   decodeFunctionResult(functionFragment: "USDC", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "authorizeVault",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "authorizedVaults",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "bids", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "buyTokens", data: BytesLike): Result;
   decodeFunctionResult(
@@ -257,6 +276,19 @@ export namespace TokensPurchasedEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
+export namespace VaultAuthorizedEvent {
+  export type InputTuple = [vault: AddressLike, authorized: boolean];
+  export type OutputTuple = [vault: string, authorized: boolean];
+  export interface OutputObject {
+    vault: string;
+    authorized: boolean;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
 export interface PrimaryMarket extends BaseContract {
   connect(runner?: ContractRunner | null): PrimaryMarket;
   waitForDeployment(): Promise<this>;
@@ -301,6 +333,14 @@ export interface PrimaryMarket extends BaseContract {
   ): Promise<this>;
 
   USDC: TypedContractMethod<[], [string], "view">;
+
+  authorizeVault: TypedContractMethod<
+    [vault: AddressLike, authorized: boolean],
+    [void],
+    "nonpayable"
+  >;
+
+  authorizedVaults: TypedContractMethod<[arg0: AddressLike], [boolean], "view">;
 
   bids: TypedContractMethod<
     [arg0: BytesLike, arg1: BigNumberish],
@@ -405,6 +445,16 @@ export interface PrimaryMarket extends BaseContract {
   getFunction(
     nameOrSignature: "USDC"
   ): TypedContractMethod<[], [string], "view">;
+  getFunction(
+    nameOrSignature: "authorizeVault"
+  ): TypedContractMethod<
+    [vault: AddressLike, authorized: boolean],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "authorizedVaults"
+  ): TypedContractMethod<[arg0: AddressLike], [boolean], "view">;
   getFunction(
     nameOrSignature: "bids"
   ): TypedContractMethod<
@@ -549,6 +599,13 @@ export interface PrimaryMarket extends BaseContract {
     TokensPurchasedEvent.OutputTuple,
     TokensPurchasedEvent.OutputObject
   >;
+  getEvent(
+    key: "VaultAuthorized"
+  ): TypedContractEvent<
+    VaultAuthorizedEvent.InputTuple,
+    VaultAuthorizedEvent.OutputTuple,
+    VaultAuthorizedEvent.OutputObject
+  >;
 
   filters: {
     "AuctionEnded(bytes32,uint256,uint256)": TypedContractEvent<
@@ -604,6 +661,17 @@ export interface PrimaryMarket extends BaseContract {
       TokensPurchasedEvent.InputTuple,
       TokensPurchasedEvent.OutputTuple,
       TokensPurchasedEvent.OutputObject
+    >;
+
+    "VaultAuthorized(address,bool)": TypedContractEvent<
+      VaultAuthorizedEvent.InputTuple,
+      VaultAuthorizedEvent.OutputTuple,
+      VaultAuthorizedEvent.OutputObject
+    >;
+    VaultAuthorized: TypedContractEvent<
+      VaultAuthorizedEvent.InputTuple,
+      VaultAuthorizedEvent.OutputTuple,
+      VaultAuthorizedEvent.OutputObject
     >;
   };
 }

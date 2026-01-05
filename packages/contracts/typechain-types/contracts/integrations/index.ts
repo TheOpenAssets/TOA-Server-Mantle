@@ -3,3 +3,4 @@
 /* eslint-disable */
 import type * as fluxionIntegrationSol from "./FluxionIntegration.sol";
 export type { fluxionIntegrationSol };
+export type { OAID } from "./OAID";
