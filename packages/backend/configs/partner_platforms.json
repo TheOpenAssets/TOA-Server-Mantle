@@ -1,0 +1,34 @@
+{
+  "partners": [
+    {
+      "partnerId": "partner_xyz_lending_001",
+      "partnerName": "XYZ Lending",
+      "apiKeyPrefix": "pk_xyz_live_",
+      "publicKey": "0x1234567890123456789012345678901234567890",
+      "status": "ACTIVE",
+      "tier": "PREMIUM",
+      "dailyBorrowLimit": "100000000000",
+      "totalBorrowLimit": "500000000000",
+      "platformFeePercentage": 50,
+      "settlementAddress": "0xPartnerSettlementWallet1234567890123456",
+      "webhookUrl": "https://xyz-lending.com/api/webhooks/mantle-rwa",
+      "contactEmail": "api@xyz-lending.com",
+      "kycVerified": true,
+      "contractSigned": true
+    },
+    {
+      "partnerId": "partner_abc_finance_002",
+      "partnerName": "ABC Finance",
+      "apiKeyPrefix": "pk_abc_live_",
+      "status": "ACTIVE",
+      "tier": "BASIC",
+      "dailyBorrowLimit": "50000000000",
+      "totalBorrowLimit": "200000000000",
+      "platformFeePercentage": 75,
+      "settlementAddress": "0xABCSettlementWallet1234567890123456789",
+      "contactEmail": "dev@abc-finance.com",
+      "kycVerified": true,
+      "contractSigned": true
+    }
+  ]
+}

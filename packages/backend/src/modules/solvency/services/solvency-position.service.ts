@@ -342,4 +342,70 @@ export class SolvencyPositionService {
 
     return this.positionModel.find(query).sort({ createdAt: -1 }).exec();
   }
+
+  /**
+   * Find active position by OAID ID
+   */
+  async findActivePositionByOAID(
+    userAddress: string,
+    oaidCreditLineId: number,
+  ): Promise<SolvencyPositionDocument | null> {
+    return this.positionModel.findOne({
+      userAddress,
+      oaidCreditLineId,
+      status: PositionStatus.ACTIVE,
+    });
+  }
+
+  /**
+   * Add partner loan to position
+   */
+  async addPartnerLoan(
+    mongoId: string,
+    loanData: {
+      partnerId: string;
+      partnerLoanId: string;
+      borrowedAmount: string;
+      active: boolean;
+    },
+  ): Promise<void> {
+    await this.positionModel.updateOne(
+      { _id: mongoId },
+      {
+        $push: { partnerLoans: loanData },
+        $inc: { totalPartnerDebt: loanData.borrowedAmount },
+      },
+    );
+  }
+
+  /**
+   * Mark partner loan as repaid in position
+   */
+  async markPartnerLoanRepaid(
+    positionId: number,
+    internalLoanId: string,
+  ): Promise<void> {
+    const position = await this.getPosition(positionId);
+    
+    // Find the partner loan in the array
+    const loanIndex = position.partnerLoans.findIndex(
+      (l: any) => l.partnerLoanId === internalLoanId
+    );
+
+    if (loanIndex !== -1) {
+      const loan = position.partnerLoans[loanIndex] as any;
+      if (loan && loan.active) {
+        // Update the loan to inactive
+        const borrowedAmount = loan.borrowedAmount;
+        
+        await this.positionModel.updateOne(
+          { positionId, 'partnerLoans.partnerLoanId': internalLoanId },
+          {
+            $set: { 'partnerLoans.$.active': false },
+            $inc: { totalPartnerDebt: (-BigInt(borrowedAmount)).toString() },
+          }
+        );
+      }
+    }
+  }
 }

@@ -531,4 +531,51 @@ export class LeverageBlockchainService {
       throw error;
     }
   }
+
+  /**
+   * Get on-chain listing details from PrimaryMarket
+   * @param assetId Asset ID (UUID format)
+   * @returns Listing details including actual price
+   */
+  async getOnChainListing(assetId: string): Promise<{
+    tokenAddress: string;
+    listingType: number;
+    staticPrice: bigint;
+    totalSupply: bigint;
+    sold: bigint;
+    active: boolean;
+    minInvestment: bigint;
+  }> {
+    try {
+      const primaryMarketAddress = this.contractLoader.getContractAddress('PrimaryMarketplace');
+      const primaryMarketABI = this.contractLoader.getContractAbi('PrimaryMarketplace');
+
+      // Convert UUID to bytes32
+      const assetIdBytes32 = ('0x' + assetId.replace(/-/g, '').padEnd(64, '0')) as `0x${string}`;
+
+      this.logger.log(`Reading on-chain listing for asset ${assetId} (${assetIdBytes32})`);
+
+      const listing = await this.publicClient.readContract({
+        address: primaryMarketAddress as Address,
+        abi: primaryMarketABI,
+        functionName: 'listings',
+        args: [assetIdBytes32],
+      }) as any;
+
+      // Parse the listing struct
+      // struct Listing { tokenAddress, assetId, listingType, staticPrice, reservePrice, endTime, clearingPrice, auctionPhase, totalSupply, sold, active, minInvestment }
+      return {
+        tokenAddress: listing[0],
+        listingType: Number(listing[2]),
+        staticPrice: BigInt(listing[3]), // staticPrice is at index 3
+        totalSupply: BigInt(listing[8]),
+        sold: BigInt(listing[9]),
+        active: Boolean(listing[10]),
+        minInvestment: BigInt(listing[11]),
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get on-chain listing for ${assetId}: ${error}`);
+      throw error;
+    }
+  }
 }

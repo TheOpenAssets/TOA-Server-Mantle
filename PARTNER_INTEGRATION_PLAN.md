@@ -2500,11 +2500,11 @@ Borrow on behalf of user.
 ### Phase 1: Foundation (Week 1)
 
 **Tasks:**
-- [ ] Create database schemas (Partner, PartnerLoan, PartnerApiLog)
-- [ ] Update SolvencyPosition schema with partner loan tracking
-- [ ] Create partner config system (`partner_platforms.json`)
-- [ ] Implement API key generation utility
-- [ ] Set up database migrations
+- [x] Create database schemas (Partner, PartnerLoan, PartnerApiLog)
+- [x] Update SolvencyPosition schema with partner loan tracking
+- [x] Create partner config system (`partner_platforms.json`)
+- [x] Implement API key generation utility
+- [x] Set up database migrations
 
 **Deliverables:**
 - Database schemas implemented
@@ -2516,13 +2516,13 @@ Borrow on behalf of user.
 ### Phase 2: Core API (Week 2)
 
 **Tasks:**
-- [ ] Implement PartnerService (API key validation)
-- [ ] Implement PartnerApiKeyGuard
-- [ ] Create PartnerLoanService (borrow logic)
-- [ ] Create PartnerLoanService (repay logic)
-- [ ] Implement PartnerController (borrow, repay endpoints)
+- [x] Implement PartnerService (API key validation)
+- [x] Implement PartnerApiKeyGuard
+- [x] Create PartnerLoanService (borrow logic)
+- [x] Create PartnerLoanService (repay logic)
+- [x] Implement PartnerController (borrow, repay endpoints)
 - [ ] Add rate limiting (Redis-based)
-- [ ] Add audit logging
+- [x] Add audit logging
 
 **Deliverables:**
 - Borrow endpoint functional
@@ -2535,10 +2535,10 @@ Borrow on behalf of user.
 ### Phase 3: Admin Tools (Week 3)
 
 **Tasks:**
-- [ ] Implement PartnerAdminController
-- [ ] Create partner endpoint
-- [ ] Regenerate API key endpoint
-- [ ] Update partner endpoint
+- [x] Implement PartnerAdminController
+- [x] Create partner endpoint
+- [x] Regenerate API key endpoint
+- [x] Update partner endpoint
 - [ ] Suspend/activate partner endpoints
 - [ ] Partner analytics endpoint
 - [ ] Audit log viewer

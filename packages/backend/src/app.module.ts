@@ -25,6 +25,7 @@ import { AnnouncementsModule } from './modules/announcements/announcements.modul
 import { FaucetModule } from './modules/faucet/faucet.module';
 import { LeverageModule } from './modules/leverage/leverage.module';
 import { SolvencyModule } from './modules/solvency/solvency.module';
+import { PartnersModule } from './modules/partners/partners.module';
 
 @Module({
   imports: [
@@ -85,6 +86,7 @@ import { SolvencyModule } from './modules/solvency/solvency.module';
     FaucetModule,
     LeverageModule,
     SolvencyModule,
+    PartnersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

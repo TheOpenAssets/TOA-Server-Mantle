@@ -83,6 +83,18 @@ export class SolvencyPosition {
   @Prop({ type: Boolean, default: false })
   oaidCreditIssued!: boolean;
 
+  // Partner Integration
+  @Prop({ type: [Object], default: [] })
+  partnerLoans!: Array<{
+    partnerId: string;
+    partnerLoanId: string;              // Reference to PartnerLoan.internalLoanId
+    borrowedAmount: string;             // USDC borrowed via this partner (6 decimals)
+    active: boolean;
+  }>;
+
+  @Prop({ default: '0' })
+  totalPartnerDebt!: string;            // Sum of all active partner loans (6 decimals)
+
   // Transaction details
   @Prop({ required: true })
   depositTxHash!: string;
