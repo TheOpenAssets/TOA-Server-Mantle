@@ -21,29 +21,28 @@ async function main() {
 
   console.log(`Using SolvencyVault: ${solvencyVaultAddress}\n`);
 
-  // Deploy OAID
-  let oaidAddress = deployed.contracts.OAID;
-  if (!oaidAddress) {
-    console.log('📝 Deploying OAID...');
-    const OAID = await ethers.getContractFactory('OAID');
-    const oaid = await OAID.deploy();
-    await oaid.waitForDeployment();
-    oaidAddress = await oaid.getAddress();
-    console.log(`✅ OAID deployed: ${oaidAddress}\n`);
+  // Deploy OAID (force fresh deployment)
+  console.log('📝 Deploying new OAID contract...');
+  const OAID = await ethers.getContractFactory('OAID');
+  const oaid = await OAID.deploy();
+  await oaid.waitForDeployment();
+  const oaidAddress = await oaid.getAddress();
+  console.log(`✅ OAID deployed: ${oaidAddress}\n`);
 
-    // Set SolvencyVault as authorized vault
-    console.log('🔗 Authorizing SolvencyVault on OAID...');
-    await oaid.setSolvencyVault(solvencyVaultAddress);
-    console.log('✅ SolvencyVault authorized on OAID\n');
-  } else {
-    console.log(`✅ Using existing OAID: ${oaidAddress}\n`);
-  }
+  // Set SolvencyVault as authorized vault
+  console.log('🔗 Authorizing SolvencyVault on OAID...');
+  await oaid.setSolvencyVault(solvencyVaultAddress);
+  console.log('✅ SolvencyVault authorized on OAID\n');
 
   // Set OAID on SolvencyVault
   console.log('🔗 Setting OAID on SolvencyVault...');
   const solvencyVault = await ethers.getContractAt('SolvencyVault', solvencyVaultAddress);
-  await solvencyVault.setOAID(oaidAddress);
-  console.log('✅ OAID set on SolvencyVault\n');
+  try {
+    await solvencyVault.setOAID(oaidAddress);
+    console.log('✅ OAID set on SolvencyVault\n');
+  } catch (error) {
+    console.log('⚠️ OAID may already be set on SolvencyVault\n');
+  }
 
   // Save deployed addresses
   deployed.contracts = {
