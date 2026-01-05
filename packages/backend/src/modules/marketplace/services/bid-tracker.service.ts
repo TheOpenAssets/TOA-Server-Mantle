@@ -224,8 +224,8 @@ export class BidTrackerService {
         bidIndex: b.bidIndex,
         status: b.status,
         txHash: b.transactionHash,
+        settlementTxHash: b.status === BidStatus.SETTLED || b.status === BidStatus.REFUNDED ? b.settlementTxHash : undefined,
         bidDate: b.createdAt,
-        settlementTxHash: b.settlementTxHash,
         settledAt: b.settledAt,
       })),
     };

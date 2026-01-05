@@ -40,6 +40,7 @@ export class LeverageController {
     this.logger.log(`📊 Leverage Purchase Request Received`);
     this.logger.log(`User: ${userAddress}`);
     this.logger.log(`Asset ID: ${dto.assetId}`);
+    
 
     try {
       // Fetch Asset to get correct token address
@@ -145,6 +146,7 @@ export class LeverageController {
       // We already fetched asset above
       if (asset && asset.listing) {
         const currentSold = BigInt(asset.listing.sold || '0');
+        this.logger.log(`Current sold: ${currentSold.toString()}`);
         const newSold = (currentSold + tokenAmountBigInt).toString();
 
         await this.assetModel.updateOne(
@@ -154,7 +156,15 @@ export class LeverageController {
 
         const addedTokens = Number(tokenAmountBigInt) / 1e18;
         const totalTokens = Number(newSold) / 1e18;
-        this.logger.log(`✅ Asset listing updated: +${addedTokens} tokens sold (New Total: ${totalTokens} tokens)`);
+
+        const asset2 = await this.assetModel.findOne({ assetId: dto.assetId });
+        const updatedSold = asset2?.listing?.sold ?? newSold;
+        this.logger.log(`Added tokens sold: ${addedTokens}, Total sold: ${totalTokens}, newSold DB Value: ${newSold}`);
+        if (asset2?.listing) {
+          this.logger.log(`✅ Asset listing updated: +${addedTokens} tokens sold (New Total: ${updatedSold} tokens)`);
+        } else {
+          this.logger.warn(`⚠️ Unable to verify updated listing sold count for asset ${dto.assetId}; listing missing after update`);
+        }
       } else {
         this.logger.warn(`⚠️ Asset ${dto.assetId} has no listing, skipping sold count update`);
       }
