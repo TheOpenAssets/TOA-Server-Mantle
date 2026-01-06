@@ -142,7 +142,13 @@ export class LeverageBlockchainService {
         args: [BigInt(positionId), methPriceUSD],
       });
 
-      const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+      // Wait 5 seconds for transaction propagation (Mantle block time)
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+
+      const receipt = await this.publicClient.waitForTransactionReceipt({ 
+        hash,
+        timeout: 120_000 
+      });
       this.logger.log(`✅ Yield harvested: ${hash}`);
 
       // Parse YieldHarvested event from receipt
@@ -191,20 +197,31 @@ export class LeverageBlockchainService {
   /**
    * Liquidate position
    * @param positionId Position ID
+   * @param overridePrice Optional price override (18 decimals) for testing
    * @returns Transaction hash
    */
-  async liquidatePosition(positionId: number): Promise<Hash> {
+  async liquidatePosition(positionId: number, overridePrice?: bigint): Promise<Hash> {
     const wallet = this.walletService.getPlatformWallet();
     const address = this.contractLoader.getContractAddress('LeverageVault');
     const abi = this.contractLoader.getContractAbi('LeverageVault');
 
     this.logger.log(`⚠️ Liquidating position ${positionId}...`);
 
-    // Get current mETH price (6 decimals) and convert to 18 decimals
-    const methPriceUSDC = BigInt(this.methPriceService.getCurrentPrice());
-    const methPriceUSD = methPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
+    let methPriceUSD: bigint;
+
+    if (overridePrice) {
+      this.logger.warn(`⚠️ Using override price for liquidation: ${overridePrice}`);
+      this.logger.warn(`   Price in USD: $${Number(overridePrice) / 1e18}`);
+      methPriceUSD = overridePrice;
+    } else {
+      // Get current mETH price (6 decimals) and convert to 18 decimals
+      const methPriceUSDC = BigInt(this.methPriceService.getCurrentPrice());
+      methPriceUSD = methPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
+      this.logger.log(`   Using current mETH price: $${Number(methPriceUSDC) / 1e6}`);
+    }
 
     try {
+      this.logger.log(`📤 Submitting liquidation transaction...`);
       const hash = await wallet.writeContract({
         address: address as Address,
         abi,
@@ -212,11 +229,87 @@ export class LeverageBlockchainService {
         args: [BigInt(positionId), methPriceUSD],
       });
 
-      await this.publicClient.waitForTransactionReceipt({ hash });
-      this.logger.log(`✅ Position liquidated: ${hash}`);
+      this.logger.log(`⏳ Waiting for confirmation... TX: ${hash}`);
+      const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+      
+      // Parse logs to get liquidation details
+      let usdcRecovered = '0';
+      let shortfall = '0';
+      let excessReturned = '0';
+      
+      try {
+        // Decode PositionLiquidated event
+        const liquidationEvent = receipt.logs.find(log => {
+          try {
+            const decoded = decodeEventLog({
+              abi,
+              data: log.data,
+              topics: log.topics,
+            }) as any;
+            return decoded.eventName === 'PositionLiquidated';
+          } catch {
+            return false;
+          }
+        });
+
+        if (liquidationEvent) {
+          const decoded = decodeEventLog({
+            abi,
+            data: liquidationEvent.data,
+            topics: liquidationEvent.topics,
+          }) as any;
+          
+          usdcRecovered = decoded.args.usdcRecovered?.toString() || '0';
+          shortfall = decoded.args.shortfall?.toString() || '0';
+          excessReturned = decoded.args.excessReturned?.toString() || '0';
+          
+          // If event doesn't have excessReturned (old contract), try to detect from Transfer events
+          if (excessReturned === '0') {
+            const usdcRecoveredBigInt = BigInt(usdcRecovered);
+            const shortfallBigInt = BigInt(shortfall);
+            
+            if (shortfallBigInt === BigInt(0) && usdcRecoveredBigInt > BigInt(0)) {
+              // No shortfall means there might be excess - check for Transfer events to user
+              const transferEvents = receipt.logs.filter(log => {
+                try {
+                  return log.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'; // Transfer event signature
+                } catch {
+                  return false;
+                }
+              });
+              
+              // Find transfer to user (will be after debt repayment)
+              if (transferEvents.length > 2) {
+                const lastTransfer = transferEvents[transferEvents.length - 1];
+                if (lastTransfer?.data) {
+                  excessReturned = BigInt(lastTransfer.data).toString();
+                }
+              }
+            }
+          }
+        }
+      } catch (error: any) {
+        this.logger.warn(`Could not parse liquidation event details: ${error?.message || 'Unknown error'}`);
+      }
+      
+      this.logger.log(`✅ Position ${positionId} liquidated on-chain`);
+      this.logger.log(`   TX Hash: ${hash}`);
+      this.logger.log(`   Block: ${receipt.blockNumber}`);
+      this.logger.log(`   Gas Used: ${receipt.gasUsed}`);
+      this.logger.log(`   Status: ${receipt.status === 'success' ? '✅ Success' : '❌ Failed'}`);
+      this.logger.log(`   USDC Recovered: $${Number(usdcRecovered) / 1e6}`);
+      this.logger.log(`   Shortfall: $${Number(shortfall) / 1e6}`);
+      if (BigInt(excessReturned) > BigInt(0)) {
+        this.logger.log(`   💰 Excess Returned to User: $${Number(excessReturned) / 1e6}`);
+      }
+      
       return hash;
-    } catch (error) {
-      this.logger.error(`Failed to liquidate position: ${error}`);
+    } catch (error: any) {
+      this.logger.error(`❌ Failed to liquidate position ${positionId}`);
+      this.logger.error(`   Error: ${error?.message || 'Unknown error'}`);
+      if (error?.data) {
+        this.logger.error(`   Data: ${JSON.stringify(error.data)}`);
+      }
       throw error;
     }
   }

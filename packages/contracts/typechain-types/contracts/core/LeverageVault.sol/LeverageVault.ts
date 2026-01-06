@@ -340,19 +340,22 @@ export namespace PositionLiquidatedEvent {
     positionId: BigNumberish,
     mETHSold: BigNumberish,
     usdcRecovered: BigNumberish,
-    shortfall: BigNumberish
+    shortfall: BigNumberish,
+    excessReturned: BigNumberish
   ];
   export type OutputTuple = [
     positionId: bigint,
     mETHSold: bigint,
     usdcRecovered: bigint,
-    shortfall: bigint
+    shortfall: bigint,
+    excessReturned: bigint
   ];
   export interface OutputObject {
     positionId: bigint;
     mETHSold: bigint;
     usdcRecovered: bigint;
     shortfall: bigint;
+    excessReturned: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -519,7 +522,13 @@ export interface LeverageVault extends BaseContract {
 
   liquidatePosition: TypedContractMethod<
     [positionId: BigNumberish, mETHPriceUSD: BigNumberish],
-    [[bigint, bigint] & { usdcRecovered: bigint; shortfall: bigint }],
+    [
+      [bigint, bigint, bigint] & {
+        usdcRecovered: bigint;
+        shortfall: bigint;
+        excessReturned: bigint;
+      }
+    ],
     "nonpayable"
   >;
 
@@ -681,7 +690,13 @@ export interface LeverageVault extends BaseContract {
     nameOrSignature: "liquidatePosition"
   ): TypedContractMethod<
     [positionId: BigNumberish, mETHPriceUSD: BigNumberish],
-    [[bigint, bigint] & { usdcRecovered: bigint; shortfall: bigint }],
+    [
+      [bigint, bigint, bigint] & {
+        usdcRecovered: bigint;
+        shortfall: bigint;
+        excessReturned: bigint;
+      }
+    ],
     "nonpayable"
   >;
   getFunction(
@@ -839,7 +854,7 @@ export interface LeverageVault extends BaseContract {
       PositionCreatedEvent.OutputObject
     >;
 
-    "PositionLiquidated(uint256,uint256,uint256,uint256)": TypedContractEvent<
+    "PositionLiquidated(uint256,uint256,uint256,uint256,uint256)": TypedContractEvent<
       PositionLiquidatedEvent.InputTuple,
       PositionLiquidatedEvent.OutputTuple,
       PositionLiquidatedEvent.OutputObject

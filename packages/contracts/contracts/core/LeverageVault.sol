@@ -92,7 +92,8 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         uint256 indexed positionId,
         uint256 mETHSold,
         uint256 usdcRecovered,
-        uint256 shortfall
+        uint256 shortfall,
+        uint256 excessReturned
     );
     event SettlementProcessed(
         uint256 indexed positionId,
@@ -284,11 +285,12 @@ contract LeverageVault is Ownable, ReentrancyGuard {
      * @param mETHPriceUSD Current mETH price in USD (18 decimals)
      * @return usdcRecovered USDC recovered from liquidation
      * @return shortfall USDC shortfall (if any)
+     * @return excessReturned Excess USDC returned to user (if any)
      */
     function liquidatePosition(
         uint256 positionId,
         uint256 mETHPriceUSD
-    ) external onlyOwner nonReentrant returns (uint256 usdcRecovered, uint256 shortfall) {
+    ) external onlyOwner nonReentrant returns (uint256 usdcRecovered, uint256 shortfall, uint256 excessReturned) {
         Position storage position = positions[positionId];
         require(position.active, "Position not active");
         require(mETHPriceUSD > 0, "Invalid mETH price");
@@ -296,6 +298,9 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         // Verify liquidation is necessary
         uint256 healthFactor = getHealthFactor(positionId, mETHPriceUSD);
         require(healthFactor < LIQUIDATION_THRESHOLD, "Position is healthy");
+
+        // Store user address before marking inactive
+        address positionUser = position.user;
 
         // Swap all mETH collateral for USDC
         uint256 mETHAmount = position.mETHCollateral;
@@ -317,16 +322,28 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         usdc.approve(seniorPool, repaymentAmount);
         ISeniorPool(seniorPool).repay(positionId, repaymentAmount);
 
-        // Calculate shortfall
-        shortfall = outstandingDebt > usdcRecovered
-            ? outstandingDebt - usdcRecovered
-            : 0;
+        // Calculate shortfall or excess
+        if (outstandingDebt > usdcRecovered) {
+            shortfall = outstandingDebt - usdcRecovered;
+            excessReturned = 0;
+        } else {
+            shortfall = 0;
+            excessReturned = usdcRecovered - outstandingDebt;
+            
+            // Return excess USDC to user
+            if (excessReturned > 0) {
+                require(
+                    usdc.transfer(positionUser, excessReturned),
+                    "Excess USDC transfer failed"
+                );
+            }
+        }
 
         // Mark position as inactive
         position.active = false;
         position.mETHCollateral = 0;
 
-        emit PositionLiquidated(positionId, mETHAmount, usdcRecovered, shortfall);
+        emit PositionLiquidated(positionId, mETHAmount, usdcRecovered, shortfall, excessReturned);
     }
 
     /**
