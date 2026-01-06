@@ -44,3 +44,5 @@ packages/contracts/node_modules/
 packages/backend/local-storage/
 
 packages/backend/uploads/
+
+scripts/

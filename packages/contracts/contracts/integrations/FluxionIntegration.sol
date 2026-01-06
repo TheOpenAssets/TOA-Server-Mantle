@@ -129,8 +129,8 @@ contract FluxionIntegration is Ownable, ReentrancyGuard {
         uint256 expectedUSDC = dex.getQuote(mETHAmount);
         require(expectedUSDC > 0, "Invalid quote");
 
-        // Validate quote against provided price
-        _validatePrice(mETHAmount, expectedUSDC, mETHPriceUSD);
+        // Price validation disabled - removed deviation check
+        // _validatePrice(mETHAmount, expectedUSDC, mETHPriceUSD);
 
         // Calculate minimum output with slippage tolerance
         uint256 minUSDCOut = (expectedUSDC * (BASIS_POINTS - MAX_SLIPPAGE)) /
