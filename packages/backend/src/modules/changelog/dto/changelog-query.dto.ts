@@ -73,3 +73,8 @@ export class OrganizationQueryDto {
     @IsString()
     repo?: string;
 }
+
+export class MetricsQueryDto {
+    @IsString()
+    repo!: string;
+}

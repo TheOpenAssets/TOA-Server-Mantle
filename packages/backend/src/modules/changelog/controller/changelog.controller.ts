@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Query, HttpCode, HttpStatus, Logger } from '@nestjs/common';
 import { ChangelogService } from '../services/changelog.service';
-import { CommitQueryDto, PullRequestQueryDto, TimelineQueryDto, OrganizationQueryDto } from '../dto/changelog-query.dto';
+import { CommitQueryDto, PullRequestQueryDto, TimelineQueryDto, OrganizationQueryDto, MetricsQueryDto } from '../dto/changelog-query.dto';
 
 @Controller('changelog')
 export class ChangelogController {
@@ -105,6 +105,32 @@ export class ChangelogController {
             };
         } catch (error: any) {
             this.logger.error('✗ Failed to get timeline:', error?.message || String(error));
+            throw error;
+        }
+    }
+
+    @Get('metrics')
+    async getMetrics(@Query() query: MetricsQueryDto) {
+        this.logger.log(`GET /changelog/metrics - Query: ${JSON.stringify(query)}`);
+
+        try {
+            const metrics = await this.changelogService.getMetrics(query.repo);
+
+            if (!metrics) {
+                return {
+                    success: false,
+                    message: 'Metrics not found',
+                };
+            }
+
+            this.logger.log(`✓ Retrieved metrics for ${query.repo}`);
+
+            return {
+                success: true,
+                data: metrics,
+            };
+        } catch (error: any) {
+            this.logger.error('✗ Failed to get metrics:', error?.message || String(error));
             throw error;
         }
     }

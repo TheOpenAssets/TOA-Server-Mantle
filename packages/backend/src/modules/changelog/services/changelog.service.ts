@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { Cron } from '@nestjs/schedule';
 import { GitActivity, GitActivityKind } from '../../../database/schemas/git-activity.schema';
 import { GitHelperService } from './git-helper.service';
+import { GitMetricsService } from './git-metrics.service';
 
 @Injectable()
 export class ChangelogService implements OnModuleInit {
@@ -13,6 +14,7 @@ export class ChangelogService implements OnModuleInit {
         @InjectModel(GitActivity.name)
         private gitActivityModel: Model<GitActivity>,
         private gitHelperService: GitHelperService,
+        private gitMetricsService: GitMetricsService,
     ) { }
 
     async onModuleInit() {
@@ -46,6 +48,7 @@ export class ChangelogService implements OnModuleInit {
             for (const repoName of repos) {
                 try {
                     await this.syncRepositoryData(repoName);
+                    await this.gitMetricsService.refreshMetrics(repoName);
                 } catch (error: any) {
                     this.logger.error(`Failed to sync repo ${repoName}:`, error.message);
                     // Continue with next repo despite error
@@ -486,6 +489,22 @@ export class ChangelogService implements OnModuleInit {
             return response;
         } catch (error: any) {
             this.logger.error('✗ Failed to fetch organization details:', error?.message || String(error));
+            throw error;
+        }
+    }
+
+    async getMetrics(repoName: string): Promise<any> {
+        this.logger.log(`Fetching metrics for repo: ${repoName}`);
+        try {
+            const metrics = await this.gitMetricsService.getMetrics(repoName);
+            if (!metrics) {
+                this.logger.warn(`No metrics found for repo: ${repoName}`);
+                return null;
+            }
+            this.logger.log(`✓ Successfully fetched metrics for ${repoName}`);
+            return metrics;
+        } catch (error: any) {
+            this.logger.error(`✗ Failed to fetch metrics for ${repoName}:`, error?.message || String(error));
             throw error;
         }
     }
