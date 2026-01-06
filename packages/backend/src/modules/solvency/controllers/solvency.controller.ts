@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { SolvencyBlockchainService } from '../services/solvency-blockchain.service';
@@ -211,7 +212,7 @@ export class SolvencyController {
    * Called after investor deposits collateral directly via contract
    */
   @Post('sync-position')
-  @HttpCode(HttpStatus.CREATED)
+  @HttpCode(HttpStatus.OK)
   async syncPosition(@Request() req: any, @Body() dto: { positionId: string; txHash: string; blockNumber: number }) {
     const userAddress = req.user.walletAddress;
 
@@ -219,8 +220,27 @@ export class SolvencyController {
       throw new BadRequestException('Missing required fields: positionId, txHash');
     }
 
-    // Fetch position details from chain
     const positionId = parseInt(dto.positionId);
+
+    // Check if position already exists to prevent duplicate key error
+    try {
+      const existingPosition = await this.positionService.getPosition(positionId);
+      if (existingPosition) {
+        return {
+          success: true,
+          message: 'Position already exists.',
+          position: existingPosition,
+        };
+      }
+    } catch (error) {
+      // If it's a NotFoundException, we can safely proceed to create the position.
+      // Otherwise, rethrow the error.
+      if (!(error instanceof NotFoundException)) {
+        throw error;
+      }
+    }
+
+    // Fetch position details from chain
     const positionData = await this.blockchainService.getPositionFromChain(positionId);
 
     // Verify position belongs to user

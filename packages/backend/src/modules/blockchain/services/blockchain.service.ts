@@ -62,9 +62,10 @@ export class BlockchainService {
     });
 
     this.logger.log(`Transaction submitted: ${hash}, waiting for confirmation...`);
-    await this.publicClient.waitForTransactionReceipt({ 
+    await this.publicClient.waitForTransactionReceipt({
       hash,
       timeout: 300_000, // 5 minutes timeout
+      pollingInterval: 2_000,
     });
     this.logger.log(`Identity registration confirmed for ${walletAddress}`);
     return hash;
