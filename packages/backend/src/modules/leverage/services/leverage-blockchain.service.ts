@@ -235,6 +235,7 @@ export class LeverageBlockchainService {
       // Parse logs to get liquidation details
       let usdcRecovered = '0';
       let shortfall = '0';
+      let liquidationFee = '0';
       let excessReturned = '0';
       
       try {
@@ -261,6 +262,7 @@ export class LeverageBlockchainService {
           
           usdcRecovered = decoded.args.usdcRecovered?.toString() || '0';
           shortfall = decoded.args.shortfall?.toString() || '0';
+          liquidationFee = decoded.args.liquidationFee?.toString() || '0';
           excessReturned = decoded.args.excessReturned?.toString() || '0';
           
           // If event doesn't have excessReturned (old contract), try to detect from Transfer events
@@ -299,6 +301,9 @@ export class LeverageBlockchainService {
       this.logger.log(`   Status: ${receipt.status === 'success' ? '✅ Success' : '❌ Failed'}`);
       this.logger.log(`   USDC Recovered: $${Number(usdcRecovered) / 1e6}`);
       this.logger.log(`   Shortfall: $${Number(shortfall) / 1e6}`);
+      if (BigInt(liquidationFee) > BigInt(0)) {
+        this.logger.log(`   💰 Liquidation Fee (5%): $${Number(liquidationFee) / 1e6} → Admin`);
+      }
       if (BigInt(excessReturned) > BigInt(0)) {
         this.logger.log(`   💰 Excess Returned to User: $${Number(excessReturned) / 1e6}`);
       }

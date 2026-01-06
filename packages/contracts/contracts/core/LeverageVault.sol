@@ -40,7 +40,7 @@ interface IPrimaryMarket {
  * 3. Backend purchases RWA tokens, transfers to vault
  * 4. Daily harvest: mETH yield → USDC → Interest payment
  * 5. Settlement: Waterfall distribution (Senior → Interest → User yield)
- * 6. Liquidation: If health factor < 110%
+ * 6. Liquidation: If health factor < 115% (5% fee to admin)
  */
 contract LeverageVault is Ownable, ReentrancyGuard {
     // External contracts
@@ -69,8 +69,9 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     uint256 public nextPositionId;
 
     // Health factor parameters
-    uint256 public constant LIQUIDATION_THRESHOLD = 11000; // 110% (basis points)
+    uint256 public constant LIQUIDATION_THRESHOLD = 11500; // 115% (basis points)
     uint256 public constant INITIAL_LTV = 15000; // 150% (basis points)
+    uint256 public constant LIQUIDATION_FEE_BPS = 500; // 5% liquidation fee (basis points)
     uint256 public constant BASIS_POINTS = 10000;
 
     // Events
@@ -93,6 +94,7 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         uint256 mETHSold,
         uint256 usdcRecovered,
         uint256 shortfall,
+        uint256 liquidationFee,
         uint256 excessReturned
     );
     event SettlementProcessed(
@@ -280,17 +282,18 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Liquidate position if health factor < 110%
+     * @notice Liquidate position if health factor < 115% (5% fee to admin)
      * @param positionId Position ID
      * @param mETHPriceUSD Current mETH price in USD (18 decimals)
      * @return usdcRecovered USDC recovered from liquidation
      * @return shortfall USDC shortfall (if any)
-     * @return excessReturned Excess USDC returned to user (if any)
+     * @return liquidationFee 5% liquidation fee sent to admin (if excess exists)
+     * @return excessReturned Excess USDC returned to user after fee (if any)
      */
     function liquidatePosition(
         uint256 positionId,
         uint256 mETHPriceUSD
-    ) external onlyOwner nonReentrant returns (uint256 usdcRecovered, uint256 shortfall, uint256 excessReturned) {
+    ) external onlyOwner nonReentrant returns (uint256 usdcRecovered, uint256 shortfall, uint256 liquidationFee, uint256 excessReturned) {
         Position storage position = positions[positionId];
         require(position.active, "Position not active");
         require(mETHPriceUSD > 0, "Invalid mETH price");
@@ -322,15 +325,29 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         usdc.approve(seniorPool, repaymentAmount);
         ISeniorPool(seniorPool).repay(positionId, repaymentAmount);
 
-        // Calculate shortfall or excess
+        // Calculate shortfall, liquidation fee, and excess
         if (outstandingDebt > usdcRecovered) {
+            // Insufficient funds to cover debt - no fee, user gets nothing
             shortfall = outstandingDebt - usdcRecovered;
+            liquidationFee = 0;
             excessReturned = 0;
         } else {
             shortfall = 0;
-            excessReturned = usdcRecovered - outstandingDebt;
+            uint256 totalExcess = usdcRecovered - outstandingDebt;
             
-            // Return excess USDC to user
+            // Calculate 5% liquidation fee from excess
+            liquidationFee = (totalExcess * LIQUIDATION_FEE_BPS) / BASIS_POINTS;
+            excessReturned = totalExcess - liquidationFee;
+            
+            // Send liquidation fee to admin (owner)
+            if (liquidationFee > 0) {
+                require(
+                    usdc.transfer(owner(), liquidationFee),
+                    "Liquidation fee transfer failed"
+                );
+            }
+            
+            // Return remaining excess USDC to user
             if (excessReturned > 0) {
                 require(
                     usdc.transfer(positionUser, excessReturned),
@@ -343,7 +360,7 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         position.active = false;
         position.mETHCollateral = 0;
 
-        emit PositionLiquidated(positionId, mETHAmount, usdcRecovered, shortfall, excessReturned);
+        emit PositionLiquidated(positionId, mETHAmount, usdcRecovered, shortfall, liquidationFee, excessReturned);
     }
 
     /**

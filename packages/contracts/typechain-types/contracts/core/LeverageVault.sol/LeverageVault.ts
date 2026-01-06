@@ -67,6 +67,7 @@ export interface LeverageVaultInterface extends Interface {
     nameOrSignature:
       | "BASIS_POINTS"
       | "INITIAL_LTV"
+      | "LIQUIDATION_FEE_BPS"
       | "LIQUIDATION_THRESHOLD"
       | "addCollateral"
       | "claimYieldFromBurn"
@@ -107,6 +108,10 @@ export interface LeverageVaultInterface extends Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "INITIAL_LTV",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "LIQUIDATION_FEE_BPS",
     values?: undefined
   ): string;
   encodeFunctionData(
@@ -204,6 +209,10 @@ export interface LeverageVaultInterface extends Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "INITIAL_LTV",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "LIQUIDATION_FEE_BPS",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -341,6 +350,7 @@ export namespace PositionLiquidatedEvent {
     mETHSold: BigNumberish,
     usdcRecovered: BigNumberish,
     shortfall: BigNumberish,
+    liquidationFee: BigNumberish,
     excessReturned: BigNumberish
   ];
   export type OutputTuple = [
@@ -348,6 +358,7 @@ export namespace PositionLiquidatedEvent {
     mETHSold: bigint,
     usdcRecovered: bigint,
     shortfall: bigint,
+    liquidationFee: bigint,
     excessReturned: bigint
   ];
   export interface OutputObject {
@@ -355,6 +366,7 @@ export namespace PositionLiquidatedEvent {
     mETHSold: bigint;
     usdcRecovered: bigint;
     shortfall: bigint;
+    liquidationFee: bigint;
     excessReturned: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
@@ -460,6 +472,8 @@ export interface LeverageVault extends BaseContract {
 
   INITIAL_LTV: TypedContractMethod<[], [bigint], "view">;
 
+  LIQUIDATION_FEE_BPS: TypedContractMethod<[], [bigint], "view">;
+
   LIQUIDATION_THRESHOLD: TypedContractMethod<[], [bigint], "view">;
 
   addCollateral: TypedContractMethod<
@@ -523,9 +537,10 @@ export interface LeverageVault extends BaseContract {
   liquidatePosition: TypedContractMethod<
     [positionId: BigNumberish, mETHPriceUSD: BigNumberish],
     [
-      [bigint, bigint, bigint] & {
+      [bigint, bigint, bigint, bigint] & {
         usdcRecovered: bigint;
         shortfall: bigint;
+        liquidationFee: bigint;
         excessReturned: bigint;
       }
     ],
@@ -619,6 +634,9 @@ export interface LeverageVault extends BaseContract {
     nameOrSignature: "INITIAL_LTV"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
+    nameOrSignature: "LIQUIDATION_FEE_BPS"
+  ): TypedContractMethod<[], [bigint], "view">;
+  getFunction(
     nameOrSignature: "LIQUIDATION_THRESHOLD"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
@@ -691,9 +709,10 @@ export interface LeverageVault extends BaseContract {
   ): TypedContractMethod<
     [positionId: BigNumberish, mETHPriceUSD: BigNumberish],
     [
-      [bigint, bigint, bigint] & {
+      [bigint, bigint, bigint, bigint] & {
         usdcRecovered: bigint;
         shortfall: bigint;
+        liquidationFee: bigint;
         excessReturned: bigint;
       }
     ],
@@ -854,7 +873,7 @@ export interface LeverageVault extends BaseContract {
       PositionCreatedEvent.OutputObject
     >;
 
-    "PositionLiquidated(uint256,uint256,uint256,uint256,uint256)": TypedContractEvent<
+    "PositionLiquidated(uint256,uint256,uint256,uint256,uint256,uint256)": TypedContractEvent<
       PositionLiquidatedEvent.InputTuple,
       PositionLiquidatedEvent.OutputTuple,
       PositionLiquidatedEvent.OutputObject
