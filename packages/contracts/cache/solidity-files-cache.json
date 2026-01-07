@@ -1332,8 +1332,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/core/LeverageVault.sol": {
-      "lastModificationDate": 1767726798089,
-      "contentHash": "0c84319b20bacae184af08cb63d261c3",
+      "lastModificationDate": 1767769866347,
+      "contentHash": "0eacef3ec19a3addda9dd381c08c312e",
       "sourceName": "contracts/core/LeverageVault.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1495,8 +1495,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/core/SolvencyVault.sol": {
-      "lastModificationDate": 1767588500815,
-      "contentHash": "9c1448ee3df164a8caeab74d2e8411a9",
+      "lastModificationDate": 1767767261074,
+      "contentHash": "4f5db2d8a2b6a5bbc4caecfd69d55b6f",
       "sourceName": "contracts/core/SolvencyVault.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1535,6 +1535,7 @@
         "IOAID",
         "IPrimaryMarket",
         "ISeniorPool",
+        "IYieldVault",
         "SolvencyVault"
       ]
     }

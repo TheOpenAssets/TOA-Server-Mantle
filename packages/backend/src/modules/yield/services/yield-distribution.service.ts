@@ -212,74 +212,136 @@ export class YieldDistributionService {
             this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
             this.logger.log(`🔄 Processing Position ${position.positionId}...`);
             this.logger.log(`   User: ${position.userAddress}`);
+            this.logger.log(`   Status: ${position.status}`);
             this.logger.log(`   RWA Tokens: ${Number(position.rwaTokenAmount) / 1e18}`);
 
-            // Step 1: Claim yield by burning RWA tokens
-            this.logger.log(`\n🔥 Step 1: Burning RWA tokens to claim USDC from YieldVault...`);
-            const claimResult = await this.leverageBlockchainService.claimYieldFromBurn(
-              position.positionId,
-              BigInt(position.rwaTokenAmount), // Burn ALL RWA tokens
-            );
+            // Check if position was liquidated
+            const isLiquidated = position.status === 'LIQUIDATED';
 
-            this.logger.log(`✅ Tokens burned: ${Number(claimResult.tokensBurned) / 1e18} RWA`);
-            this.logger.log(`💰 USDC received: ${Number(claimResult.usdcReceived) / 1e6} USDC`);
-            this.logger.log(`   TX: ${claimResult.hash}`);
-
-            // Record yield claim
-            await this.leveragePositionService.recordYieldClaim(position.positionId, {
-              tokensBurned: claimResult.tokensBurned.toString(),
-              usdcReceived: claimResult.usdcReceived.toString(),
-              transactionHash: claimResult.hash,
-            });
-
-            // Step 2: Process settlement waterfall
-            this.logger.log(`\n💰 Step 2: Processing settlement waterfall...`);
-            const settlementResult = await this.leverageBlockchainService.processSettlement(
-              position.positionId,
-              claimResult.usdcReceived, // Use USDC from burn
-            );
-
-            this.logger.log(`✅ Settlement waterfall completed:`);
-            this.logger.log(`   1️⃣ Senior Pool Repayment: ${Number(settlementResult.seniorRepayment) / 1e6} USDC`);
-            this.logger.log(`   2️⃣ Interest Payment: ${Number(settlementResult.interestRepayment) / 1e6} USDC`);
-            this.logger.log(`   3️⃣ User Yield (Pushed): ${Number(settlementResult.userYield) / 1e6} USDC`);
-            this.logger.log(`   4️⃣ mETH Returned: ${Number(settlementResult.mETHReturned) / 1e18} mETH`);
-            this.logger.log(`   TX: ${settlementResult.hash}`);
-
-            // Record settlement
-            await this.leveragePositionService.recordSettlement(position.positionId, {
-              settlementUSDC: claimResult.usdcReceived.toString(),
-              seniorRepayment: settlementResult.seniorRepayment.toString(),
-              interestRepayment: settlementResult.interestRepayment.toString(),
-              userYield: settlementResult.userYield.toString(),
-              mETHReturned: settlementResult.mETHReturned.toString(),
-              transactionHash: settlementResult.hash,
-            });
-
-            // Notify user
-            try {
-              const yieldFormatted = (Number(settlementResult.userYield) / 1e6).toFixed(2);
-              const mETHFormatted = (Number(settlementResult.mETHReturned) / 1e18).toFixed(4);
+            if (isLiquidated) {
+              // ============================================================
+              // LIQUIDATED POSITION FLOW
+              // ============================================================
+              this.logger.log(`\n🚨 Position is LIQUIDATED - using settleLiquidation flow`);
+              this.logger.log(`   (User already received base mETH back during liquidation)`);
               
-              await this.notificationService.create({
-                userId: position.userAddress,
-                walletAddress: position.userAddress,
-                header: 'Leverage Position Settled',
-                detail: `Your leveraged position #${position.positionId} has been settled. Net Yield: ${yieldFormatted} USDC. Collateral Returned: ${mETHFormatted} mETH.`,
-                type: NotificationType.PAYOUT_SETTLED,
-                severity: NotificationSeverity.SUCCESS,
-                action: NotificationAction.VIEW_PORTFOLIO,
-                actionMetadata: {
-                  positionId: position.positionId.toString(),
-                  assetId: position.assetId,
-                },
-              });
-            } catch (notifError) {
-              this.logger.error(`Failed to send settlement notification to ${position.userAddress}: ${notifError}`);
-            }
+              this.logger.log(`\n🔥 Settling liquidation by burning RWA tokens...`);
+              const liquidationResult = await this.leverageBlockchainService.settleLiquidation(
+                position.positionId,
+              );
 
-            this.logger.log(`✅ Position ${position.positionId} settled successfully!`);
-          } catch (error) {
+              this.logger.log(`✅ Liquidation settled successfully:`);
+              this.logger.log(`   💰 Yield from RWA: ${Number(liquidationResult.yieldReceived) / 1e6} USDC`);
+              this.logger.log(`   💳 Debt Repaid: ${Number(liquidationResult.debtRepaid) / 1e6} USDC`);
+              this.logger.log(`   ⚠️ Liquidation Fee (10%): ${Number(liquidationResult.liquidationFee) / 1e6} USDC → Admin`);
+              this.logger.log(`   💵 User Refund: ${Number(liquidationResult.userRefund) / 1e6} USDC`);
+              this.logger.log(`   TX: ${liquidationResult.hash}`);
+
+              // Record liquidation settlement
+              await this.leveragePositionService.updateLiquidationSettlement(position.positionId, {
+                yieldReceived: liquidationResult.yieldReceived.toString(),
+                debtRepaid: liquidationResult.debtRepaid.toString(),
+                liquidationFee: liquidationResult.liquidationFee.toString(),
+                userRefund: liquidationResult.userRefund.toString(),
+                transactionHash: liquidationResult.hash,
+              });
+
+              // Notify user
+              try {
+                const refundFormatted = (Number(liquidationResult.userRefund) / 1e6).toFixed(2);
+                const feeFormatted = (Number(liquidationResult.liquidationFee) / 1e6).toFixed(2);
+                
+                await this.notificationService.create({
+                  userId: position.userAddress,
+                  walletAddress: position.userAddress,
+                  header: 'Liquidated Position Settled',
+                  detail: `Your liquidated position #${position.positionId} has been settled. Refund: ${refundFormatted} USDC (after ${feeFormatted} USDC liquidation fee).`,
+                  type: NotificationType.PAYOUT_SETTLED,
+                  severity: NotificationSeverity.INFO,
+                  action: NotificationAction.VIEW_PORTFOLIO,
+                  actionMetadata: {
+                    positionId: position.positionId.toString(),
+                    assetId: position.assetId,
+                    wasLiquidated: true,
+                  },
+                });
+              } catch (notifError) {
+                this.logger.error(`Failed to send liquidation settlement notification: ${notifError}`);
+              }
+
+              this.logger.log(`✅ Liquidated position ${position.positionId} settled!`);
+            } else {
+              // ============================================================
+              // NORMAL POSITION FLOW (Healthy throughout)
+              // ============================================================
+              this.logger.log(`\n✅ Position is HEALTHY - using normal settlement flow`);
+
+              // Step 1: Claim yield by burning RWA tokens
+              this.logger.log(`\n🔥 Step 1: Burning RWA tokens to claim USDC from YieldVault...`);
+              const claimResult = await this.leverageBlockchainService.claimYieldFromBurn(
+                position.positionId,
+                BigInt(position.rwaTokenAmount), // Burn ALL RWA tokens
+              );
+
+              this.logger.log(`✅ Tokens burned: ${Number(claimResult.tokensBurned) / 1e18} RWA`);
+              this.logger.log(`💰 USDC received: ${Number(claimResult.usdcReceived) / 1e6} USDC`);
+              this.logger.log(`   TX: ${claimResult.hash}`);
+
+              // Record yield claim
+              await this.leveragePositionService.recordYieldClaim(position.positionId, {
+                tokensBurned: claimResult.tokensBurned.toString(),
+                usdcReceived: claimResult.usdcReceived.toString(),
+                transactionHash: claimResult.hash,
+              });
+
+              // Step 2: Process settlement waterfall
+              this.logger.log(`\n💰 Step 2: Processing settlement waterfall...`);
+              const settlementResult = await this.leverageBlockchainService.processSettlement(
+                position.positionId,
+                claimResult.usdcReceived, // Use USDC from burn
+              );
+
+              this.logger.log(`✅ Settlement waterfall completed:`);
+              this.logger.log(`   1️⃣ Senior Pool Repayment: ${Number(settlementResult.seniorRepayment) / 1e6} USDC`);
+              this.logger.log(`   2️⃣ Interest Payment: ${Number(settlementResult.interestRepayment) / 1e6} USDC`);
+              this.logger.log(`   3️⃣ User Yield (Pushed): ${Number(settlementResult.userYield) / 1e6} USDC`);
+              this.logger.log(`   4️⃣ mETH Returned: ${Number(settlementResult.mETHReturned) / 1e18} mETH`);
+              this.logger.log(`   TX: ${settlementResult.hash}`);
+
+              // Record settlement
+              await this.leveragePositionService.recordSettlement(position.positionId, {
+                settlementUSDC: claimResult.usdcReceived.toString(),
+                seniorRepayment: settlementResult.seniorRepayment.toString(),
+                interestRepayment: settlementResult.interestRepayment.toString(),
+                userYield: settlementResult.userYield.toString(),
+                mETHReturned: settlementResult.mETHReturned.toString(),
+                transactionHash: settlementResult.hash,
+              });
+
+              // Notify user
+              try {
+                const yieldFormatted = (Number(settlementResult.userYield) / 1e6).toFixed(2);
+                const mETHFormatted = (Number(settlementResult.mETHReturned) / 1e18).toFixed(4);
+                
+                await this.notificationService.create({
+                  userId: position.userAddress,
+                  walletAddress: position.userAddress,
+                  header: 'Leverage Position Settled',
+                  detail: `Your leveraged position #${position.positionId} has been settled. Net Yield: ${yieldFormatted} USDC. Collateral Returned: ${mETHFormatted} mETH.`,
+                  type: NotificationType.PAYOUT_SETTLED,
+                  severity: NotificationSeverity.SUCCESS,
+                  action: NotificationAction.VIEW_PORTFOLIO,
+                  actionMetadata: {
+                    positionId: position.positionId.toString(),
+                    assetId: position.assetId,
+                  },
+                });
+              } catch (notifError) {
+                this.logger.error(`Failed to send settlement notification to ${position.userAddress}: ${notifError}`);
+              }
+
+              this.logger.log(`✅ Position ${position.positionId} settled successfully!`);
+            }          } catch (error) {
             this.logger.error(`❌ Failed to settle position ${position.positionId}: ${error}`);
             this.logger.error(`   Continuing with other positions...`);
             // Don't throw - continue with other positions

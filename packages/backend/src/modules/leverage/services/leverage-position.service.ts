@@ -303,6 +303,38 @@ export class LeveragePositionService {
   }
 
   /**
+   * Record liquidation settlement (for positions that were liquidated)
+   */
+  async updateLiquidationSettlement(
+    positionId: number,
+    settlement: {
+      yieldReceived: string;
+      debtRepaid: string;
+      liquidationFee: string;
+      userRefund: string;
+      transactionHash: string;
+    },
+  ): Promise<void> {
+    await this.leveragePositionModel.updateOne(
+      { positionId },
+      {
+        $set: {
+          status: PositionStatus.SETTLED,
+          settlementTimestamp: new Date(),
+          settlementTxHash: settlement.transactionHash,
+          settlementUSDCReceived: settlement.yieldReceived,
+          seniorRepayment: settlement.debtRepaid,
+          userYieldDistributed: settlement.userRefund,
+        },
+      },
+    );
+
+    this.logger.log(
+      `💰 Liquidation settlement recorded for position ${positionId}: ${parseFloat(settlement.userRefund) / 1e6} USDC refunded to user (${parseFloat(settlement.liquidationFee) / 1e6} USDC liquidation fee)`,
+    );
+  }
+
+  /**
    * Mark position as settled (legacy method)
    */
   async markSettled(

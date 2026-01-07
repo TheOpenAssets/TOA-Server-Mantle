@@ -499,6 +499,93 @@ export class LeverageBlockchainService {
    * @param positionId Position ID
    * @returns Outstanding debt (USDC wei)
    */
+  async settleLiquidation(
+    positionId: number,
+  ): Promise<{
+    hash: Hash;
+    yieldReceived: bigint;
+    debtRepaid: bigint;
+    liquidationFee: bigint;
+    userRefund: bigint;
+  }> {
+    const wallet = this.walletService.getPlatformWallet();
+    const address = this.contractLoader.getContractAddress('LeverageVault');
+    const abi = this.contractLoader.getContractAbi('LeverageVault');
+
+    this.logger.log(`🔥 Settling liquidation for position ${positionId}...`);
+
+    try {
+      const hash = await wallet.writeContract({
+        address: address as Address,
+        abi,
+        functionName: 'settleLiquidation',
+        args: [BigInt(positionId)],
+      });
+
+      const receipt = await this.publicClient.waitForTransactionReceipt({ 
+        hash,
+        timeout: 60_000,
+      });
+      this.logger.log(`✅ Liquidation settled: ${hash}`);
+
+      // Parse LiquidationSettled event
+      const settlementEvent = receipt.logs.find((log) => {
+        try {
+          const decoded = decodeEventLog({
+            abi,
+            data: log.data,
+            topics: log.topics,
+          }) as any;
+          return decoded.eventName === 'LiquidationSettled';
+        } catch {
+          return false;
+        }
+      });
+
+      if (!settlementEvent) {
+        throw new Error('LiquidationSettled event not found in transaction receipt');
+      }
+
+      const decoded = decodeEventLog({
+        abi,
+        data: settlementEvent.data,
+        topics: settlementEvent.topics,
+      }) as any;
+
+      const eventArgs = decoded.args as {
+        positionId: bigint;
+        rwaTokensBurned: bigint;
+        yieldReceived: bigint;
+        debtRepaid: bigint;
+        liquidationFee: bigint;
+        userRefund: bigint;
+      };
+
+      this.logger.log(`📊 Liquidation Settlement Breakdown:`);
+      this.logger.log(`   🔥 RWA Tokens Burned: ${Number(eventArgs.rwaTokensBurned) / 1e18}`);
+      this.logger.log(`   💰 Yield Received: ${Number(eventArgs.yieldReceived) / 1e6} USDC`);
+      this.logger.log(`   💳 Debt Repaid: ${Number(eventArgs.debtRepaid) / 1e6} USDC`);
+      this.logger.log(`   ⚠️ Liquidation Fee (10%): ${Number(eventArgs.liquidationFee) / 1e6} USDC → Admin`);
+      this.logger.log(`   💵 User Refund: ${Number(eventArgs.userRefund) / 1e6} USDC`);
+
+      return {
+        hash,
+        yieldReceived: eventArgs.yieldReceived,
+        debtRepaid: eventArgs.debtRepaid,
+        liquidationFee: eventArgs.liquidationFee,
+        userRefund: eventArgs.userRefund,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to settle liquidation: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get outstanding debt for position
+   * @param positionId Position ID
+   * @returns Outstanding debt (USDC wei)
+   */
   async getOutstandingDebt(positionId: number): Promise<bigint> {
     try {
       const seniorPoolAddress =

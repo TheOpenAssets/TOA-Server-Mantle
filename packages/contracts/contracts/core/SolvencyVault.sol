@@ -45,17 +45,23 @@ interface IOAID {
     ) external returns (uint256 creditLineId);
 }
 
+// YieldVault interface
+interface IYieldVault {
+    function claimYield(address rwaToken, uint256 tokenAmount) external returns (uint256 usdcReceived);
+}
+
 /**
  * @title SolvencyVault
  * @notice Collateral vault for borrowing USDC against RWA tokens or Private Asset tokens
- * @dev Supports two token types with different LTV ratios, manual admin-triggered liquidation
+ * @dev Supports two token types with different LTV ratios, yield-based liquidation
  *
  * Flow:
  * 1. User deposits RWA/PrivateAsset tokens as collateral
  * 2. Vault borrows USDC from SeniorPool based on LTV
  * 3. User repays loan + interest
  * 4. User withdraws collateral after full repayment
- * 5. Liquidation: If health factor < 110%, admin creates marketplace listing
+ * 5. Liquidation: If health factor < 115%, hold RWA tokens until settlement
+ * 6. Settlement: Burn RWA for yield, repay loan, take 10% penalty, return excess to user
  */
 contract SolvencyVault is Ownable, ReentrancyGuard {
     // Token types
@@ -72,6 +78,7 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         uint256 usdcBorrowed;       // USDC borrowed from SeniorPool (6 decimals)
         uint256 tokenValueUSD;      // Valuation at deposit time (6 decimals)
         uint256 createdAt;          // Position creation timestamp
+        uint256 liquidatedAt;       // Liquidation timestamp (0 if not liquidated)
         bool active;                // Position status
         TokenType tokenType;        // RWA or PRIVATE_ASSET
     }
@@ -89,11 +96,13 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
     // LTV and health parameters (basis points)
     uint256 public constant RWA_LTV = 7000;                     // 70%
     uint256 public constant PRIVATE_ASSET_LTV = 6000;           // 60%
-    uint256 public constant LIQUIDATION_THRESHOLD = 11000;      // 110%
+    uint256 public constant LIQUIDATION_THRESHOLD = 11500;      // 115%
+    uint256 public constant LIQUIDATION_FEE_BPS = 1000;         // 10% liquidation fee
     uint256 public constant BASIS_POINTS = 10000;
 
     // Liquidation tracking
-    mapping(uint256 => bytes32) public liquidationListings;     // positionId => marketplace assetId
+    mapping(uint256 => bool) public positionsInLiquidation;     // positionId => liquidation status
+    address public yieldVault;                                   // YieldVault contract for burning RWA tokens
 
     // Events
     event PositionCreated(
@@ -123,8 +132,14 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
     );
     event PositionLiquidated(
         uint256 indexed positionId,
-        bytes32 marketplaceAssetId,
-        uint256 discountedPrice
+        uint256 liquidationTime
+    );
+    event LiquidationSettled(
+        uint256 indexed positionId,
+        uint256 yieldReceived,
+        uint256 debtRepaid,
+        uint256 liquidationFee,
+        uint256 userRefund
     );
     event OAIDCreditIssued(
         uint256 indexed positionId,
@@ -165,6 +180,15 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @notice Set YieldVault address
+     * @param _yieldVault YieldVault contract address
+     */
+    function setYieldVault(address _yieldVault) external onlyOwner {
+        require(_yieldVault != address(0), "Invalid address");
+        yieldVault = _yieldVault;
+    }
+
+    /**
      * @notice Deposit collateral tokens
      * @param collateralToken Token address (RWA or PrivateAsset)
      * @param collateralAmount Token amount (18 decimals)
@@ -199,6 +223,7 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
             usdcBorrowed: 0,
             tokenValueUSD: tokenValueUSD,
             createdAt: block.timestamp,
+            liquidatedAt: 0,
             active: true,
             tokenType: tokenType
         });
@@ -327,82 +352,101 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Liquidate position (admin-only)
+     * @notice Mark position for liquidation (health < 115%)
      * @param positionId Position ID
-     * @param marketplaceAssetId Marketplace asset ID for listing
-     * @dev Creates discounted listing on PrimaryMarket (90% of valuation)
+     * @dev Marks position as liquidated, waits for RWA settlement to burn tokens
      */
     function liquidatePosition(
-        uint256 positionId,
-        bytes32 marketplaceAssetId
+        uint256 positionId
     ) external onlyOwner nonReentrant {
         Position storage position = positions[positionId];
         require(position.active, "Position not active");
+        require(!positionsInLiquidation[positionId], "Already in liquidation");
 
-        // Verify liquidation is necessary (health < 110%)
+        // Verify liquidation is necessary (health < 115%)
         uint256 healthFactor = getHealthFactor(positionId);
         require(healthFactor < LIQUIDATION_THRESHOLD, "Position is healthy");
 
-        // Calculate discounted price (90% of valuation)
-        // tokenValueUSD is per collateralAmount, so calculate per-token price
-        uint256 totalValue = position.tokenValueUSD; // Already in 6 decimals
-        uint256 discountedValue = (totalValue * 9000) / BASIS_POINTS; // 90%
-        uint256 pricePerToken = (discountedValue * 1e18) / position.collateralAmount;
+        // Mark position as liquidated (but keep active to track RWA tokens)
+        positionsInLiquidation[positionId] = true;
+        position.liquidatedAt = block.timestamp;
 
-        // Create static listing on PrimaryMarket with no duration and min investment 0
-        IERC20(position.collateralToken).approve(primaryMarket, position.collateralAmount);
-
-        IPrimaryMarket(primaryMarket).createListing(
-            marketplaceAssetId,
-            position.collateralToken,
-            IPrimaryMarket.ListingType.STATIC,
-            pricePerToken,
-            0, // duration (not used for STATIC)
-            position.collateralAmount,
-            0  // minInvestment (no minimum for liquidation sales)
-        );
-
-        // Track liquidation
-        liquidationListings[positionId] = marketplaceAssetId;
-        position.active = false;
-
-        emit PositionLiquidated(positionId, marketplaceAssetId, pricePerToken);
+        emit PositionLiquidated(positionId, block.timestamp);
     }
 
     /**
-     * @notice Process liquidation settlement (called after marketplace sale)
+     * @notice Process liquidation settlement by burning RWA tokens for yield
      * @param positionId Position ID
-     * @param saleProceeds USDC received from sale (6 decimals)
+     * @dev Called after RWA settlement - burns tokens, repays loan, takes 10% fee, returns excess
      */
-    function processLiquidationSettlement(
-        uint256 positionId,
-        uint256 saleProceeds
-    ) external onlyOwner nonReentrant {
+    function settleLiquidation(
+        uint256 positionId
+    ) external onlyOwner nonReentrant returns (uint256 yieldReceived, uint256 liquidationFee, uint256 userRefund) {
         Position storage position = positions[positionId];
-        require(!position.active, "Position still active");
-        require(liquidationListings[positionId] != bytes32(0), "Not liquidated");
+        require(position.active, "Position not active");
+        require(positionsInLiquidation[positionId], "Position not liquidated");
+        require(yieldVault != address(0), "YieldVault not set");
+
+        // Approve YieldVault to burn RWA tokens
+        IERC20(position.collateralToken).approve(yieldVault, position.collateralAmount);
+
+        // Burn RWA tokens to claim USDC yield
+        yieldReceived = IYieldVault(yieldVault).claimYield(
+            position.collateralToken,
+            position.collateralAmount
+        );
+
+        require(yieldReceived > 0, "No yield received");
 
         // Get outstanding debt
         uint256 outstandingDebt = ISeniorPool(seniorPool).getOutstandingDebt(positionId);
 
+        uint256 debtRepaid = 0;
+        
         if (outstandingDebt > 0) {
             // Repay as much debt as possible
-            uint256 repaymentAmount = saleProceeds > outstandingDebt
+            uint256 repaymentAmount = yieldReceived > outstandingDebt
                 ? outstandingDebt
-                : saleProceeds;
+                : yieldReceived;
 
             usdc.approve(seniorPool, repaymentAmount);
             ISeniorPool(seniorPool).repay(positionId, repaymentAmount);
+            debtRepaid = repaymentAmount;
+        }
 
-            // Return surplus to user (if any)
-            if (saleProceeds > outstandingDebt) {
-                uint256 surplus = saleProceeds - outstandingDebt;
+        // Calculate liquidation fee and user refund from excess
+        if (yieldReceived > debtRepaid) {
+            uint256 excess = yieldReceived - debtRepaid;
+            
+            // Calculate 10% liquidation fee
+            liquidationFee = (excess * LIQUIDATION_FEE_BPS) / BASIS_POINTS;
+            userRefund = excess - liquidationFee;
+
+            // Transfer liquidation fee to admin (owner)
+            if (liquidationFee > 0) {
                 require(
-                    usdc.transfer(position.user, surplus),
-                    "Surplus transfer failed"
+                    usdc.transfer(owner(), liquidationFee),
+                    "Fee transfer failed"
                 );
             }
+
+            // Transfer remaining USDC to user
+            if (userRefund > 0) {
+                require(
+                    usdc.transfer(position.user, userRefund),
+                    "Refund transfer failed"
+                );
+            }
+        } else {
+            liquidationFee = 0;
+            userRefund = 0;
         }
+
+        // Mark position as inactive
+        position.active = false;
+        position.collateralAmount = 0;
+
+        emit LiquidationSettled(positionId, yieldReceived, debtRepaid, liquidationFee, userRefund);
     }
 
     /**

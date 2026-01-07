@@ -4,4 +4,5 @@
 export type { IOAID } from "./IOAID";
 export type { IPrimaryMarket } from "./IPrimaryMarket";
 export type { ISeniorPool } from "./ISeniorPool";
+export type { IYieldVault } from "./IYieldVault";
 export type { SolvencyVault } from "./SolvencyVault";
