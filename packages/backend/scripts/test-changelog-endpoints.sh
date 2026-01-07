@@ -17,6 +17,7 @@ NC='\033[0m' # No Color
 # Configuration
 API_BASE_URL="http://localhost:3000"
 CHANGELOG_BASE="${API_BASE_URL}/changelog"
+METRICS_BASE="${API_BASE_URL}/ui-metrics"
 
 # Function to print colored output
 print_header() {
@@ -178,31 +179,33 @@ show_menu() {
     echo "Choose an option:"
     echo ""
     echo "  ${CYAN}Sync Operations:${NC}"
-    echo "    1. Trigger Manual Sync (POST /changelog/sync)"
+    echo "    1. Trigger Manual Full Sync (POST /changelog/sync)"
+    echo "    2. Trigger Repository UI Metrics Sync (POST /ui-metrics/sync/:repoName)"
     echo ""
     echo "  ${CYAN}Commits Endpoints:${NC}"
-    echo "    2. Get All Commits"
-    echo "    3. Get Commits by Repository"
-    echo "    4. Get Commits by Branch"
-    echo "    5. Get Commits by Author"
-    echo "    6. Get Commits with Date Range"
-    echo "    7. Get Commits with Custom Filters"
+    echo "    3. Get All Commits"
+    echo "    4. Get Commits by Repository"
+    echo "    5. Get Commits by Branch"
+    echo "    6. Get Commits by Author"
+    echo "    7. Get Commits with Date Range"
+    echo "    8. Get Commits with Custom Filters"
     echo ""
     echo "  ${CYAN}Pull Requests Endpoints:${NC}"
-    echo "    8. Get All Pull Requests"
-    echo "    9. Get Open Pull Requests"
-    echo "   10. Get Closed Pull Requests"
-    echo "   11. Get Pull Requests by Repository"
+    echo "    9. Get All Pull Requests"
+    echo "   10. Get Open Pull Requests"
+    echo "   11. Get Closed Pull Requests"
+    echo "   12. Get Pull Requests by Repository"
     echo ""
     echo "  ${CYAN}Timeline Endpoints:${NC}"
-    echo "   12. Get Timeline (Commits + PRs)"
-    echo "   13. Get Timeline by Repository"
-    echo "   14. Get Timeline with Date Range"
+    echo "   13. Get Timeline (Commits + PRs)"
+    echo "   14. Get Timeline by Repository"
+    echo "   15. Get Timeline with Date Range"
     echo ""
-    echo "  ${CYAN}Summary & Stats:${NC}"
-    echo "   15. Quick Summary of All Data"
-    echo "   16. Detailed Statistics"
-    echo "   17. Organization Details (All Repos & Branches)"
+    echo "  ${CYAN}Summary, Stats & Metrics:${NC}"
+    echo "   16. Quick Summary of All Data"
+    echo "   17. Detailed Statistics"
+    echo "   18. Organization Details (All Repos & Branches)"
+    echo "   19. Get Repository UI Metrics (GET /ui-metrics/:repoName)"
     echo ""
     echo "   ${RED}0. Exit${NC}"
     echo ""
@@ -210,30 +213,34 @@ show_menu() {
     
     case $CHOICE in
         1)
-            api_call "POST" "${CHANGELOG_BASE}/sync" "Trigger Manual Sync"
+            api_call "POST" "${CHANGELOG_BASE}/sync" "Trigger Manual Full Sync"
             ;;
         2)
-            api_call "GET" "${CHANGELOG_BASE}/commits?limit=10" "Get All Commits (Last 10)"
+            read -p "Enter repository name (TOA-Server-Mantle/TOA-Client-Mantle): " REPO
+            api_call "POST" "${METRICS_BASE}/sync/${REPO}" "Trigger UI Metrics Sync for ${REPO}"
             ;;
         3)
+            api_call "GET" "${CHANGELOG_BASE}/commits?limit=10" "Get All Commits (Last 10)"
+            ;;
+        4)
             read -p "Enter repository name (TOA-Server-Mantle/TOA-Client-Mantle): " REPO
             api_call "GET" "${CHANGELOG_BASE}/commits?repo=${REPO}&limit=10" "Get Commits for ${REPO}"
             ;;
-        4)
+        5)
             read -p "Enter repository name: " REPO
             read -p "Enter branch name: " BRANCH
             api_call "GET" "${CHANGELOG_BASE}/commits?repo=${REPO}&branch=${BRANCH}&limit=10" "Get Commits for ${REPO}:${BRANCH}"
             ;;
-        5)
+        6)
             read -p "Enter author name/username: " AUTHOR
             api_call "GET" "${CHANGELOG_BASE}/commits?author=${AUTHOR}&limit=10" "Get Commits by ${AUTHOR}"
             ;;
-        6)
+        7)
             read -p "Enter start date (YYYY-MM-DD): " SINCE
             read -p "Enter end date (YYYY-MM-DD): " UNTIL
             api_call "GET" "${CHANGELOG_BASE}/commits?since=${SINCE}T00:00:00Z&until=${UNTIL}T23:59:59Z&limit=20" "Get Commits from ${SINCE} to ${UNTIL}"
             ;;
-        7)
+        8)
             read -p "Repository (optional): " REPO
             read -p "Branch (optional): " BRANCH
             read -p "Author (optional): " AUTHOR
@@ -247,32 +254,32 @@ show_menu() {
             
             api_call "GET" "${CHANGELOG_BASE}/commits?${QUERY}" "Get Commits with Custom Filters"
             ;;
-        8)
+        9)
             api_call "GET" "${CHANGELOG_BASE}/pull-requests?limit=10" "Get All Pull Requests"
             ;;
-        9)
+        10)
             api_call "GET" "${CHANGELOG_BASE}/pull-requests?state=open&limit=20" "Get Open Pull Requests"
             ;;
-        10)
+        11)
             api_call "GET" "${CHANGELOG_BASE}/pull-requests?state=closed&limit=20" "Get Closed Pull Requests"
             ;;
-        11)
+        12)
             read -p "Enter repository name: " REPO
             api_call "GET" "${CHANGELOG_BASE}/pull-requests?repo=${REPO}&limit=20" "Get Pull Requests for ${REPO}"
             ;;
-        12)
+        13)
             api_call "GET" "${CHANGELOG_BASE}/timeline?limit=15" "Get Timeline (Last 15 items)"
             ;;
-        13)
+        14)
             read -p "Enter repository name: " REPO
             api_call "GET" "${CHANGELOG_BASE}/timeline?repo=${REPO}&limit=15" "Get Timeline for ${REPO}"
             ;;
-        14)
+        15)
             read -p "Enter start date (YYYY-MM-DD): " SINCE
             read -p "Enter end date (YYYY-MM-DD): " UNTIL
             api_call "GET" "${CHANGELOG_BASE}/timeline?since=${SINCE}T00:00:00Z&until=${UNTIL}T23:59:59Z&limit=30" "Get Timeline from ${SINCE} to ${UNTIL}"
             ;;
-        15)
+        16)
             clear
             print_header "Quick Summary"
             display_summary "${CHANGELOG_BASE}/commits?limit=5" "Recent Commits"
@@ -281,7 +288,7 @@ show_menu() {
             echo ""
             read -p "Press Enter to continue..."
             ;;
-        16)
+        17)
             clear
             print_header "Detailed Statistics"
             
@@ -330,7 +337,7 @@ show_menu() {
             echo ""
             read -p "Press Enter to continue..."
             ;;
-        17)
+        18)
             clear
             print_header "Organization Details"
             
@@ -399,6 +406,10 @@ show_menu() {
             
             echo ""
             read -p "Press Enter to continue..."
+            ;;
+        19)
+            read -p "Enter repository name (TOA-Server-Mantle/TOA-Client-Mantle): " REPO
+            api_call "GET" "${METRICS_BASE}/${REPO}" "Get UI Metrics for ${REPO}"
             ;;
         0)
             print_success "Goodbye!"
