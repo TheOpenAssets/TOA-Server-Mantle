@@ -608,4 +608,94 @@ export class SolvencyBlockchainService {
       throw error;
     }
   }
+
+  /**
+   * Admin purchases liquidated Private Asset collateral and settles position
+   * Admin sends USDC, receives tokens, contract settles debt
+   */
+  async purchaseAndSettleLiquidation(
+    positionId: number,
+    purchaseAmountUSDC: string,
+  ): Promise<{
+    txHash: string;
+    blockNumber: number;
+    liquidationFee: string;
+    userRefund: string;
+  }> {
+    const wallet = this.walletService.getPlatformWallet();
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+    const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
+    const usdcAddress = this.contractLoader.getContractAddress('USDC');
+    const usdcAbi = this.contractLoader.getContractAbi('USDC');
+
+    this.logger.log(
+      `Admin purchasing liquidated position ${positionId} for ${purchaseAmountUSDC} USDC`,
+    );
+
+    // Approve SolvencyVault to spend admin's USDC
+    const approveHash = await wallet.writeContract({
+      address: usdcAddress as Address,
+      abi: usdcAbi,
+      functionName: 'approve',
+      args: [vaultAddress, BigInt(purchaseAmountUSDC)],
+    });
+
+    await this.publicClient.waitForTransactionReceipt({ hash: approveHash });
+    this.logger.log(`USDC approval confirmed: ${approveHash}`);
+
+    // Purchase and settle liquidation
+    const hash = await wallet.writeContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'purchaseAndSettleLiquidation',
+      args: [BigInt(positionId), BigInt(purchaseAmountUSDC)],
+    });
+
+    this.logger.log(`Purchase and settlement transaction submitted: ${hash}`);
+
+    const receipt = await this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 300_000,
+    });
+
+    this.logger.log(
+      `Private asset liquidation settled at block ${receipt.blockNumber}`,
+    );
+
+    // Parse event to get liquidation fee and user refund
+    const logs = await this.publicClient.getLogs({
+      address: vaultAddress as Address,
+      event: {
+        type: 'event',
+        name: 'PrivateAssetLiquidationSettled',
+        inputs: [
+          { name: 'positionId', type: 'uint256', indexed: true },
+          { name: 'purchaser', type: 'address', indexed: true },
+          { name: 'purchaseAmount', type: 'uint256', indexed: false },
+          { name: 'tokensTransferred', type: 'uint256', indexed: false },
+          { name: 'debtRepaid', type: 'uint256', indexed: false },
+          { name: 'liquidationFee', type: 'uint256', indexed: false },
+          { name: 'userRefund', type: 'uint256', indexed: false },
+        ],
+      },
+      fromBlock: receipt.blockNumber,
+      toBlock: receipt.blockNumber,
+    });
+
+    let liquidationFee = '0';
+    let userRefund = '0';
+
+    if (logs.length > 0 && logs[0] && logs[0].args) {
+      const args = logs[0].args as any;
+      liquidationFee = args.liquidationFee.toString();
+      userRefund = args.userRefund.toString();
+    }
+
+    return {
+      txHash: hash,
+      blockNumber: Number(receipt.blockNumber),
+      liquidationFee,
+      userRefund,
+    };
+  }
 }

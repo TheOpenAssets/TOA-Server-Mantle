@@ -32,6 +32,7 @@ export declare namespace SolvencyVault {
     tokenValueUSD: BigNumberish;
     createdAt: BigNumberish;
     liquidatedAt: BigNumberish;
+    creditLineId: BigNumberish;
     active: boolean;
     tokenType: BigNumberish;
   };
@@ -44,6 +45,7 @@ export declare namespace SolvencyVault {
     tokenValueUSD: bigint,
     createdAt: bigint,
     liquidatedAt: bigint,
+    creditLineId: bigint,
     active: boolean,
     tokenType: bigint
   ] & {
@@ -54,6 +56,7 @@ export declare namespace SolvencyVault {
     tokenValueUSD: bigint;
     createdAt: bigint;
     liquidatedAt: bigint;
+    creditLineId: bigint;
     active: boolean;
     tokenType: bigint;
   };
@@ -79,6 +82,7 @@ export interface SolvencyVaultInterface extends Interface {
       | "positions"
       | "positionsInLiquidation"
       | "primaryMarket"
+      | "purchaseAndSettleLiquidation"
       | "renounceOwnership"
       | "repayLoan"
       | "seniorPool"
@@ -95,12 +99,14 @@ export interface SolvencyVaultInterface extends Interface {
   getEvent(
     nameOrSignatureOrTopic:
       | "CollateralWithdrawn"
+      | "CreditLineRevoked"
       | "LiquidationSettled"
       | "LoanRepaid"
       | "OAIDCreditIssued"
       | "OwnershipTransferred"
       | "PositionCreated"
       | "PositionLiquidated"
+      | "PrivateAssetLiquidationSettled"
       | "USDCBorrowed"
   ): EventFragment;
 
@@ -162,6 +168,10 @@ export interface SolvencyVaultInterface extends Interface {
   encodeFunctionData(
     functionFragment: "primaryMarket",
     values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "purchaseAndSettleLiquidation",
+    values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "renounceOwnership",
@@ -259,6 +269,10 @@ export interface SolvencyVaultInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
+    functionFragment: "purchaseAndSettleLiquidation",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "renounceOwnership",
     data: BytesLike
   ): Result;
@@ -300,6 +314,28 @@ export namespace CollateralWithdrawnEvent {
     positionId: bigint;
     user: string;
     amount: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace CreditLineRevokedEvent {
+  export type InputTuple = [
+    positionId: BigNumberish,
+    creditLineId: BigNumberish,
+    reason: string
+  ];
+  export type OutputTuple = [
+    positionId: bigint,
+    creditLineId: bigint,
+    reason: string
+  ];
+  export interface OutputObject {
+    positionId: bigint;
+    creditLineId: bigint;
+    reason: string;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -445,6 +481,40 @@ export namespace PositionLiquidatedEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
+export namespace PrivateAssetLiquidationSettledEvent {
+  export type InputTuple = [
+    positionId: BigNumberish,
+    purchaser: AddressLike,
+    purchaseAmount: BigNumberish,
+    tokensTransferred: BigNumberish,
+    debtRepaid: BigNumberish,
+    liquidationFee: BigNumberish,
+    userRefund: BigNumberish
+  ];
+  export type OutputTuple = [
+    positionId: bigint,
+    purchaser: string,
+    purchaseAmount: bigint,
+    tokensTransferred: bigint,
+    debtRepaid: bigint,
+    liquidationFee: bigint,
+    userRefund: bigint
+  ];
+  export interface OutputObject {
+    positionId: bigint;
+    purchaser: string;
+    purchaseAmount: bigint;
+    tokensTransferred: bigint;
+    debtRepaid: bigint;
+    liquidationFee: bigint;
+    userRefund: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
 export namespace USDCBorrowedEvent {
   export type InputTuple = [
     positionId: BigNumberish,
@@ -579,6 +649,7 @@ export interface SolvencyVault extends BaseContract {
         bigint,
         bigint,
         bigint,
+        bigint,
         boolean,
         bigint
       ] & {
@@ -589,6 +660,7 @@ export interface SolvencyVault extends BaseContract {
         tokenValueUSD: bigint;
         createdAt: bigint;
         liquidatedAt: bigint;
+        creditLineId: bigint;
         active: boolean;
         tokenType: bigint;
       }
@@ -603,6 +675,12 @@ export interface SolvencyVault extends BaseContract {
   >;
 
   primaryMarket: TypedContractMethod<[], [string], "view">;
+
+  purchaseAndSettleLiquidation: TypedContractMethod<
+    [positionId: BigNumberish, purchaseAmount: BigNumberish],
+    [[bigint, bigint] & { liquidationFee: bigint; userRefund: bigint }],
+    "nonpayable"
+  >;
 
   renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
 
@@ -733,6 +811,7 @@ export interface SolvencyVault extends BaseContract {
         bigint,
         bigint,
         bigint,
+        bigint,
         boolean,
         bigint
       ] & {
@@ -743,6 +822,7 @@ export interface SolvencyVault extends BaseContract {
         tokenValueUSD: bigint;
         createdAt: bigint;
         liquidatedAt: bigint;
+        creditLineId: bigint;
         active: boolean;
         tokenType: bigint;
       }
@@ -755,6 +835,13 @@ export interface SolvencyVault extends BaseContract {
   getFunction(
     nameOrSignature: "primaryMarket"
   ): TypedContractMethod<[], [string], "view">;
+  getFunction(
+    nameOrSignature: "purchaseAndSettleLiquidation"
+  ): TypedContractMethod<
+    [positionId: BigNumberish, purchaseAmount: BigNumberish],
+    [[bigint, bigint] & { liquidationFee: bigint; userRefund: bigint }],
+    "nonpayable"
+  >;
   getFunction(
     nameOrSignature: "renounceOwnership"
   ): TypedContractMethod<[], [void], "nonpayable">;
@@ -815,6 +902,13 @@ export interface SolvencyVault extends BaseContract {
     CollateralWithdrawnEvent.OutputObject
   >;
   getEvent(
+    key: "CreditLineRevoked"
+  ): TypedContractEvent<
+    CreditLineRevokedEvent.InputTuple,
+    CreditLineRevokedEvent.OutputTuple,
+    CreditLineRevokedEvent.OutputObject
+  >;
+  getEvent(
     key: "LiquidationSettled"
   ): TypedContractEvent<
     LiquidationSettledEvent.InputTuple,
@@ -857,6 +951,13 @@ export interface SolvencyVault extends BaseContract {
     PositionLiquidatedEvent.OutputObject
   >;
   getEvent(
+    key: "PrivateAssetLiquidationSettled"
+  ): TypedContractEvent<
+    PrivateAssetLiquidationSettledEvent.InputTuple,
+    PrivateAssetLiquidationSettledEvent.OutputTuple,
+    PrivateAssetLiquidationSettledEvent.OutputObject
+  >;
+  getEvent(
     key: "USDCBorrowed"
   ): TypedContractEvent<
     USDCBorrowedEvent.InputTuple,
@@ -874,6 +975,17 @@ export interface SolvencyVault extends BaseContract {
       CollateralWithdrawnEvent.InputTuple,
       CollateralWithdrawnEvent.OutputTuple,
       CollateralWithdrawnEvent.OutputObject
+    >;
+
+    "CreditLineRevoked(uint256,uint256,string)": TypedContractEvent<
+      CreditLineRevokedEvent.InputTuple,
+      CreditLineRevokedEvent.OutputTuple,
+      CreditLineRevokedEvent.OutputObject
+    >;
+    CreditLineRevoked: TypedContractEvent<
+      CreditLineRevokedEvent.InputTuple,
+      CreditLineRevokedEvent.OutputTuple,
+      CreditLineRevokedEvent.OutputObject
     >;
 
     "LiquidationSettled(uint256,uint256,uint256,uint256,uint256)": TypedContractEvent<
@@ -940,6 +1052,17 @@ export interface SolvencyVault extends BaseContract {
       PositionLiquidatedEvent.InputTuple,
       PositionLiquidatedEvent.OutputTuple,
       PositionLiquidatedEvent.OutputObject
+    >;
+
+    "PrivateAssetLiquidationSettled(uint256,address,uint256,uint256,uint256,uint256,uint256)": TypedContractEvent<
+      PrivateAssetLiquidationSettledEvent.InputTuple,
+      PrivateAssetLiquidationSettledEvent.OutputTuple,
+      PrivateAssetLiquidationSettledEvent.OutputObject
+    >;
+    PrivateAssetLiquidationSettled: TypedContractEvent<
+      PrivateAssetLiquidationSettledEvent.InputTuple,
+      PrivateAssetLiquidationSettledEvent.OutputTuple,
+      PrivateAssetLiquidationSettledEvent.OutputObject
     >;
 
     "USDCBorrowed(uint256,uint256,uint256)": TypedContractEvent<

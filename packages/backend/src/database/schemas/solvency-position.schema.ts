@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { Settlement } from './settlement.schema';
 
 export type SolvencyPositionDocument = SolvencyPosition & Document;
 
@@ -19,6 +20,7 @@ export enum PositionStatus {
   LIQUIDATED = 'LIQUIDATED', // Liquidation executed
   REPAID = 'REPAID',         // Loan fully repaid
   CLOSED = 'CLOSED',         // Position closed, collateral withdrawn
+  SETTLED = 'SETTLED',     // Liquidation settled and finalized
 }
 
 @Schema({ timestamps: true })
@@ -105,6 +107,7 @@ export class SolvencyPosition {
   // Timestamps added by Mongoose
   createdAt?: Date;
   updatedAt?: Date;
+  settledAt?: Date;
 }
 
 export const SolvencyPositionSchema = SchemaFactory.createForClass(SolvencyPosition);

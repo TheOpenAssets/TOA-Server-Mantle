@@ -294,6 +294,110 @@ async function main() {
       break;
     }
 
+    case "OAID": {
+      console.log("Deploying OAID...");
+      const OAID = await ethers.getContractFactory("OAID");
+      const oaid = await OAID.deploy();
+      await oaid.waitForDeployment();
+      contractAddress = await oaid.getAddress();
+      console.log(`✅ OAID deployed to: ${contractAddress}`);
+      break;
+    }
+
+    case "SolvencyVault": {
+      if (!usdcAddress) throw new Error("USDC not available");
+      const seniorPoolAddr = deployedData.contracts.SeniorPool;
+      if (!seniorPoolAddr) throw new Error("SeniorPool not deployed");
+
+      console.log("Deploying SolvencyVault...");
+      const SolvencyVault = await ethers.getContractFactory("SolvencyVault");
+      const solvencyVault = await SolvencyVault.deploy(
+        usdcAddress,
+        seniorPoolAddr
+      );
+      await solvencyVault.waitForDeployment();
+      contractAddress = await solvencyVault.getAddress();
+      console.log(`✅ SolvencyVault deployed to: ${contractAddress}`);
+
+      // Post-deployment configuration
+      console.log("\n🔧 Configuring SolvencyVault...\n");
+
+      // 1. Link to SeniorPool
+      try {
+        console.log("🔗 Linking SeniorPool to SolvencyVault...");
+        const seniorPool = await ethers.getContractAt("SeniorPool", seniorPoolAddr);
+        const currentVault = await seniorPool.solvencyVault();
+        if (currentVault === ethers.ZeroAddress) {
+          await seniorPool.setSolvencyVault(contractAddress);
+          console.log("✅ SeniorPool linked");
+        } else if (currentVault !== contractAddress) {
+          console.warn(`⚠️  SeniorPool already linked to ${currentVault}`);
+        } else {
+          console.log("✅ SeniorPool already linked");
+        }
+      } catch (e: any) {
+        console.error("⚠️ Failed to link SeniorPool:", e.message);
+      }
+
+      // 2. Set YieldVault
+      const yieldVaultAddr = deployedData.contracts.YieldVault;
+      if (yieldVaultAddr) {
+        try {
+          console.log(`🔗 Setting YieldVault: ${yieldVaultAddr}`);
+          await solvencyVault.setYieldVault(yieldVaultAddr);
+          console.log("✅ YieldVault set");
+        } catch (e: any) {
+          console.error("⚠️ Failed to set YieldVault:", e.message);
+        }
+      } else {
+        console.warn("⚠️ YieldVault not found in deployed contracts");
+      }
+
+      // 3. Set PrimaryMarket
+      const primaryMarketAddr = deployedData.contracts.PrimaryMarketplace;
+      if (primaryMarketAddr) {
+        try {
+          console.log(`🔗 Setting PrimaryMarket: ${primaryMarketAddr}`);
+          await solvencyVault.setPrimaryMarket(primaryMarketAddr);
+          console.log("✅ PrimaryMarket set");
+        } catch (e: any) {
+          console.error("⚠️ Failed to set PrimaryMarket:", e.message);
+        }
+      } else {
+        console.warn("⚠️ PrimaryMarketplace not found in deployed contracts");
+      }
+
+      // 4. Set OAID
+      const oaidAddr = deployedData.contracts.OAID;
+      if (oaidAddr) {
+        try {
+          console.log(`🔗 Setting OAID: ${oaidAddr}`);
+          await solvencyVault.setOAID(oaidAddr);
+          console.log("✅ OAID set in SolvencyVault");
+
+          // Link SolvencyVault in OAID
+          console.log(`🔗 Linking SolvencyVault in OAID...`);
+          const oaid = await ethers.getContractAt("OAID", oaidAddr);
+          const currentSolvencyVault = await oaid.solvencyVault();
+          if (currentSolvencyVault === ethers.ZeroAddress) {
+            await oaid.setSolvencyVault(contractAddress);
+            console.log("✅ SolvencyVault linked in OAID");
+          } else if (currentSolvencyVault !== contractAddress) {
+            console.warn(`⚠️  OAID already linked to ${currentSolvencyVault}`);
+          } else {
+            console.log("✅ OAID already linked");
+          }
+        } catch (e: any) {
+          console.error("⚠️ Failed to link OAID:", e.message);
+        }
+      } else {
+        console.warn("⚠️ OAID not found (deploy OAID first if needed)");
+      }
+
+      console.log("\n✅ SolvencyVault configuration complete!\n");
+      break;
+    }
+
     case "LeverageVault": {
       const mockMETHAddr = deployedData.contracts.MockMETH;
       const seniorPoolAddr = deployedData.contracts.SeniorPool;
@@ -313,21 +417,53 @@ async function main() {
       contractAddress = await leverageVault.getAddress();
       console.log(`✅ LeverageVault deployed to: ${contractAddress}`);
 
-      // 1. Set PrimaryMarket
+      // Post-deployment configuration
+      console.log("\n🔧 Configuring LeverageVault...\n");
+
+      // 1. Set YieldVault (auto-link like link-yield-vault.js)
+      const yieldVaultAddr = deployedData.contracts.YieldVault;
+      if (yieldVaultAddr) {
+        try {
+          console.log(`🔗 Linking YieldVault: ${yieldVaultAddr}`);
+          const currentYieldVault = await leverageVault.yieldVault();
+          if (currentYieldVault === ethers.ZeroAddress) {
+            await leverageVault.setYieldVault(yieldVaultAddr);
+            console.log("✅ YieldVault linked");
+            
+            // Verify link
+            const newYieldVault = await leverageVault.yieldVault();
+            if (newYieldVault.toLowerCase() === yieldVaultAddr.toLowerCase()) {
+              console.log("✅ YieldVault link verified!");
+            } else {
+              console.warn("⚠️  YieldVault link verification failed");
+            }
+          } else if (currentYieldVault.toLowerCase() === yieldVaultAddr.toLowerCase()) {
+            console.log("✅ YieldVault already linked correctly");
+          } else {
+            console.warn(`⚠️  LeverageVault linked to different YieldVault: ${currentYieldVault}`);
+          }
+        } catch (e: any) {
+          console.error("⚠️ Failed to link YieldVault:", e.message);
+        }
+      } else {
+        console.warn("⚠️ YieldVault not found (deploy YieldVault first)");
+      }
+
+      // 2. Set PrimaryMarket
       const primaryMarketAddr = deployedData.contracts.PrimaryMarketplace;
       if (primaryMarketAddr) {
         try {
             console.log(`🔗 Setting PrimaryMarket: ${primaryMarketAddr}`);
             await leverageVault.setPrimaryMarket(primaryMarketAddr);
             console.log("✅ PrimaryMarket set");
-        } catch (e) {
+        } catch (e: any) {
             console.error("⚠️ Failed to set PrimaryMarket:", e.message);
         }
       } else {
           console.warn("⚠️ PrimaryMarketplace not found in deployed contracts");
       }
 
-      // 2. Link to SeniorPool
+      // 3. Link to SeniorPool
       try {
         const seniorPool = await ethers.getContractAt("SeniorPool", seniorPoolAddr);
         const currentVault = await seniorPool.leverageVault();
@@ -340,11 +476,11 @@ async function main() {
         } else {
             console.log("✅ SeniorPool already linked");
         }
-      } catch (e) {
+      } catch (e: any) {
           console.error("⚠️ Failed to link SeniorPool:", e.message);
       }
 
-      // 3. Register in IdentityRegistry
+      // 4. Register in IdentityRegistry
       const identityRegistryAddr = deployedData.contracts.IdentityRegistry;
       if (identityRegistryAddr) {
           try {
@@ -356,12 +492,14 @@ async function main() {
             } else {
                 console.log("✅ LeverageVault already registered");
             }
-          } catch (e) {
+          } catch (e: any) {
               console.error("⚠️ Failed to register identity:", e.message);
           }
       } else {
           console.warn("⚠️ IdentityRegistry not found in deployed contracts");
       }
+
+      console.log("\n✅ LeverageVault configuration complete!\n");
       break;
     }
 
