@@ -104,7 +104,12 @@ export class SolvencyController {
     );
 
     // Update database
-    const updatedPosition = await this.positionService.recordBorrow(positionId, dto.amount);
+    const updatedPosition = await this.positionService.recordBorrow(
+      positionId, 
+      dto.amount,
+      dto.loanDuration,
+      dto.numberOfInstallments
+    );
 
     // Update private asset debt tracking if applicable
     if (updatedPosition.collateralTokenType === 'PRIVATE_ASSET') {
@@ -324,7 +329,10 @@ export class SolvencyController {
     return {
       success: true,
       positionId,
-      schedule,
+      schedule: {
+        ...schedule,
+        details: position.repaymentSchedule, // Include the detailed array with times
+      },
       outstandingDebt,
     };
   }

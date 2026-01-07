@@ -150,6 +150,7 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         uint256 installmentsPaid;      // Counter
         uint256 missedPayments;        // Counter for missed/late payments
         bool isActive;                 // If plan is active
+        bool defaulted;                // Marked as defaulted by admin
     }
 
     mapping(uint256 => RepaymentPlan) public repaymentPlans;
@@ -181,6 +182,20 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         uint256 principal,
         uint256 interest,
         uint256 remainingDebt
+    );
+    event MissedPaymentMarked(
+        uint256 indexed positionId,
+        uint256 missedPayments
+    );
+    event PositionDefaulted(
+        uint256 indexed positionId
+    );
+    event MissedPaymentMarked(
+        uint256 indexed positionId,
+        uint256 missedPayments
+    );
+    event PositionDefaulted(
+        uint256 indexed positionId
     );
     event CollateralWithdrawn(
         uint256 indexed positionId,
@@ -371,7 +386,8 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
             nextPaymentDue: block.timestamp + installmentInterval,
             installmentsPaid: 0,
             missedPayments: 0,
-            isActive: true
+            isActive: true,
+            defaulted: false
         });
 
         // Borrow from SeniorPool
@@ -431,25 +447,10 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         
         // Update Repayment Plan
         RepaymentPlan storage plan = repaymentPlans[positionId];
-        bool onTime = true;
-        uint256 daysLate = 0;
 
         if (plan.isActive) {
-            // Check if payment is late
-            if (block.timestamp > plan.nextPaymentDue) {
-                onTime = false;
-                uint256 secondsLate = block.timestamp - plan.nextPaymentDue;
-                daysLate = (secondsLate / 1 days) + 1;
-                plan.missedPayments++;
-            }
-
             // Increment installments paid
             plan.installmentsPaid++;
-
-            // Advance next due date
-            // If already overdue, should we advance from now or from expected?
-            // Usually from expected to keep schedule.
-            plan.nextPaymentDue += plan.installmentInterval;
 
             // If fully repaid (based on debt, not installments count, as installments are estimated)
             if (remainingDebt == 0) {
@@ -467,8 +468,8 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
             IOAID(oaid).recordPayment(
                 position.creditLineId,
                 amount,
-                onTime,
-                daysLate
+                true, // Always mark as on-time here; missed payments are marked by admin
+                0
             );
         }
 
@@ -512,7 +513,49 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Mark position for liquidation (health < 115% OR missed payments >= 3)
+     * @notice Mark a missed payment (Admin only)
+     * @param positionId Position ID
+     */
+    function markMissedPayment(uint256 positionId) external onlyOwner {
+        Position storage position = positions[positionId];
+        require(position.active, "Position not active");
+        
+        RepaymentPlan storage plan = repaymentPlans[positionId];
+        require(plan.isActive, "Plan not active");
+
+        plan.missedPayments++;
+
+        // Record missed payment in OAID (0 amount, onTime=false)
+        if (oaid != address(0) && position.creditLineId > 0) {
+            IOAID(oaid).recordPayment(
+                position.creditLineId,
+                0,      // amount
+                false,  // onTime (false = missed/late)
+                1       // daysLate (placeholder)
+            );
+        }
+
+        emit MissedPaymentMarked(positionId, plan.missedPayments);
+    }
+
+    /**
+     * @notice Mark position as defaulted (Admin only)
+     * @param positionId Position ID
+     */
+    function markDefaulted(uint256 positionId) external onlyOwner {
+        Position storage position = positions[positionId];
+        require(position.active, "Position not active");
+        
+        RepaymentPlan storage plan = repaymentPlans[positionId];
+        require(plan.isActive, "Plan not active");
+
+        plan.defaulted = true;
+
+        emit PositionDefaulted(positionId);
+    }
+
+    /**
+     * @notice Mark position for liquidation (health < 115% OR marked defaulted)
      * @param positionId Position ID
      * @dev Two flows:
      *      - RWA tokens: Mark for liquidation, wait for invoice settlement
@@ -530,12 +573,9 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         uint256 healthFactor = getHealthFactor(positionId);
         bool healthLiquidatable = healthFactor < LIQUIDATION_THRESHOLD;
 
-        // 2. Repayment Default Check (>= 3 missed payments)
-        bool defaultLiquidatable = false;
+        // 2. Repayment Default Check (marked by admin)
         RepaymentPlan storage plan = repaymentPlans[positionId];
-        if (plan.isActive && plan.missedPayments >= 3) {
-            defaultLiquidatable = true;
-        }
+        bool defaultLiquidatable = plan.isActive && plan.defaulted;
 
         require(healthLiquidatable || defaultLiquidatable, "Position is healthy and not defaulted");
 

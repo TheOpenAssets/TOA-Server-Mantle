@@ -407,6 +407,76 @@ export class SolvencyBlockchainService {
   }
 
   /**
+   * Settle liquidation by burning RWA tokens (Admin only)
+   */
+  async settleLiquidation(positionId: number): Promise<{
+    yieldReceived: string;
+    debtRepaid: string;
+    liquidationFee: string;
+    userRefund: string;
+    txHash: string;
+  }> {
+    const wallet = this.walletService.getAdminWallet();
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+    const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
+
+    this.logger.log(`Settling liquidation for position ${positionId}`);
+
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'settleLiquidation',
+      args: [BigInt(positionId)],
+    }));
+
+    const receipt = await this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 180_000,
+    });
+
+    this.logger.log(`Liquidation settled: ${hash}`);
+
+    // Parse LiquidationSettled event
+    const logs = await this.publicClient.getLogs({
+      address: vaultAddress as Address,
+      event: {
+        type: 'event',
+        name: 'LiquidationSettled',
+        inputs: [
+          { name: 'positionId', type: 'uint256', indexed: true },
+          { name: 'yieldReceived', type: 'uint256', indexed: false },
+          { name: 'debtRepaid', type: 'uint256', indexed: false },
+          { name: 'liquidationFee', type: 'uint256', indexed: false },
+          { name: 'userRefund', type: 'uint256', indexed: false },
+        ],
+      },
+      fromBlock: receipt.blockNumber,
+      toBlock: receipt.blockNumber,
+    });
+
+    let yieldReceived = '0';
+    let debtRepaid = '0';
+    let liquidationFee = '0';
+    let userRefund = '0';
+
+    if (logs.length > 0 && logs[0] && logs[0].args) {
+      const args = logs[0].args as any;
+      yieldReceived = args.yieldReceived.toString();
+      debtRepaid = args.debtRepaid.toString();
+      liquidationFee = args.liquidationFee.toString();
+      userRefund = args.userRefund.toString();
+    }
+
+    return {
+      yieldReceived,
+      debtRepaid,
+      liquidationFee,
+      userRefund,
+      txHash: hash,
+    };
+  }
+
+  /**
    * Get health factor for position
    */
   async getHealthFactor(positionId: number): Promise<number> {
@@ -774,5 +844,49 @@ export class SolvencyBlockchainService {
       liquidationFee,
       userRefund,
     };
+  }
+
+  /**
+   * Mark a missed payment (Admin only)
+   */
+  async markMissedPayment(positionId: number): Promise<string> {
+    const wallet = this.walletService.getAdminWallet();
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+    const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
+
+    this.logger.log(`Marking missed payment for position ${positionId}`);
+
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'markMissedPayment',
+      args: [BigInt(positionId)],
+    }));
+
+    await this.publicClient.waitForTransactionReceipt({ hash });
+    this.logger.log(`Missed payment marked: ${hash}`);
+    return hash;
+  }
+
+  /**
+   * Mark position as defaulted (Admin only)
+   */
+  async markDefaulted(positionId: number): Promise<string> {
+    const wallet = this.walletService.getAdminWallet();
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+    const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
+
+    this.logger.log(`Marking position ${positionId} as defaulted`);
+
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'markDefaulted',
+      args: [BigInt(positionId)],
+    }));
+
+    await this.publicClient.waitForTransactionReceipt({ hash });
+    this.logger.log(`Position defaulted: ${hash}`);
+    return hash;
   }
 }
