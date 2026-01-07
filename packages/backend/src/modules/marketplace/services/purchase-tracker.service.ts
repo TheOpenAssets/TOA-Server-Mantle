@@ -509,16 +509,16 @@ export class PurchaseTrackerService {
         const harvestHistory = (position.harvestHistory || []).map((harvest: any) => ({
           timestamp: harvest.timestamp,
           mETHSwapped: harvest.mETHSwapped,
-          mETHSwappedFormatted: `${(Number(harvest.mETHSwapped) / 1e18).toFixed(6)} mETH`,
+          mETHSwappedFormatted: `${(Number(harvest.mETHSwapped) / 1e18)} mETH`,
           usdcReceived: harvest.usdcReceived,
-          usdcReceivedFormatted: `${(Number(harvest.usdcReceived) / 1e6).toFixed(4)} USDC`,
+          usdcReceivedFormatted: `${(Number(harvest.usdcReceived) / 1e6)} USDC`,
           interestPaid: harvest.interestPaid,
-          interestPaidFormatted: `${(Number(harvest.interestPaid) / 1e6).toFixed(4)} USDC`,
+          interestPaidFormatted: `${(Number(harvest.interestPaid) / 1e6)} USDC`,
           transactionHash: harvest.transactionHash,
           healthFactorBefore: harvest.healthFactorBefore,
-          healthFactorBeforeFormatted: `${(harvest.healthFactorBefore / 100).toFixed(2)}%`,
+          healthFactorBeforeFormatted: `${(harvest.healthFactorBefore / 100)}%`,
           healthFactorAfter: harvest.healthFactorAfter,
-          healthFactorAfterFormatted: `${(harvest.healthFactorAfter / 100).toFixed(2)}%`,
+          healthFactorAfterFormatted: `${(harvest.healthFactorAfter / 100)}%`,
         }));
 
         if (isActive) {
@@ -526,7 +526,7 @@ export class PurchaseTrackerService {
             ...baseItem,
             mETHCollateral: position.mETHCollateral,
             usdcBorrowed: position.usdcBorrowed,
-            healthFactor: position.currentHealthFactor,
+            healthFactor: position.currentHealthFactor /100,
             healthStatus: position.healthStatus,
             totalInterestPaid: position.totalInterestPaid,
             lastHarvestTime: position.lastHarvestTime,
@@ -535,7 +535,7 @@ export class PurchaseTrackerService {
               type: 'ACTIVE',
               mETHCollateralFormatted: `${(Number(position.mETHCollateral) / 1e18).toFixed(4)} mETH`,
               usdcBorrowedFormatted: `${(Number(position.usdcBorrowed) / 1e6).toFixed(2)} USDC`,
-              healthFactorFormatted: `${(position.currentHealthFactor / 100).toFixed(2)}%`,
+              healthFactorFormatted: `${(position.currentHealthFactor / 10000).toFixed(2)}%`,
               healthStatus: position.healthStatus,
               totalInterestPaidFormatted: `${(Number(position.totalInterestPaid) / 1e6).toFixed(2)} USDC`,
               claimableYield: '0', // Active positions haven't settled yet
