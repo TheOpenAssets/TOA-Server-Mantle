@@ -98,6 +98,18 @@ export class LeveragePositionService {
   }
 
   /**
+   * Get positions that need settlement (both ACTIVE and LIQUIDATED)
+   * Used during yield distribution to settle all outstanding positions
+   */
+  async getSettlementPendingPositions(): Promise<LeveragePosition[]> {
+    return this.leveragePositionModel
+      .find({ 
+        status: { $in: [PositionStatus.ACTIVE, PositionStatus.LIQUIDATED] }
+      })
+      .exec();
+  }
+
+  /**
    * Get liquidatable positions (health factor < 110%)
    */
   async getLiquidatablePositions(): Promise<LeveragePosition[]> {

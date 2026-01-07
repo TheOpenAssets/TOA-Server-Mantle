@@ -9,6 +9,7 @@ import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { Payout, PayoutDocument } from '../../../database/schemas/payout.schema';
 import { User, UserDocument, UserRole } from '../../../database/schemas/user.schema';
+import { LeveragePosition, LeveragePositionDocument } from '../../../database/schemas/leverage-position.schema';
 import { CreateAssetDto } from '../dto/create-asset.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { ethers } from 'ethers';
@@ -31,6 +32,7 @@ export class AssetLifecycleService {
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     @InjectModel(Payout.name) private payoutModel: Model<PayoutDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(LeveragePosition.name) private leveragePositionModel: Model<LeveragePositionDocument>,
     @InjectQueue('asset-processing') private assetQueue: Queue,
     @InjectQueue('auction-status-check') private auctionStatusQueue: Queue,
     private attestationService: AttestationService,
@@ -869,6 +871,7 @@ export class AssetLifecycleService {
     let totalUsdcRaised = BigInt(0);
     let settledBids: any[] = [];
     let confirmedPurchases: any[] = [];
+    let leveragePositions: any[] = [];
 
     // Handle based on listing type
     if (asset.listing?.type === 'STATIC') {
@@ -899,8 +902,54 @@ export class AssetLifecycleService {
       throw new Error(`Unknown or missing listing type: ${asset.listing?.type}`);
     }
 
+    // ========================================================================
+    // CHECK FOR LEVERAGE POSITIONS
+    // ========================================================================
+    this.logger.log(`\n🔍 Checking for leverage positions holding this asset...`);
+    
+    if (asset.token?.address) {
+      const tokenAddressLower = asset.token.address.toLowerCase();
+      this.logger.log(`   Asset token address: ${asset.token.address}`);
+      this.logger.log(`   Searching for positions with assetId: ${assetId}`);
+      this.logger.log(`   Searching for positions with rwaTokenAddress: ${tokenAddressLower}`);
+      
+      // Use case-insensitive regex for token address matching
+      leveragePositions = await this.leveragePositionModel.find({
+        assetId,
+        rwaTokenAddress: { $regex: new RegExp(`^${tokenAddressLower}$`, 'i') },
+        status: { $in: ['ACTIVE', 'LIQUIDATED'] }, // Include both active and liquidated positions
+      });
+
+      this.logger.log(`   Query returned ${leveragePositions.length} positions`);
+
+      if (leveragePositions.length > 0) {
+        this.logger.log(`📊 Found ${leveragePositions.length} leverage position(s)`);
+        
+        for (const position of leveragePositions) {
+          const usdcBorrowed = BigInt(position.usdcBorrowed);
+          totalUsdcRaised += usdcBorrowed;
+          this.logger.log(
+            `   Position ${position.positionId}: ${Number(usdcBorrowed) / 1e6} USDC borrowed (${position.status})`
+          );
+        }
+      } else {
+        this.logger.log(`✅ No leverage positions found for this asset`);
+        
+        // Debug: Check if any positions exist for this assetId at all
+        const anyPositions = await this.leveragePositionModel.find({ assetId });
+        this.logger.log(`   Debug: Total positions with assetId ${assetId}: ${anyPositions.length}`);
+        if (anyPositions.length > 0) {
+          anyPositions.forEach(pos => {
+            this.logger.log(`      - Position ${pos.positionId}: status=${pos.status}, rwaTokenAddress=${pos.rwaTokenAddress}`);
+          });
+        }
+      }
+    } else {
+      this.logger.log(`   ⚠️ Asset has no token address`);
+    }
+
     if (totalUsdcRaised === BigInt(0)) {
-      throw new Error('No USDC raised yet - no confirmed purchases or settled bids');
+      throw new Error('No USDC raised yet - no confirmed purchases, settled bids, or leverage positions');
     }
 
     this.logger.log(`Total USDC to payout: ${totalUsdcRaised.toString()} (${Number(totalUsdcRaised) / 1e6} USDC)`);

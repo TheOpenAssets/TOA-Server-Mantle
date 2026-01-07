@@ -103,7 +103,7 @@ export class HealthMonitorService implements OnModuleInit {
     // Handle based on health status
     if (healthFactor < 11500) {
       // < 115%: Liquidatable
-      await this.handleLiquidation(position, healthFactor);
+      await this.handleLiquidation(positionId);
     } else if (healthFactor < 12500) {
       // 115-125%: Critical
       await this.handleCriticalHealth(positionId, healthFactor);

@@ -173,7 +173,6 @@ else
         fi
     else
         print_error "Token deployment failed: $ERROR"
-        exit 1
     fi
 fi
 

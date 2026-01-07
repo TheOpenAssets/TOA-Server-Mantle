@@ -194,8 +194,8 @@ export class YieldDistributionService {
     let leveragePositionsSettled = 0;
 
     try {
-      // Find all active leverage positions holding this asset's tokens
-      const leveragePositions = await this.leveragePositionService.getActivePositions();
+      // Find all leverage positions needing settlement (ACTIVE and LIQUIDATED)
+      const leveragePositions = await this.leveragePositionService.getSettlementPendingPositions();
       const relevantPositions = leveragePositions.filter(
         pos => pos.rwaTokenAddress.toLowerCase() === tokenAddress.toLowerCase()
       );

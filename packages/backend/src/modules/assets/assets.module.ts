@@ -10,6 +10,7 @@ import { Bid, BidSchema } from '../../database/schemas/bid.schema';
 import { Purchase, PurchaseSchema } from '../../database/schemas/purchase.schema';
 import { Payout, PayoutSchema } from '../../database/schemas/payout.schema';
 import { User, UserSchema } from '../../database/schemas/user.schema';
+import { LeveragePosition, LeveragePositionSchema } from '../../database/schemas/leverage-position.schema';
 import { AuthModule } from '../auth/auth.module'; // For JwtAuthGuard
 import { ComplianceEngineModule } from '../compliance-engine/compliance-engine.module';
 import { AnnouncementsModule } from '../announcements/announcements.module';
@@ -23,6 +24,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       { name: Purchase.name, schema: PurchaseSchema },
       { name: Payout.name, schema: PayoutSchema },
       { name: User.name, schema: UserSchema },
+      { name: LeveragePosition.name, schema: LeveragePositionSchema },
     ]),
     BullModule.registerQueue({
       name: 'asset-processing',

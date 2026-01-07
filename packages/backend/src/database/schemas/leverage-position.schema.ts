@@ -1,6 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
+export type LeveragePositionDocument = LeveragePosition & Document;
+
 export enum PositionStatus {
   ACTIVE = 'ACTIVE',
   LIQUIDATED = 'LIQUIDATED',
