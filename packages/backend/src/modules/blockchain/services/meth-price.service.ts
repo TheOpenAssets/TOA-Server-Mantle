@@ -26,6 +26,7 @@ export class MethPriceService implements OnModuleInit {
   // Current price in USD (6 decimals to match USDC)
   private currentPrice: number = 3000 * 1e6; // Default $3000 per mETH
   private currentDataIndex: number = 0;
+  private testPrice: number | null = null; // Manual override for testing
 
   // Configuration
   private readonly updateIntervalSeconds: number;
@@ -243,8 +244,10 @@ export class MethPriceService implements OnModuleInit {
    * Get current mETH price in USDC (6 decimals)
    * @returns Current price in USDC wei (e.g., 3000000000 = $3000)
    */
-  getCurrentPrice(): number {
-    return this.currentPrice;
+  getCurrentPrice(): number {    // Return test price if set (for testing liquidations)
+    if (this.testPrice !== null) {
+      return this.testPrice;
+    }    return this.currentPrice;
   }
 
   /**
@@ -364,7 +367,7 @@ export class MethPriceService implements OnModuleInit {
     const prices = Array.from(this.priceHistory.values());
 
     if (prices.length === 0) {
-      const current = this.currentPrice / 1e6;
+      const current = this.getCurrentPrice() / 1e6;
       return { current, min: current, max: current, avg: current, changePercent: 0 };
     }
 
@@ -372,7 +375,7 @@ export class MethPriceService implements OnModuleInit {
     const max = Math.max(...prices) / 1e6;
     const avg = prices.reduce((a, b) => a + b, 0) / prices.length / 1e6;
     const first = prices[0]! / 1e6;
-    const current = this.currentPrice / 1e6;
+    const current = this.getCurrentPrice() / 1e6;
     const changePercent = ((current - first) / first) * 100;
 
     return {
@@ -382,5 +385,29 @@ export class MethPriceService implements OnModuleInit {
       avg,
       changePercent,
     };
+  }
+
+  /**
+   * Set test price for manual testing (admin only)
+   * @param priceInUSDC Price in USDC wei (6 decimals)
+   */
+  setTestPrice(priceInUSDC: number): void {
+    this.testPrice = priceInUSDC;
+    this.logger.warn(`⚠️ Test price set to: $${priceInUSDC / 1e6} (${priceInUSDC} USDC)`);
+  }
+
+  /**
+   * Reset to automatic price updates
+   */
+  resetTestPrice(): void {
+    this.testPrice = null;
+    this.logger.log('Test price cleared, resuming automatic updates');
+  }
+
+  /**
+   * Check if using test price
+   */
+  isUsingTestPrice(): boolean {
+    return this.testPrice !== null;
   }
 }

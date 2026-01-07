@@ -114,6 +114,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.ISeniorPool__factory>;
     getContractFactory(
+      name: "IYieldVault",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IYieldVault__factory>;
+    getContractFactory(
       name: "SolvencyVault",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.SolvencyVault__factory>;
@@ -308,6 +312,11 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.ISeniorPool>;
     getContractAt(
+      name: "IYieldVault",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IYieldVault>;
+    getContractAt(
       name: "SolvencyVault",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -494,6 +503,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.ISeniorPool>;
     deployContract(
+      name: "IYieldVault",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IYieldVault>;
+    deployContract(
       name: "SolvencyVault",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.SolvencyVault>;
@@ -687,6 +700,11 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.ISeniorPool>;
+    deployContract(
+      name: "IYieldVault",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IYieldVault>;
     deployContract(
       name: "SolvencyVault",
       args: any[],

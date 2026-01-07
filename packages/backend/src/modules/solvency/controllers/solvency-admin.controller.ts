@@ -8,12 +8,16 @@ import {
   HttpCode,
   HttpStatus,
   Query,
+  Logger,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminRoleGuard } from '../../admin/guards/admin-role.guard';
 import { SolvencyBlockchainService } from '../services/solvency-blockchain.service';
 import { SolvencyPositionService } from '../services/solvency-position.service';
 import { PrivateAssetService } from '../services/private-asset.service';
+import { LeverageBlockchainService } from '../../leverage/services/leverage-blockchain.service';
+import { LeveragePositionService } from '../../leverage/services/leverage-position.service';
+import { MethPriceService } from '../../blockchain/services/meth-price.service';
 import { MintPrivateAssetDto } from '../dto/mint-private-asset.dto';
 import { ApprovePrivateAssetRequestDto } from '../dto/approve-private-asset-request.dto';
 import { RejectPrivateAssetRequestDto } from '../dto/reject-private-asset-request.dto';
@@ -23,10 +27,15 @@ import { ethers } from 'ethers';
 @Controller('admin/solvency')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
 export class SolvencyAdminController {
+  private readonly logger = new Logger(SolvencyAdminController.name);
+
   constructor(
     private blockchainService: SolvencyBlockchainService,
     private positionService: SolvencyPositionService,
     private privateAssetService: PrivateAssetService,
+    private leverageBlockchainService: LeverageBlockchainService,
+    private leveragePositionService: LeveragePositionService,
+    private methPriceService: MethPriceService,
   ) {}
 
   /**
@@ -143,9 +152,65 @@ export class SolvencyAdminController {
    */
   @Post('liquidate/:id')
   @HttpCode(HttpStatus.OK)
-  async liquidatePosition(@Param('id') id: string) {
+  async liquidatePosition(
+    @Param('id') id: string,
+    @Body('testPrice') testPrice?: string,
+  ) {
     const positionId = parseInt(id);
 
+    // If testPrice is provided, assume it is for LEVERAGE position testing
+    if (testPrice) {
+      this.logger.warn(`⚠️ Triggering LEVERAGE liquidation for position ${positionId} with test price: ${testPrice}`);
+      
+      const mETHPrice = ethers.parseEther(testPrice);
+      
+      // Get position details before liquidation
+      const position = await this.leveragePositionService.getPosition(positionId);
+      if (!position) {
+        throw new Error(`Position ${positionId} not found`);
+      }
+
+      this.logger.log(`📊 Position ${positionId} before liquidation:`);
+      this.logger.log(`   mETH Collateral: ${position.mETHCollateral}`);
+      this.logger.log(`   USDC Borrowed: ${position.usdcBorrowed}`);
+      this.logger.log(`   Health Factor: ${(position.currentHealthFactor / 100).toFixed(2)}%`);
+      this.logger.log(`   Status: ${position.status}`);
+      
+      const txHash = await this.leverageBlockchainService.liquidatePosition(
+        positionId,
+        mETHPrice,
+      );
+
+      this.logger.log(`✅ On-chain liquidation completed: ${txHash}`);
+      this.logger.log(`🔄 Updating database...`);
+
+      // Mark position as liquidated in database
+      await this.leveragePositionService.markLiquidated(positionId, {
+        mETHSold: position.mETHCollateral,
+        usdcRecovered: position.usdcBorrowed, // Approximate
+        shortfall: '0', // Will be calculated from events
+        txHash,
+      });
+
+      this.logger.log(`✅ Position ${positionId} marked as LIQUIDATED in database`);
+      this.logger.log(`📊 Liquidation Summary:`);
+      this.logger.log(`   Position ID: ${positionId}`);
+      this.logger.log(`   mETH Sold: ${position.mETHCollateral}`);
+      this.logger.log(`   Test Price Used: ${testPrice} USD`);
+      this.logger.log(`   TX Hash: ${txHash}`);
+
+      return {
+        success: true,
+        type: 'LEVERAGE_TEST',
+        txHash,
+        testPrice,
+        positionId,
+        mETHSold: position.mETHCollateral,
+        message: 'Position liquidated and database updated',
+      };
+    }
+
+    // Standard SolvencyVault Liquidation
     // Generate unique marketplace asset ID for liquidation
     const marketplaceAssetId = ethers.id(
       `liquidation-${positionId}-${Date.now()}`,

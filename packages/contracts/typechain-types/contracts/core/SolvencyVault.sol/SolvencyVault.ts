@@ -31,6 +31,7 @@ export declare namespace SolvencyVault {
     usdcBorrowed: BigNumberish;
     tokenValueUSD: BigNumberish;
     createdAt: BigNumberish;
+    liquidatedAt: BigNumberish;
     active: boolean;
     tokenType: BigNumberish;
   };
@@ -42,6 +43,7 @@ export declare namespace SolvencyVault {
     usdcBorrowed: bigint,
     tokenValueUSD: bigint,
     createdAt: bigint,
+    liquidatedAt: bigint,
     active: boolean,
     tokenType: bigint
   ] & {
@@ -51,6 +53,7 @@ export declare namespace SolvencyVault {
     usdcBorrowed: bigint;
     tokenValueUSD: bigint;
     createdAt: bigint;
+    liquidatedAt: bigint;
     active: boolean;
     tokenType: bigint;
   };
@@ -60,6 +63,7 @@ export interface SolvencyVaultInterface extends Interface {
   getFunction(
     nameOrSignature:
       | "BASIS_POINTS"
+      | "LIQUIDATION_FEE_BPS"
       | "LIQUIDATION_THRESHOLD"
       | "PRIVATE_ASSET_LTV"
       | "RWA_LTV"
@@ -69,26 +73,29 @@ export interface SolvencyVaultInterface extends Interface {
       | "getMaxBorrow"
       | "getPosition"
       | "liquidatePosition"
-      | "liquidationListings"
       | "nextPositionId"
       | "oaid"
       | "owner"
       | "positions"
+      | "positionsInLiquidation"
       | "primaryMarket"
-      | "processLiquidationSettlement"
       | "renounceOwnership"
       | "repayLoan"
       | "seniorPool"
       | "setOAID"
       | "setPrimaryMarket"
+      | "setYieldVault"
+      | "settleLiquidation"
       | "transferOwnership"
       | "usdc"
       | "withdrawCollateral"
+      | "yieldVault"
   ): FunctionFragment;
 
   getEvent(
     nameOrSignatureOrTopic:
       | "CollateralWithdrawn"
+      | "LiquidationSettled"
       | "LoanRepaid"
       | "OAIDCreditIssued"
       | "OwnershipTransferred"
@@ -99,6 +106,10 @@ export interface SolvencyVaultInterface extends Interface {
 
   encodeFunctionData(
     functionFragment: "BASIS_POINTS",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "LIQUIDATION_FEE_BPS",
     values?: undefined
   ): string;
   encodeFunctionData(
@@ -132,10 +143,6 @@ export interface SolvencyVaultInterface extends Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "liquidatePosition",
-    values: [BigNumberish, BytesLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "liquidationListings",
     values: [BigNumberish]
   ): string;
   encodeFunctionData(
@@ -149,12 +156,12 @@ export interface SolvencyVaultInterface extends Interface {
     values: [BigNumberish]
   ): string;
   encodeFunctionData(
-    functionFragment: "primaryMarket",
-    values?: undefined
+    functionFragment: "positionsInLiquidation",
+    values: [BigNumberish]
   ): string;
   encodeFunctionData(
-    functionFragment: "processLiquidationSettlement",
-    values: [BigNumberish, BigNumberish]
+    functionFragment: "primaryMarket",
+    values?: undefined
   ): string;
   encodeFunctionData(
     functionFragment: "renounceOwnership",
@@ -177,6 +184,14 @@ export interface SolvencyVaultInterface extends Interface {
     values: [AddressLike]
   ): string;
   encodeFunctionData(
+    functionFragment: "setYieldVault",
+    values: [AddressLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "settleLiquidation",
+    values: [BigNumberish]
+  ): string;
+  encodeFunctionData(
     functionFragment: "transferOwnership",
     values: [AddressLike]
   ): string;
@@ -185,9 +200,17 @@ export interface SolvencyVaultInterface extends Interface {
     functionFragment: "withdrawCollateral",
     values: [BigNumberish, BigNumberish]
   ): string;
+  encodeFunctionData(
+    functionFragment: "yieldVault",
+    values?: undefined
+  ): string;
 
   decodeFunctionResult(
     functionFragment: "BASIS_POINTS",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "LIQUIDATION_FEE_BPS",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -221,10 +244,6 @@ export interface SolvencyVaultInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "liquidationListings",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
     functionFragment: "nextPositionId",
     data: BytesLike
   ): Result;
@@ -232,11 +251,11 @@ export interface SolvencyVaultInterface extends Interface {
   decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "positions", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "primaryMarket",
+    functionFragment: "positionsInLiquidation",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "processLiquidationSettlement",
+    functionFragment: "primaryMarket",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -251,6 +270,14 @@ export interface SolvencyVaultInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
+    functionFragment: "setYieldVault",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "settleLiquidation",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "transferOwnership",
     data: BytesLike
   ): Result;
@@ -259,6 +286,7 @@ export interface SolvencyVaultInterface extends Interface {
     functionFragment: "withdrawCollateral",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "yieldVault", data: BytesLike): Result;
 }
 
 export namespace CollateralWithdrawnEvent {
@@ -272,6 +300,34 @@ export namespace CollateralWithdrawnEvent {
     positionId: bigint;
     user: string;
     amount: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace LiquidationSettledEvent {
+  export type InputTuple = [
+    positionId: BigNumberish,
+    yieldReceived: BigNumberish,
+    debtRepaid: BigNumberish,
+    liquidationFee: BigNumberish,
+    userRefund: BigNumberish
+  ];
+  export type OutputTuple = [
+    positionId: bigint,
+    yieldReceived: bigint,
+    debtRepaid: bigint,
+    liquidationFee: bigint,
+    userRefund: bigint
+  ];
+  export interface OutputObject {
+    positionId: bigint;
+    yieldReceived: bigint;
+    debtRepaid: bigint;
+    liquidationFee: bigint;
+    userRefund: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -376,18 +432,12 @@ export namespace PositionCreatedEvent {
 export namespace PositionLiquidatedEvent {
   export type InputTuple = [
     positionId: BigNumberish,
-    marketplaceAssetId: BytesLike,
-    discountedPrice: BigNumberish
+    liquidationTime: BigNumberish
   ];
-  export type OutputTuple = [
-    positionId: bigint,
-    marketplaceAssetId: string,
-    discountedPrice: bigint
-  ];
+  export type OutputTuple = [positionId: bigint, liquidationTime: bigint];
   export interface OutputObject {
     positionId: bigint;
-    marketplaceAssetId: string;
-    discountedPrice: bigint;
+    liquidationTime: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -462,6 +512,8 @@ export interface SolvencyVault extends BaseContract {
 
   BASIS_POINTS: TypedContractMethod<[], [bigint], "view">;
 
+  LIQUIDATION_FEE_BPS: TypedContractMethod<[], [bigint], "view">;
+
   LIQUIDATION_THRESHOLD: TypedContractMethod<[], [bigint], "view">;
 
   PRIVATE_ASSET_LTV: TypedContractMethod<[], [bigint], "view">;
@@ -505,15 +557,9 @@ export interface SolvencyVault extends BaseContract {
   >;
 
   liquidatePosition: TypedContractMethod<
-    [positionId: BigNumberish, marketplaceAssetId: BytesLike],
+    [positionId: BigNumberish],
     [void],
     "nonpayable"
-  >;
-
-  liquidationListings: TypedContractMethod<
-    [arg0: BigNumberish],
-    [string],
-    "view"
   >;
 
   nextPositionId: TypedContractMethod<[], [bigint], "view">;
@@ -525,13 +571,24 @@ export interface SolvencyVault extends BaseContract {
   positions: TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [string, string, bigint, bigint, bigint, bigint, boolean, bigint] & {
+      [
+        string,
+        string,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        boolean,
+        bigint
+      ] & {
         user: string;
         collateralToken: string;
         collateralAmount: bigint;
         usdcBorrowed: bigint;
         tokenValueUSD: bigint;
         createdAt: bigint;
+        liquidatedAt: bigint;
         active: boolean;
         tokenType: bigint;
       }
@@ -539,13 +596,13 @@ export interface SolvencyVault extends BaseContract {
     "view"
   >;
 
-  primaryMarket: TypedContractMethod<[], [string], "view">;
-
-  processLiquidationSettlement: TypedContractMethod<
-    [positionId: BigNumberish, saleProceeds: BigNumberish],
-    [void],
-    "nonpayable"
+  positionsInLiquidation: TypedContractMethod<
+    [arg0: BigNumberish],
+    [boolean],
+    "view"
   >;
+
+  primaryMarket: TypedContractMethod<[], [string], "view">;
 
   renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
 
@@ -565,6 +622,24 @@ export interface SolvencyVault extends BaseContract {
     "nonpayable"
   >;
 
+  setYieldVault: TypedContractMethod<
+    [_yieldVault: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+
+  settleLiquidation: TypedContractMethod<
+    [positionId: BigNumberish],
+    [
+      [bigint, bigint, bigint] & {
+        yieldReceived: bigint;
+        liquidationFee: bigint;
+        userRefund: bigint;
+      }
+    ],
+    "nonpayable"
+  >;
+
   transferOwnership: TypedContractMethod<
     [newOwner: AddressLike],
     [void],
@@ -579,12 +654,17 @@ export interface SolvencyVault extends BaseContract {
     "nonpayable"
   >;
 
+  yieldVault: TypedContractMethod<[], [string], "view">;
+
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
   ): T;
 
   getFunction(
     nameOrSignature: "BASIS_POINTS"
+  ): TypedContractMethod<[], [bigint], "view">;
+  getFunction(
+    nameOrSignature: "LIQUIDATION_FEE_BPS"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
     nameOrSignature: "LIQUIDATION_THRESHOLD"
@@ -630,14 +710,7 @@ export interface SolvencyVault extends BaseContract {
   >;
   getFunction(
     nameOrSignature: "liquidatePosition"
-  ): TypedContractMethod<
-    [positionId: BigNumberish, marketplaceAssetId: BytesLike],
-    [void],
-    "nonpayable"
-  >;
-  getFunction(
-    nameOrSignature: "liquidationListings"
-  ): TypedContractMethod<[arg0: BigNumberish], [string], "view">;
+  ): TypedContractMethod<[positionId: BigNumberish], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "nextPositionId"
   ): TypedContractMethod<[], [bigint], "view">;
@@ -652,13 +725,24 @@ export interface SolvencyVault extends BaseContract {
   ): TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [string, string, bigint, bigint, bigint, bigint, boolean, bigint] & {
+      [
+        string,
+        string,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        boolean,
+        bigint
+      ] & {
         user: string;
         collateralToken: string;
         collateralAmount: bigint;
         usdcBorrowed: bigint;
         tokenValueUSD: bigint;
         createdAt: bigint;
+        liquidatedAt: bigint;
         active: boolean;
         tokenType: bigint;
       }
@@ -666,15 +750,11 @@ export interface SolvencyVault extends BaseContract {
     "view"
   >;
   getFunction(
+    nameOrSignature: "positionsInLiquidation"
+  ): TypedContractMethod<[arg0: BigNumberish], [boolean], "view">;
+  getFunction(
     nameOrSignature: "primaryMarket"
   ): TypedContractMethod<[], [string], "view">;
-  getFunction(
-    nameOrSignature: "processLiquidationSettlement"
-  ): TypedContractMethod<
-    [positionId: BigNumberish, saleProceeds: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
   getFunction(
     nameOrSignature: "renounceOwnership"
   ): TypedContractMethod<[], [void], "nonpayable">;
@@ -695,6 +775,22 @@ export interface SolvencyVault extends BaseContract {
     nameOrSignature: "setPrimaryMarket"
   ): TypedContractMethod<[_primaryMarket: AddressLike], [void], "nonpayable">;
   getFunction(
+    nameOrSignature: "setYieldVault"
+  ): TypedContractMethod<[_yieldVault: AddressLike], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "settleLiquidation"
+  ): TypedContractMethod<
+    [positionId: BigNumberish],
+    [
+      [bigint, bigint, bigint] & {
+        yieldReceived: bigint;
+        liquidationFee: bigint;
+        userRefund: bigint;
+      }
+    ],
+    "nonpayable"
+  >;
+  getFunction(
     nameOrSignature: "transferOwnership"
   ): TypedContractMethod<[newOwner: AddressLike], [void], "nonpayable">;
   getFunction(
@@ -707,6 +803,9 @@ export interface SolvencyVault extends BaseContract {
     [void],
     "nonpayable"
   >;
+  getFunction(
+    nameOrSignature: "yieldVault"
+  ): TypedContractMethod<[], [string], "view">;
 
   getEvent(
     key: "CollateralWithdrawn"
@@ -714,6 +813,13 @@ export interface SolvencyVault extends BaseContract {
     CollateralWithdrawnEvent.InputTuple,
     CollateralWithdrawnEvent.OutputTuple,
     CollateralWithdrawnEvent.OutputObject
+  >;
+  getEvent(
+    key: "LiquidationSettled"
+  ): TypedContractEvent<
+    LiquidationSettledEvent.InputTuple,
+    LiquidationSettledEvent.OutputTuple,
+    LiquidationSettledEvent.OutputObject
   >;
   getEvent(
     key: "LoanRepaid"
@@ -770,6 +876,17 @@ export interface SolvencyVault extends BaseContract {
       CollateralWithdrawnEvent.OutputObject
     >;
 
+    "LiquidationSettled(uint256,uint256,uint256,uint256,uint256)": TypedContractEvent<
+      LiquidationSettledEvent.InputTuple,
+      LiquidationSettledEvent.OutputTuple,
+      LiquidationSettledEvent.OutputObject
+    >;
+    LiquidationSettled: TypedContractEvent<
+      LiquidationSettledEvent.InputTuple,
+      LiquidationSettledEvent.OutputTuple,
+      LiquidationSettledEvent.OutputObject
+    >;
+
     "LoanRepaid(uint256,uint256,uint256,uint256,uint256)": TypedContractEvent<
       LoanRepaidEvent.InputTuple,
       LoanRepaidEvent.OutputTuple,
@@ -814,7 +931,7 @@ export interface SolvencyVault extends BaseContract {
       PositionCreatedEvent.OutputObject
     >;
 
-    "PositionLiquidated(uint256,bytes32,uint256)": TypedContractEvent<
+    "PositionLiquidated(uint256,uint256)": TypedContractEvent<
       PositionLiquidatedEvent.InputTuple,
       PositionLiquidatedEvent.OutputTuple,
       PositionLiquidatedEvent.OutputObject

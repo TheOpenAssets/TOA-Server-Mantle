@@ -4,4 +4,5 @@
 export { IOAID__factory } from "./IOAID__factory";
 export { IPrimaryMarket__factory } from "./IPrimaryMarket__factory";
 export { ISeniorPool__factory } from "./ISeniorPool__factory";
+export { IYieldVault__factory } from "./IYieldVault__factory";
 export { SolvencyVault__factory } from "./SolvencyVault__factory";

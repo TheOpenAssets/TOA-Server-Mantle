@@ -9,6 +9,7 @@ import { SolvencyPosition, SolvencyPositionSchema } from '../../database/schemas
 import { PrivateAsset, PrivateAssetSchema } from '../../database/schemas/private-asset.schema';
 import { PrivateAssetRequest, PrivateAssetRequestSchema } from '../../database/schemas/private-asset-request.schema';
 import { BlockchainModule } from '../blockchain/blockchain.module';
+import { LeverageModule } from '../leverage/leverage.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
       { name: PrivateAssetRequest.name, schema: PrivateAssetRequestSchema },
     ]),
     forwardRef(() => BlockchainModule),
+    LeverageModule,
   ],
   controllers: [SolvencyController, SolvencyAdminController],
   providers: [

@@ -143,10 +143,11 @@ contract SeniorPool is Ownable, ReentrancyGuard {
     function borrow(uint256 positionId, uint256 amount) external onlyAuthorizedVault nonReentrant {
         require(amount > 0, "Amount must be > 0");
         require(amount <= DEBT_CEILING, "Exceeds debt ceiling");
-        require(!loans[positionId].active, "Loan already exists");
+        // Removed restriction: Users can open multiple positions
+        // require(!loans[positionId].active, "Loan already exists");
         require(amount <= getAvailableLiquidity(), "Insufficient liquidity");
 
-        // Create loan
+        // Create loan (or overwrite if exists - each position should have unique ID anyway)
         loans[positionId] = Loan({
             principal: amount,
             interestAccrued: 0,

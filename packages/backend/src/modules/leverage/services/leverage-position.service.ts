@@ -98,6 +98,18 @@ export class LeveragePositionService {
   }
 
   /**
+   * Get positions that need settlement (both ACTIVE and LIQUIDATED)
+   * Used during yield distribution to settle all outstanding positions
+   */
+  async getSettlementPendingPositions(): Promise<LeveragePosition[]> {
+    return this.leveragePositionModel
+      .find({ 
+        status: { $in: [PositionStatus.ACTIVE, PositionStatus.LIQUIDATED] }
+      })
+      .exec();
+  }
+
+  /**
    * Get liquidatable positions (health factor < 110%)
    */
   async getLiquidatablePositions(): Promise<LeveragePosition[]> {
@@ -299,6 +311,38 @@ export class LeveragePositionService {
 
     this.logger.log(
       `✅ Settlement recorded for position ${positionId}: ${parseFloat(settlement.userYield) / 1e6} USDC pushed to user, ${parseFloat(settlement.mETHReturned) / 1e18} mETH returned`,
+    );
+  }
+
+  /**
+   * Record liquidation settlement (for positions that were liquidated)
+   */
+  async updateLiquidationSettlement(
+    positionId: number,
+    settlement: {
+      yieldReceived: string;
+      debtRepaid: string;
+      liquidationFee: string;
+      userRefund: string;
+      transactionHash: string;
+    },
+  ): Promise<void> {
+    await this.leveragePositionModel.updateOne(
+      { positionId },
+      {
+        $set: {
+          status: PositionStatus.SETTLED,
+          settlementTimestamp: new Date(),
+          settlementTxHash: settlement.transactionHash,
+          settlementUSDCReceived: settlement.yieldReceived,
+          seniorRepayment: settlement.debtRepaid,
+          userYieldDistributed: settlement.userRefund,
+        },
+      },
+    );
+
+    this.logger.log(
+      `💰 Liquidation settlement recorded for position ${positionId}: ${parseFloat(settlement.userRefund) / 1e6} USDC refunded to user (${parseFloat(settlement.liquidationFee) / 1e6} USDC liquidation fee)`,
     );
   }
 

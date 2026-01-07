@@ -9,6 +9,7 @@ import { LeverageBlockchainService } from './services/leverage-blockchain.servic
 import { HarvestKeeperService } from './services/harvest-keeper.service';
 import { HealthMonitorService } from './services/health-monitor.service';
 import { LeverageController } from './controllers/leverage.controller';
+import { LeverageAdminController } from './controllers/leverage-admin.controller';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuthModule } from '../auth/auth.module';
@@ -24,7 +25,7 @@ import { AuthModule } from '../auth/auth.module';
     NotificationsModule,
     AuthModule, // For JwtAuthGuard
   ],
-  controllers: [LeverageController],
+  controllers: [LeverageController, LeverageAdminController],
   providers: [
     LeveragePositionService,
     FluxionDEXService,
