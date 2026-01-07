@@ -69,6 +69,7 @@ export declare namespace SolvencyVault {
     installmentsPaid: BigNumberish;
     missedPayments: BigNumberish;
     isActive: boolean;
+    defaulted: boolean;
   };
 
   export type RepaymentPlanStructOutput = [
@@ -78,7 +79,8 @@ export declare namespace SolvencyVault {
     nextPaymentDue: bigint,
     installmentsPaid: bigint,
     missedPayments: bigint,
-    isActive: boolean
+    isActive: boolean,
+    defaulted: boolean
   ] & {
     loanDuration: bigint;
     numberOfInstallments: bigint;
@@ -87,6 +89,7 @@ export declare namespace SolvencyVault {
     installmentsPaid: bigint;
     missedPayments: bigint;
     isActive: boolean;
+    defaulted: boolean;
   };
 }
 
@@ -105,6 +108,8 @@ export interface SolvencyVaultInterface extends Interface {
       | "getPosition"
       | "getRepaymentPlan"
       | "liquidatePosition"
+      | "markDefaulted"
+      | "markMissedPayment"
       | "nextPositionId"
       | "oaid"
       | "owner"
@@ -132,9 +137,11 @@ export interface SolvencyVaultInterface extends Interface {
       | "CreditLineRevoked"
       | "LiquidationSettled"
       | "LoanRepaid"
+      | "MissedPaymentMarked"
       | "OAIDCreditIssued"
       | "OwnershipTransferred"
       | "PositionCreated"
+      | "PositionDefaulted"
       | "PositionLiquidated"
       | "PrivateAssetLiquidationSettled"
       | "RepaymentPlanCreated"
@@ -184,6 +191,14 @@ export interface SolvencyVaultInterface extends Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "liquidatePosition",
+    values: [BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "markDefaulted",
+    values: [BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "markMissedPayment",
     values: [BigNumberish]
   ): string;
   encodeFunctionData(
@@ -294,6 +309,14 @@ export interface SolvencyVaultInterface extends Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "liquidatePosition",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "markDefaulted",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "markMissedPayment",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -446,6 +469,22 @@ export namespace LoanRepaidEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
+export namespace MissedPaymentMarkedEvent {
+  export type InputTuple = [
+    positionId: BigNumberish,
+    missedPayments: BigNumberish
+  ];
+  export type OutputTuple = [positionId: bigint, missedPayments: bigint];
+  export interface OutputObject {
+    positionId: bigint;
+    missedPayments: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
 export namespace OAIDCreditIssuedEvent {
   export type InputTuple = [
     positionId: BigNumberish,
@@ -505,6 +544,18 @@ export namespace PositionCreatedEvent {
     collateralAmount: bigint;
     tokenValueUSD: bigint;
     tokenType: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace PositionDefaultedEvent {
+  export type InputTuple = [positionId: BigNumberish];
+  export type OutputTuple = [positionId: bigint];
+  export interface OutputObject {
+    positionId: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -718,6 +769,18 @@ export interface SolvencyVault extends BaseContract {
     "nonpayable"
   >;
 
+  markDefaulted: TypedContractMethod<
+    [positionId: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
+  markMissedPayment: TypedContractMethod<
+    [positionId: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
   nextPositionId: TypedContractMethod<[], [bigint], "view">;
 
   oaid: TypedContractMethod<[], [string], "view">;
@@ -779,7 +842,7 @@ export interface SolvencyVault extends BaseContract {
   repaymentPlans: TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [bigint, bigint, bigint, bigint, bigint, bigint, boolean] & {
+      [bigint, bigint, bigint, bigint, bigint, bigint, boolean, boolean] & {
         loanDuration: bigint;
         numberOfInstallments: bigint;
         installmentInterval: bigint;
@@ -787,6 +850,7 @@ export interface SolvencyVault extends BaseContract {
         installmentsPaid: bigint;
         missedPayments: bigint;
         isActive: boolean;
+        defaulted: boolean;
       }
     ],
     "view"
@@ -904,6 +968,12 @@ export interface SolvencyVault extends BaseContract {
     nameOrSignature: "liquidatePosition"
   ): TypedContractMethod<[positionId: BigNumberish], [void], "nonpayable">;
   getFunction(
+    nameOrSignature: "markDefaulted"
+  ): TypedContractMethod<[positionId: BigNumberish], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "markMissedPayment"
+  ): TypedContractMethod<[positionId: BigNumberish], [void], "nonpayable">;
+  getFunction(
     nameOrSignature: "nextPositionId"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
@@ -971,7 +1041,7 @@ export interface SolvencyVault extends BaseContract {
   ): TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [bigint, bigint, bigint, bigint, bigint, bigint, boolean] & {
+      [bigint, bigint, bigint, bigint, bigint, bigint, boolean, boolean] & {
         loanDuration: bigint;
         numberOfInstallments: bigint;
         installmentInterval: bigint;
@@ -979,6 +1049,7 @@ export interface SolvencyVault extends BaseContract {
         installmentsPaid: bigint;
         missedPayments: bigint;
         isActive: boolean;
+        defaulted: boolean;
       }
     ],
     "view"
@@ -1054,6 +1125,13 @@ export interface SolvencyVault extends BaseContract {
     LoanRepaidEvent.OutputObject
   >;
   getEvent(
+    key: "MissedPaymentMarked"
+  ): TypedContractEvent<
+    MissedPaymentMarkedEvent.InputTuple,
+    MissedPaymentMarkedEvent.OutputTuple,
+    MissedPaymentMarkedEvent.OutputObject
+  >;
+  getEvent(
     key: "OAIDCreditIssued"
   ): TypedContractEvent<
     OAIDCreditIssuedEvent.InputTuple,
@@ -1073,6 +1151,13 @@ export interface SolvencyVault extends BaseContract {
     PositionCreatedEvent.InputTuple,
     PositionCreatedEvent.OutputTuple,
     PositionCreatedEvent.OutputObject
+  >;
+  getEvent(
+    key: "PositionDefaulted"
+  ): TypedContractEvent<
+    PositionDefaultedEvent.InputTuple,
+    PositionDefaultedEvent.OutputTuple,
+    PositionDefaultedEvent.OutputObject
   >;
   getEvent(
     key: "PositionLiquidated"
@@ -1148,6 +1233,17 @@ export interface SolvencyVault extends BaseContract {
       LoanRepaidEvent.OutputObject
     >;
 
+    "MissedPaymentMarked(uint256,uint256)": TypedContractEvent<
+      MissedPaymentMarkedEvent.InputTuple,
+      MissedPaymentMarkedEvent.OutputTuple,
+      MissedPaymentMarkedEvent.OutputObject
+    >;
+    MissedPaymentMarked: TypedContractEvent<
+      MissedPaymentMarkedEvent.InputTuple,
+      MissedPaymentMarkedEvent.OutputTuple,
+      MissedPaymentMarkedEvent.OutputObject
+    >;
+
     "OAIDCreditIssued(uint256,uint256,uint256)": TypedContractEvent<
       OAIDCreditIssuedEvent.InputTuple,
       OAIDCreditIssuedEvent.OutputTuple,
@@ -1179,6 +1275,17 @@ export interface SolvencyVault extends BaseContract {
       PositionCreatedEvent.InputTuple,
       PositionCreatedEvent.OutputTuple,
       PositionCreatedEvent.OutputObject
+    >;
+
+    "PositionDefaulted(uint256)": TypedContractEvent<
+      PositionDefaultedEvent.InputTuple,
+      PositionDefaultedEvent.OutputTuple,
+      PositionDefaultedEvent.OutputObject
+    >;
+    PositionDefaulted: TypedContractEvent<
+      PositionDefaultedEvent.InputTuple,
+      PositionDefaultedEvent.OutputTuple,
+      PositionDefaultedEvent.OutputObject
     >;
 
     "PositionLiquidated(uint256,uint256)": TypedContractEvent<

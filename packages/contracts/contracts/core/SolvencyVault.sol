@@ -190,13 +190,6 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
     event PositionDefaulted(
         uint256 indexed positionId
     );
-    event MissedPaymentMarked(
-        uint256 indexed positionId,
-        uint256 missedPayments
-    );
-    event PositionDefaulted(
-        uint256 indexed positionId
-    );
     event CollateralWithdrawn(
         uint256 indexed positionId,
         address indexed user,
