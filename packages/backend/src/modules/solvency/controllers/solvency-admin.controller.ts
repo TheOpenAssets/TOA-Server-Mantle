@@ -22,8 +22,8 @@ import { MintPrivateAssetDto } from '../dto/mint-private-asset.dto';
 import { ApprovePrivateAssetRequestDto } from '../dto/approve-private-asset-request.dto';
 import { RejectPrivateAssetRequestDto } from '../dto/reject-private-asset-request.dto';
 import { PrivateAssetRequestStatus } from '../../../database/schemas/private-asset-request.schema';
+import { PositionStatus } from '../../../database/schemas/solvency-position.schema';
 import { ethers } from 'ethers';
-import { PositionStatus } from 'src/database/schemas/solvency-position.schema';
 
 @Controller('admin/solvency')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
@@ -440,7 +440,7 @@ export class SolvencyAdminController {
       };
     }
 
-    if (position.status !== 'LIQUIDATED') {
+    if (position.status !== PositionStatus.LIQUIDATED) {
       return {
         success: false,
         message: 'Position is not liquidated',

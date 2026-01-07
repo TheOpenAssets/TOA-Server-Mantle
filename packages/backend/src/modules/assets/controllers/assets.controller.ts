@@ -100,4 +100,17 @@ export class AssetsController {
   async getPurchaseHistory(@Param('assetId') assetId: string) {
     return this.assetLifecycleService.getPurchaseHistory(assetId);
   }
+
+  @Get('token/:address')
+  async getAssetByTokenAddress(@Param('address') address: string) {
+    const asset = await this.assetModel.findOne({
+      'token.address': { $regex: new RegExp(`^${address}$`, 'i') }, // Case-insensitive match
+    });
+
+    if (!asset) {
+      return { success: false, message: 'Asset not found for this token address' };
+    }
+
+    return { success: true, asset };
+  }
 }

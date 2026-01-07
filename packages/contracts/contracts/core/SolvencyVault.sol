@@ -55,6 +55,16 @@ interface IOAID {
         bool onTime,
         uint256 daysLate
     ) external;
+
+    function recordCreditUsage(
+        uint256 creditLineId,
+        uint256 amount
+    ) external;
+
+    function recordCreditRepayment(
+        uint256 creditLineId,
+        uint256 amount
+    ) external;
 }
 
 // YieldVault interface
@@ -131,6 +141,19 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
     mapping(uint256 => bool) public positionsInLiquidation;     // positionId => liquidation status
     address public yieldVault;                                   // YieldVault contract for burning RWA tokens
 
+    // Repayment Schedule
+    struct RepaymentPlan {
+        uint256 loanDuration;          // Total duration in seconds (e.g., 90 days)
+        uint256 numberOfInstallments;  // Total installments (e.g., 18)
+        uint256 installmentInterval;   // Duration of each interval (seconds)
+        uint256 nextPaymentDue;        // Timestamp of next due date
+        uint256 installmentsPaid;      // Counter
+        uint256 missedPayments;        // Counter for missed/late payments
+        bool isActive;                 // If plan is active
+    }
+
+    mapping(uint256 => RepaymentPlan) public repaymentPlans;
+
     // Events
     event PositionCreated(
         uint256 indexed positionId,
@@ -144,6 +167,13 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         uint256 indexed positionId,
         uint256 amount,
         uint256 totalDebt
+    );
+    event RepaymentPlanCreated(
+        uint256 indexed positionId,
+        uint256 loanDuration,
+        uint256 numberOfInstallments,
+        uint256 installmentInterval,
+        uint256 nextPaymentDue
     );
     event LoanRepaid(
         uint256 indexed positionId,
@@ -298,15 +328,30 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Borrow USDC against collateral
+     * @notice Borrow USDC against collateral with repayment schedule
      * @param positionId Position ID
      * @param amount USDC amount to borrow (6 decimals)
+     * @param loanDuration Total duration of the loan in seconds
+     * @param numberOfInstallments Number of fixed installments
      */
-    function borrowUSDC(uint256 positionId, uint256 amount) external nonReentrant {
+    function borrowUSDC(
+        uint256 positionId,
+        uint256 amount,
+        uint256 loanDuration,
+        uint256 numberOfInstallments
+    ) external nonReentrant {
         Position storage position = positions[positionId];
         require(position.active, "Position not active");
         require(msg.sender == position.user, "Not position owner");
         require(amount > 0, "Amount must be > 0");
+
+        // Validate repayment terms
+        require(loanDuration > 0, "Duration must be > 0");
+        require(numberOfInstallments > 0, "Installments must be > 0");
+        require(loanDuration >= numberOfInstallments, "Invalid duration/installments");
+        
+        // Ensure no existing plan for this position (or support refinancing later)
+        require(!repaymentPlans[positionId].isActive, "Plan already active");
 
         // Calculate max borrowable amount based on LTV
         uint256 ltv = position.tokenType == TokenType.RWA ? RWA_LTV : PRIVATE_ASSET_LTV;
@@ -315,16 +360,42 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
 
         require(newTotalBorrowed <= maxBorrow, "Exceeds LTV limit");
 
+        // Calculate installment interval
+        uint256 installmentInterval = loanDuration / numberOfInstallments;
+
+        // Initialize RepaymentPlan
+        repaymentPlans[positionId] = RepaymentPlan({
+            loanDuration: loanDuration,
+            numberOfInstallments: numberOfInstallments,
+            installmentInterval: installmentInterval,
+            nextPaymentDue: block.timestamp + installmentInterval,
+            installmentsPaid: 0,
+            missedPayments: 0,
+            isActive: true
+        });
+
         // Borrow from SeniorPool
         ISeniorPool(seniorPool).borrow(positionId, amount);
 
         // Update position
         position.usdcBorrowed += amount;
 
+        // Record credit usage in OAID if credit line exists
+        if (oaid != address(0) && position.creditLineId > 0) {
+            IOAID(oaid).recordCreditUsage(position.creditLineId, amount);
+        }
+
         // Transfer USDC to user
         require(usdc.transfer(msg.sender, amount), "USDC transfer failed");
 
         emit USDCBorrowed(positionId, amount, position.usdcBorrowed);
+        emit RepaymentPlanCreated(
+            positionId,
+            loanDuration,
+            numberOfInstallments,
+            installmentInterval,
+            block.timestamp + installmentInterval
+        );
     }
 
     /**
@@ -357,16 +428,47 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         position.usdcBorrowed -= principal;
 
         uint256 remainingDebt = ISeniorPool(seniorPool).getOutstandingDebt(positionId);
+        
+        // Update Repayment Plan
+        RepaymentPlan storage plan = repaymentPlans[positionId];
+        bool onTime = true;
+        uint256 daysLate = 0;
+
+        if (plan.isActive) {
+            // Check if payment is late
+            if (block.timestamp > plan.nextPaymentDue) {
+                onTime = false;
+                uint256 secondsLate = block.timestamp - plan.nextPaymentDue;
+                daysLate = (secondsLate / 1 days) + 1;
+                plan.missedPayments++;
+            }
+
+            // Increment installments paid
+            plan.installmentsPaid++;
+
+            // Advance next due date
+            // If already overdue, should we advance from now or from expected?
+            // Usually from expected to keep schedule.
+            plan.nextPaymentDue += plan.installmentInterval;
+
+            // If fully repaid (based on debt, not installments count, as installments are estimated)
+            if (remainingDebt == 0) {
+                plan.isActive = false;
+            }
+        }
 
         // Record payment in OAID if credit line exists
         if (oaid != address(0) && position.creditLineId > 0) {
-            // TODO: Implement late payment detection based on expected payment schedule
-            // For now, consider all payments as on-time
+            // Reduce credit used by principal amount
+            if (principal > 0) {
+                IOAID(oaid).recordCreditRepayment(position.creditLineId, principal);
+            }
+
             IOAID(oaid).recordPayment(
                 position.creditLineId,
                 amount,
-                true,  // onTime (simplified - should check against payment schedule)
-                0      // daysLate
+                onTime,
+                daysLate
             );
         }
 
@@ -395,6 +497,9 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         // Close position if fully withdrawn
         if (position.collateralAmount == 0) {
             position.active = false;
+            if (repaymentPlans[positionId].isActive) {
+                repaymentPlans[positionId].isActive = false;
+            }
         }
 
         // Transfer tokens to user
@@ -407,7 +512,7 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Mark position for liquidation (health < 115%)
+     * @notice Mark position for liquidation (health < 115% OR missed payments >= 3)
      * @param positionId Position ID
      * @dev Two flows:
      *      - RWA tokens: Mark for liquidation, wait for invoice settlement
@@ -420,25 +525,44 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         require(position.active, "Position not active");
         require(!positionsInLiquidation[positionId], "Already in liquidation");
 
-        // Verify liquidation is necessary (health < 115%)
+        // Verify liquidation is necessary
+        // 1. Health Factor Check (< 115%)
         uint256 healthFactor = getHealthFactor(positionId);
-        require(healthFactor < LIQUIDATION_THRESHOLD, "Position is healthy");
+        bool healthLiquidatable = healthFactor < LIQUIDATION_THRESHOLD;
+
+        // 2. Repayment Default Check (>= 3 missed payments)
+        bool defaultLiquidatable = false;
+        RepaymentPlan storage plan = repaymentPlans[positionId];
+        if (plan.isActive && plan.missedPayments >= 3) {
+            defaultLiquidatable = true;
+        }
+
+        require(healthLiquidatable || defaultLiquidatable, "Position is healthy and not defaulted");
 
         // Mark position as liquidated (but keep active to hold tokens)
         positionsInLiquidation[positionId] = true;
         position.liquidatedAt = block.timestamp;
 
+        // Deactivate repayment plan
+        if (plan.isActive) {
+            plan.isActive = false;
+        }
+
         // Revoke OAID credit line if exists
         if (oaid != address(0) && position.creditLineId > 0) {
+            string memory reason = healthLiquidatable 
+                ? "Position liquidated - collateral health below threshold"
+                : "Position liquidated - repayment default";
+                
             IOAID(oaid).revokeCreditLine(
                 position.creditLineId,
-                "Position liquidated - collateral health below threshold"
+                reason
             );
             
             emit CreditLineRevoked(
                 positionId,
                 position.creditLineId,
-                "Position liquidated - collateral health below threshold"
+                reason
             );
         }
 
@@ -645,5 +769,14 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         uint256 currentDebt = ISeniorPool(seniorPool).getOutstandingDebt(positionId);
 
         return maxBorrow > currentDebt ? maxBorrow - currentDebt : 0;
+    }
+
+    /**
+     * @notice Get repayment plan details
+     * @param positionId Position ID
+     * @return RepaymentPlan struct
+     */
+    function getRepaymentPlan(uint256 positionId) external view returns (RepaymentPlan memory) {
+        return repaymentPlans[positionId];
     }
 }

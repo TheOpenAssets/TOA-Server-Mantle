@@ -25,6 +25,16 @@ export class PartnerBorrowDto {
   @IsOptional()
   @IsObject()
   metadata?: any;
+
+  @ApiPropertyOptional({ example: 2592000, description: 'Loan duration in seconds (default: 30 days)' })
+  @IsOptional()
+  @IsNumber()
+  loanDuration?: number;
+
+  @ApiPropertyOptional({ example: 1, description: 'Number of installments (default: 1)' })
+  @IsOptional()
+  @IsNumber()
+  numberOfInstallments?: number;
 }
 
 export class PartnerRepayDto {

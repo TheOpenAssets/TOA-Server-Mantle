@@ -60,6 +60,34 @@ export declare namespace SolvencyVault {
     active: boolean;
     tokenType: bigint;
   };
+
+  export type RepaymentPlanStruct = {
+    loanDuration: BigNumberish;
+    numberOfInstallments: BigNumberish;
+    installmentInterval: BigNumberish;
+    nextPaymentDue: BigNumberish;
+    installmentsPaid: BigNumberish;
+    missedPayments: BigNumberish;
+    isActive: boolean;
+  };
+
+  export type RepaymentPlanStructOutput = [
+    loanDuration: bigint,
+    numberOfInstallments: bigint,
+    installmentInterval: bigint,
+    nextPaymentDue: bigint,
+    installmentsPaid: bigint,
+    missedPayments: bigint,
+    isActive: boolean
+  ] & {
+    loanDuration: bigint;
+    numberOfInstallments: bigint;
+    installmentInterval: bigint;
+    nextPaymentDue: bigint;
+    installmentsPaid: bigint;
+    missedPayments: bigint;
+    isActive: boolean;
+  };
 }
 
 export interface SolvencyVaultInterface extends Interface {
@@ -75,6 +103,7 @@ export interface SolvencyVaultInterface extends Interface {
       | "getHealthFactor"
       | "getMaxBorrow"
       | "getPosition"
+      | "getRepaymentPlan"
       | "liquidatePosition"
       | "nextPositionId"
       | "oaid"
@@ -85,6 +114,7 @@ export interface SolvencyVaultInterface extends Interface {
       | "purchaseAndSettleLiquidation"
       | "renounceOwnership"
       | "repayLoan"
+      | "repaymentPlans"
       | "seniorPool"
       | "setOAID"
       | "setPrimaryMarket"
@@ -107,6 +137,7 @@ export interface SolvencyVaultInterface extends Interface {
       | "PositionCreated"
       | "PositionLiquidated"
       | "PrivateAssetLiquidationSettled"
+      | "RepaymentPlanCreated"
       | "USDCBorrowed"
   ): EventFragment;
 
@@ -129,7 +160,7 @@ export interface SolvencyVaultInterface extends Interface {
   encodeFunctionData(functionFragment: "RWA_LTV", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "borrowUSDC",
-    values: [BigNumberish, BigNumberish]
+    values: [BigNumberish, BigNumberish, BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "depositCollateral",
@@ -145,6 +176,10 @@ export interface SolvencyVaultInterface extends Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "getPosition",
+    values: [BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "getRepaymentPlan",
     values: [BigNumberish]
   ): string;
   encodeFunctionData(
@@ -180,6 +215,10 @@ export interface SolvencyVaultInterface extends Interface {
   encodeFunctionData(
     functionFragment: "repayLoan",
     values: [BigNumberish, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "repaymentPlans",
+    values: [BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "seniorPool",
@@ -250,6 +289,10 @@ export interface SolvencyVaultInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
+    functionFragment: "getRepaymentPlan",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "liquidatePosition",
     data: BytesLike
   ): Result;
@@ -277,6 +320,10 @@ export interface SolvencyVaultInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "repayLoan", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "repaymentPlans",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "seniorPool", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "setOAID", data: BytesLike): Result;
   decodeFunctionResult(
@@ -515,6 +562,34 @@ export namespace PrivateAssetLiquidationSettledEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
+export namespace RepaymentPlanCreatedEvent {
+  export type InputTuple = [
+    positionId: BigNumberish,
+    loanDuration: BigNumberish,
+    numberOfInstallments: BigNumberish,
+    installmentInterval: BigNumberish,
+    nextPaymentDue: BigNumberish
+  ];
+  export type OutputTuple = [
+    positionId: bigint,
+    loanDuration: bigint,
+    numberOfInstallments: bigint,
+    installmentInterval: bigint,
+    nextPaymentDue: bigint
+  ];
+  export interface OutputObject {
+    positionId: bigint;
+    loanDuration: bigint;
+    numberOfInstallments: bigint;
+    installmentInterval: bigint;
+    nextPaymentDue: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
 export namespace USDCBorrowedEvent {
   export type InputTuple = [
     positionId: BigNumberish,
@@ -591,7 +666,12 @@ export interface SolvencyVault extends BaseContract {
   RWA_LTV: TypedContractMethod<[], [bigint], "view">;
 
   borrowUSDC: TypedContractMethod<
-    [positionId: BigNumberish, amount: BigNumberish],
+    [
+      positionId: BigNumberish,
+      amount: BigNumberish,
+      loanDuration: BigNumberish,
+      numberOfInstallments: BigNumberish
+    ],
     [void],
     "nonpayable"
   >;
@@ -623,6 +703,12 @@ export interface SolvencyVault extends BaseContract {
   getPosition: TypedContractMethod<
     [positionId: BigNumberish],
     [SolvencyVault.PositionStructOutput],
+    "view"
+  >;
+
+  getRepaymentPlan: TypedContractMethod<
+    [positionId: BigNumberish],
+    [SolvencyVault.RepaymentPlanStructOutput],
     "view"
   >;
 
@@ -688,6 +774,22 @@ export interface SolvencyVault extends BaseContract {
     [positionId: BigNumberish, amount: BigNumberish],
     [void],
     "nonpayable"
+  >;
+
+  repaymentPlans: TypedContractMethod<
+    [arg0: BigNumberish],
+    [
+      [bigint, bigint, bigint, bigint, bigint, bigint, boolean] & {
+        loanDuration: bigint;
+        numberOfInstallments: bigint;
+        installmentInterval: bigint;
+        nextPaymentDue: bigint;
+        installmentsPaid: bigint;
+        missedPayments: bigint;
+        isActive: boolean;
+      }
+    ],
+    "view"
   >;
 
   seniorPool: TypedContractMethod<[], [string], "view">;
@@ -756,7 +858,12 @@ export interface SolvencyVault extends BaseContract {
   getFunction(
     nameOrSignature: "borrowUSDC"
   ): TypedContractMethod<
-    [positionId: BigNumberish, amount: BigNumberish],
+    [
+      positionId: BigNumberish,
+      amount: BigNumberish,
+      loanDuration: BigNumberish,
+      numberOfInstallments: BigNumberish
+    ],
     [void],
     "nonpayable"
   >;
@@ -784,6 +891,13 @@ export interface SolvencyVault extends BaseContract {
   ): TypedContractMethod<
     [positionId: BigNumberish],
     [SolvencyVault.PositionStructOutput],
+    "view"
+  >;
+  getFunction(
+    nameOrSignature: "getRepaymentPlan"
+  ): TypedContractMethod<
+    [positionId: BigNumberish],
+    [SolvencyVault.RepaymentPlanStructOutput],
     "view"
   >;
   getFunction(
@@ -851,6 +965,23 @@ export interface SolvencyVault extends BaseContract {
     [positionId: BigNumberish, amount: BigNumberish],
     [void],
     "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "repaymentPlans"
+  ): TypedContractMethod<
+    [arg0: BigNumberish],
+    [
+      [bigint, bigint, bigint, bigint, bigint, bigint, boolean] & {
+        loanDuration: bigint;
+        numberOfInstallments: bigint;
+        installmentInterval: bigint;
+        nextPaymentDue: bigint;
+        installmentsPaid: bigint;
+        missedPayments: bigint;
+        isActive: boolean;
+      }
+    ],
+    "view"
   >;
   getFunction(
     nameOrSignature: "seniorPool"
@@ -958,6 +1089,13 @@ export interface SolvencyVault extends BaseContract {
     PrivateAssetLiquidationSettledEvent.OutputObject
   >;
   getEvent(
+    key: "RepaymentPlanCreated"
+  ): TypedContractEvent<
+    RepaymentPlanCreatedEvent.InputTuple,
+    RepaymentPlanCreatedEvent.OutputTuple,
+    RepaymentPlanCreatedEvent.OutputObject
+  >;
+  getEvent(
     key: "USDCBorrowed"
   ): TypedContractEvent<
     USDCBorrowedEvent.InputTuple,
@@ -1063,6 +1201,17 @@ export interface SolvencyVault extends BaseContract {
       PrivateAssetLiquidationSettledEvent.InputTuple,
       PrivateAssetLiquidationSettledEvent.OutputTuple,
       PrivateAssetLiquidationSettledEvent.OutputObject
+    >;
+
+    "RepaymentPlanCreated(uint256,uint256,uint256,uint256,uint256)": TypedContractEvent<
+      RepaymentPlanCreatedEvent.InputTuple,
+      RepaymentPlanCreatedEvent.OutputTuple,
+      RepaymentPlanCreatedEvent.OutputObject
+    >;
+    RepaymentPlanCreated: TypedContractEvent<
+      RepaymentPlanCreatedEvent.InputTuple,
+      RepaymentPlanCreatedEvent.OutputTuple,
+      RepaymentPlanCreatedEvent.OutputObject
     >;
 
     "USDCBorrowed(uint256,uint256,uint256)": TypedContractEvent<

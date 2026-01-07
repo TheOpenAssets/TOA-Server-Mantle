@@ -23,12 +23,25 @@ import type {
 
 export interface IOAIDInterface extends Interface {
   getFunction(
-    nameOrSignature: "issueCreditLine" | "recordPayment" | "revokeCreditLine"
+    nameOrSignature:
+      | "issueCreditLine"
+      | "recordCreditRepayment"
+      | "recordCreditUsage"
+      | "recordPayment"
+      | "revokeCreditLine"
   ): FunctionFragment;
 
   encodeFunctionData(
     functionFragment: "issueCreditLine",
     values: [AddressLike, AddressLike, BigNumberish, BigNumberish, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "recordCreditRepayment",
+    values: [BigNumberish, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "recordCreditUsage",
+    values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "recordPayment",
@@ -41,6 +54,14 @@ export interface IOAIDInterface extends Interface {
 
   decodeFunctionResult(
     functionFragment: "issueCreditLine",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "recordCreditRepayment",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "recordCreditUsage",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -108,6 +129,18 @@ export interface IOAID extends BaseContract {
     "nonpayable"
   >;
 
+  recordCreditRepayment: TypedContractMethod<
+    [creditLineId: BigNumberish, amount: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
+  recordCreditUsage: TypedContractMethod<
+    [creditLineId: BigNumberish, amount: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
   recordPayment: TypedContractMethod<
     [
       creditLineId: BigNumberish,
@@ -140,6 +173,20 @@ export interface IOAID extends BaseContract {
       solvencyPositionId: BigNumberish
     ],
     [bigint],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "recordCreditRepayment"
+  ): TypedContractMethod<
+    [creditLineId: BigNumberish, amount: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "recordCreditUsage"
+  ): TypedContractMethod<
+    [creditLineId: BigNumberish, amount: BigNumberish],
+    [void],
     "nonpayable"
   >;
   getFunction(
