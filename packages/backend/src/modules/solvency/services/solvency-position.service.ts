@@ -341,7 +341,7 @@ export class SolvencyPositionService {
       if (inLiquidation && position.status !== PositionStatus.LIQUIDATED) {
         this.logger.log(`Position ${positionId} is in liquidation on-chain, updating status to LIQUIDATED`);
         position.status = PositionStatus.LIQUIDATED;
-        position.liquidatedAt = new Date();
+        position.liquidationTimestamp = new Date();
       }
 
       await this.updateHealthFactor(position);

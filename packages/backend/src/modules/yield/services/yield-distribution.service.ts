@@ -348,7 +348,8 @@ export class YieldDistributionService {
               }
 
               this.logger.log(`✅ Position ${position.positionId} settled successfully!`);
-            }          } catch (error) {
+            }
+          } catch (error) {
             this.logger.error(`❌ Failed to settle position ${position.positionId}: ${error}`);
             this.logger.error(`   Continuing with other positions...`);
             // Don't throw - continue with other positions
@@ -436,8 +437,6 @@ export class YieldDistributionService {
             } catch (notifError) {
               this.logger.error(`Failed to send notification: ${notifError}`);
             }
-          }
-
           } catch (error) {
             this.logger.error(`❌ Failed to settle Solvency position ${position.positionId}: ${error}`);
           }

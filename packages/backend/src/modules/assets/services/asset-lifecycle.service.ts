@@ -22,12 +22,10 @@ import { NotificationService } from '../../notifications/services/notification.s
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
-import { LeveragePosition } from '../../../database/schemas/leverage-position.schema';
 
 @Injectable()
 export class AssetLifecycleService {
   private readonly logger = new Logger(AssetLifecycleService.name);
-  private leveragePositionModel: Model<LeveragePosition>;
 
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
