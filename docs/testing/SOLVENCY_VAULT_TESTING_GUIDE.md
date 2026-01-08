@@ -164,6 +164,130 @@ npx hardhat run scripts/test/transfer-tokens.ts --network mantleSepolia
 
 ---
 
+## Quick Testing Scripts
+
+For rapid testing, use the automated scripts that handle authentication, approvals, deposits, and borrowing:
+
+### Deposit RWA Tokens and Borrow USDC (Bash)
+
+```bash
+# Navigate to project root
+cd /path/to/rwa
+
+# Deposit 90 RWA tokens and borrow $50,000 USDC
+INVESTOR_PRIVATE_KEY=0x... ./scripts/deposit-to-solvency-vault.sh \
+  0xYourRWATokenAddress \
+  90 \
+  50000
+
+# Or deposit without borrowing
+INVESTOR_PRIVATE_KEY=0x... ./scripts/deposit-to-solvency-vault.sh \
+  0xYourRWATokenAddress \
+  90
+```
+
+**What this script does**:
+1. Authenticates with backend (challenge-response)
+2. Checks your RWA token balance
+3. Approves SolvencyVault to spend tokens (if needed)
+4. Deposits tokens as collateral via backend API
+5. Optionally borrows USDC (if amount specified)
+6. Displays position summary with health factor
+
+**Expected output**:
+```
+========================================
+💰 Deposit to Solvency Vault & Borrow USDC
+========================================
+
+ℹ Investor Wallet: 0x580f5b09765e71d64613c8f4403234f8790dd7d3
+ℹ Token Address: 0xC91f80c110fE53c0549D990D0eE5bE8EAF123D5e
+
+========================================
+Step 1: Authenticate with Backend
+========================================
+
+✓ Login successful (Role: INVESTOR)
+
+========================================
+Step 2: Check Token Balance & Contract Info
+========================================
+
+Your RWA Token Balance: 90.00 INVOICE-001
+✓ Token balance verified: 90.00 INVOICE-001
+
+========================================
+Step 4: Deposit Collateral to SolvencyVault
+========================================
+
+✓ Deposit successful!
+Position ID: 5
+Collateral Value: $76500.00 USD
+Max Borrow: $53550.00 USDC (70% LTV)
+Transaction: https://explorer.sepolia.mantle.xyz/tx/0x...
+
+========================================
+Step 5: Borrow USDC Against Collateral
+========================================
+
+✓ Borrow successful!
+Borrowed: $50000.00 USDC
+Total Debt: $50000.00 USDC
+Health Factor: 153.00%
+Transaction: https://explorer.sepolia.mantle.xyz/tx/0x...
+
+🎉 SolvencyVault Deposit Complete!
+```
+
+### Deposit RWA Tokens and Borrow USDC (Node.js)
+
+```bash
+# Using Node.js script for more detailed control
+INVESTOR_KEY=0x... node scripts/deposit-to-solvency-vault.js \
+  0xYourRWATokenAddress \
+  90 \
+  50000
+
+# Without borrowing
+INVESTOR_KEY=0x... node scripts/deposit-to-solvency-vault.js \
+  0xYourRWATokenAddress \
+  90
+```
+
+**Advanced options**:
+```bash
+# Custom backend URL
+BACKEND_URL=http://api.example.com \
+INVESTOR_KEY=0x... \
+node scripts/deposit-to-solvency-vault.js 0xTokenAddr 90 50000
+
+# Custom RPC URL
+RPC_URL=https://custom-rpc.mantle.xyz \
+INVESTOR_KEY=0x... \
+node scripts/deposit-to-solvency-vault.js 0xTokenAddr 90
+```
+
+### Example: Using Your 90 Invoice Tokens
+
+Based on your MongoDB document:
+```bash
+# Your specific case
+INVESTOR_PRIVATE_KEY=0xYourPrivateKey ./scripts/deposit-to-solvency-vault.sh \
+  0xC91f80c110fE53c0549D990D0eE5bE8EAF123D5e \
+  90 \
+  50000
+```
+
+**Expected outcome**:
+- ✅ 90 INVOICE tokens deposited to SolvencyVault
+- ✅ Collateral value: ~$76,500 (based on token price $0.85)
+- ✅ Maximum borrowable: ~$53,550 (70% LTV)
+- ✅ Borrowed: $50,000 USDC
+- ✅ Health factor: ~153% (healthy)
+- ✅ OAID credit line created automatically
+
+---
+
 ## Test Scenarios
 
 ### Scenario 1: RWA Token Deposit and Borrow

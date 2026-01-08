@@ -45,6 +45,8 @@ export interface SeniorPoolInterface extends Interface {
       | "repay"
       | "setDemoMode"
       | "setLeverageVault"
+      | "setSolvencyVault"
+      | "solvencyVault"
       | "timeMultiplier"
       | "totalBorrowed"
       | "totalInterestEarned"
@@ -130,6 +132,14 @@ export interface SeniorPoolInterface extends Interface {
     values: [AddressLike]
   ): string;
   encodeFunctionData(
+    functionFragment: "setSolvencyVault",
+    values: [AddressLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "solvencyVault",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
     functionFragment: "timeMultiplier",
     values?: undefined
   ): string;
@@ -211,6 +221,14 @@ export interface SeniorPoolInterface extends Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "setLeverageVault",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "setSolvencyVault",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "solvencyVault",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -468,6 +486,14 @@ export interface SeniorPool extends BaseContract {
     "nonpayable"
   >;
 
+  setSolvencyVault: TypedContractMethod<
+    [_solvencyVault: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+
+  solvencyVault: TypedContractMethod<[], [string], "view">;
+
   timeMultiplier: TypedContractMethod<[], [bigint], "view">;
 
   totalBorrowed: TypedContractMethod<[], [bigint], "view">;
@@ -574,6 +600,12 @@ export interface SeniorPool extends BaseContract {
   getFunction(
     nameOrSignature: "setLeverageVault"
   ): TypedContractMethod<[_leverageVault: AddressLike], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "setSolvencyVault"
+  ): TypedContractMethod<[_solvencyVault: AddressLike], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "solvencyVault"
+  ): TypedContractMethod<[], [string], "view">;
   getFunction(
     nameOrSignature: "timeMultiplier"
   ): TypedContractMethod<[], [bigint], "view">;

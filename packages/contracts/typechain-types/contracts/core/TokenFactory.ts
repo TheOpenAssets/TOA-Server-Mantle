@@ -49,6 +49,7 @@ export interface TokenFactoryInterface extends Interface {
     nameOrSignature:
       | "allTokens"
       | "attestationRegistry"
+      | "deployPrivateAssetTokenSuite"
       | "deployTokenSuite"
       | "deployedTokens"
       | "getAllTokens"
@@ -61,7 +62,9 @@ export interface TokenFactoryInterface extends Interface {
       | "yieldVault"
   ): FunctionFragment;
 
-  getEvent(nameOrSignatureOrTopic: "TokenSuiteDeployed"): EventFragment;
+  getEvent(
+    nameOrSignatureOrTopic: "PrivateAssetTokenDeployed" | "TokenSuiteDeployed"
+  ): EventFragment;
 
   encodeFunctionData(
     functionFragment: "allTokens",
@@ -70,6 +73,20 @@ export interface TokenFactoryInterface extends Interface {
   encodeFunctionData(
     functionFragment: "attestationRegistry",
     values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "deployPrivateAssetTokenSuite",
+    values: [
+      BytesLike,
+      BigNumberish,
+      string,
+      string,
+      AddressLike,
+      string,
+      string,
+      BigNumberish,
+      string
+    ]
   ): string;
   encodeFunctionData(
     functionFragment: "deployTokenSuite",
@@ -115,6 +132,10 @@ export interface TokenFactoryInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
+    functionFragment: "deployPrivateAssetTokenSuite",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "deployTokenSuite",
     data: BytesLike
   ): Result;
@@ -145,6 +166,37 @@ export interface TokenFactoryInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "yieldVault", data: BytesLike): Result;
+}
+
+export namespace PrivateAssetTokenDeployedEvent {
+  export type InputTuple = [
+    assetId: BytesLike,
+    token: AddressLike,
+    compliance: AddressLike,
+    totalSupply: BigNumberish,
+    assetType: string,
+    valuation: BigNumberish
+  ];
+  export type OutputTuple = [
+    assetId: string,
+    token: string,
+    compliance: string,
+    totalSupply: bigint,
+    assetType: string,
+    valuation: bigint
+  ];
+  export interface OutputObject {
+    assetId: string;
+    token: string;
+    compliance: string;
+    totalSupply: bigint;
+    assetType: string;
+    valuation: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
 }
 
 export namespace TokenSuiteDeployedEvent {
@@ -219,6 +271,22 @@ export interface TokenFactory extends BaseContract {
 
   attestationRegistry: TypedContractMethod<[], [string], "view">;
 
+  deployPrivateAssetTokenSuite: TypedContractMethod<
+    [
+      assetId: BytesLike,
+      totalSupply: BigNumberish,
+      name: string,
+      symbol: string,
+      issuer: AddressLike,
+      assetType: string,
+      location: string,
+      valuation: BigNumberish,
+      documentHash: string
+    ],
+    [void],
+    "nonpayable"
+  >;
+
   deployTokenSuite: TypedContractMethod<
     [
       assetId: BytesLike,
@@ -274,6 +342,23 @@ export interface TokenFactory extends BaseContract {
   getFunction(
     nameOrSignature: "attestationRegistry"
   ): TypedContractMethod<[], [string], "view">;
+  getFunction(
+    nameOrSignature: "deployPrivateAssetTokenSuite"
+  ): TypedContractMethod<
+    [
+      assetId: BytesLike,
+      totalSupply: BigNumberish,
+      name: string,
+      symbol: string,
+      issuer: AddressLike,
+      assetType: string,
+      location: string,
+      valuation: BigNumberish,
+      documentHash: string
+    ],
+    [void],
+    "nonpayable"
+  >;
   getFunction(
     nameOrSignature: "deployTokenSuite"
   ): TypedContractMethod<
@@ -331,6 +416,13 @@ export interface TokenFactory extends BaseContract {
   ): TypedContractMethod<[], [string], "view">;
 
   getEvent(
+    key: "PrivateAssetTokenDeployed"
+  ): TypedContractEvent<
+    PrivateAssetTokenDeployedEvent.InputTuple,
+    PrivateAssetTokenDeployedEvent.OutputTuple,
+    PrivateAssetTokenDeployedEvent.OutputObject
+  >;
+  getEvent(
     key: "TokenSuiteDeployed"
   ): TypedContractEvent<
     TokenSuiteDeployedEvent.InputTuple,
@@ -339,6 +431,17 @@ export interface TokenFactory extends BaseContract {
   >;
 
   filters: {
+    "PrivateAssetTokenDeployed(bytes32,address,address,uint256,string,uint256)": TypedContractEvent<
+      PrivateAssetTokenDeployedEvent.InputTuple,
+      PrivateAssetTokenDeployedEvent.OutputTuple,
+      PrivateAssetTokenDeployedEvent.OutputObject
+    >;
+    PrivateAssetTokenDeployed: TypedContractEvent<
+      PrivateAssetTokenDeployedEvent.InputTuple,
+      PrivateAssetTokenDeployedEvent.OutputTuple,
+      PrivateAssetTokenDeployedEvent.OutputObject
+    >;
+
     "TokenSuiteDeployed(bytes32,address,address,uint256)": TypedContractEvent<
       TokenSuiteDeployedEvent.InputTuple,
       TokenSuiteDeployedEvent.OutputTuple,

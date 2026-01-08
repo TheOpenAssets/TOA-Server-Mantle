@@ -44,10 +44,18 @@ export type { ISeniorPool } from "./contracts/core/LeverageVault.sol/ISeniorPool
 export { ISeniorPool__factory } from "./factories/contracts/core/LeverageVault.sol/ISeniorPool__factory";
 export type { LeverageVault } from "./contracts/core/LeverageVault.sol/LeverageVault";
 export { LeverageVault__factory } from "./factories/contracts/core/LeverageVault.sol/LeverageVault__factory";
+export type { PrivateAssetToken } from "./contracts/core/PrivateAssetToken";
+export { PrivateAssetToken__factory } from "./factories/contracts/core/PrivateAssetToken__factory";
 export type { RWAToken } from "./contracts/core/RWAToken";
 export { RWAToken__factory } from "./factories/contracts/core/RWAToken__factory";
 export type { SeniorPool } from "./contracts/core/SeniorPool";
 export { SeniorPool__factory } from "./factories/contracts/core/SeniorPool__factory";
+export type { IOAID } from "./contracts/core/SolvencyVault.sol/IOAID";
+export { IOAID__factory } from "./factories/contracts/core/SolvencyVault.sol/IOAID__factory";
+export type { IYieldVault } from "./contracts/core/SolvencyVault.sol/IYieldVault";
+export { IYieldVault__factory } from "./factories/contracts/core/SolvencyVault.sol/IYieldVault__factory";
+export type { SolvencyVault } from "./contracts/core/SolvencyVault.sol/SolvencyVault";
+export { SolvencyVault__factory } from "./factories/contracts/core/SolvencyVault.sol/SolvencyVault__factory";
 export type { TokenFactory } from "./contracts/core/TokenFactory";
 export { TokenFactory__factory } from "./factories/contracts/core/TokenFactory__factory";
 export type { TrustedIssuersRegistry } from "./contracts/core/TrustedIssuersRegistry";
@@ -62,6 +70,8 @@ export type { IFluxionDEX } from "./contracts/integrations/FluxionIntegration.so
 export { IFluxionDEX__factory } from "./factories/contracts/integrations/FluxionIntegration.sol/IFluxionDEX__factory";
 export type { IMETHPriceOracle } from "./contracts/integrations/FluxionIntegration.sol/IMETHPriceOracle";
 export { IMETHPriceOracle__factory } from "./factories/contracts/integrations/FluxionIntegration.sol/IMETHPriceOracle__factory";
+export type { OAID } from "./contracts/integrations/OAID";
+export { OAID__factory } from "./factories/contracts/integrations/OAID__factory";
 export type { PrimaryMarket } from "./contracts/marketplace/PrimaryMarket";
 export { PrimaryMarket__factory } from "./factories/contracts/marketplace/PrimaryMarket__factory";
 export type { Faucet } from "./contracts/test/Faucet.sol/Faucet";

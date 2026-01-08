@@ -3,11 +3,14 @@
 /* eslint-disable */
 import type * as leverageVaultSol from "./LeverageVault.sol";
 export type { leverageVaultSol };
+import type * as solvencyVaultSol from "./SolvencyVault.sol";
+export type { solvencyVaultSol };
 import type * as yieldVaultSol from "./YieldVault.sol";
 export type { yieldVaultSol };
 export type { AttestationRegistry } from "./AttestationRegistry";
 export type { ComplianceModule } from "./ComplianceModule";
 export type { IdentityRegistry } from "./IdentityRegistry";
+export type { PrivateAssetToken } from "./PrivateAssetToken";
 export type { RWAToken } from "./RWAToken";
 export type { SeniorPool } from "./SeniorPool";
 export type { TokenFactory } from "./TokenFactory";

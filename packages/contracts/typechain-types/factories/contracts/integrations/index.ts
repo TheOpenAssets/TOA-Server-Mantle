@@ -2,3 +2,4 @@
 /* tslint:disable */
 /* eslint-disable */
 export * as fluxionIntegrationSol from "./FluxionIntegration.sol";
+export { OAID__factory } from "./OAID__factory";

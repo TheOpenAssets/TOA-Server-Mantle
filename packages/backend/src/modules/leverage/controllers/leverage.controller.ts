@@ -59,13 +59,24 @@ export class LeverageController {
       }
 
       this.logger.log(`Token Amount: ${dto.tokenAmount}`);
-      this.logger.log(`Price Per Token: ${dto.pricePerToken}`);
+      this.logger.log(`Price Per Token (request): ${dto.pricePerToken}`);
       this.logger.log(`mETH Collateral: ${dto.mETHCollateral}`);
       this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      // Calculate total USDC needed
+      // Get actual on-chain listing price (single source of truth)
+      this.logger.log(`🔍 Reading actual price from on-chain listing...`);
+      const onChainListing = await this.blockchainService.getOnChainListing(dto.assetId);
+      const actualPricePerToken = onChainListing.staticPrice;
+
+      this.logger.log(`💰 On-chain price per token: ${actualPricePerToken} USDC wei (${Number(actualPricePerToken) / 1e6} USDC)`);
+
+      if (dto.pricePerToken && BigInt(dto.pricePerToken) !== actualPricePerToken) {
+        this.logger.warn(`⚠️  Price mismatch! Request: ${dto.pricePerToken}, On-chain: ${actualPricePerToken}. Using on-chain value.`);
+      }
+
+      // Calculate total USDC needed using ACTUAL on-chain price
       const tokenAmountBigInt = BigInt(dto.tokenAmount);
-      const pricePerTokenBigInt = BigInt(dto.pricePerToken);
+      const pricePerTokenBigInt = actualPricePerToken;
       const totalUSDCNeeded = (tokenAmountBigInt * pricePerTokenBigInt) / BigInt(10 ** 18);
 
       this.logger.log(`💰 Total USDC needed: ${totalUSDCNeeded.toString()} (${Number(totalUSDCNeeded) / 1e6} USDC)`);

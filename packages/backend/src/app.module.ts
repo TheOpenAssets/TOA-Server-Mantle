@@ -25,6 +25,7 @@ import { AnnouncementsModule } from './modules/announcements/announcements.modul
 import { FaucetModule } from './modules/faucet/faucet.module';
 import { LeverageModule } from './modules/leverage/leverage.module';
 import { SolvencyModule } from './modules/solvency/solvency.module';
+import { PartnersModule } from './modules/partners/partners.module';
 import { ChangelogModule } from './modules/changelog/changelog.module';
 
 @Module({
@@ -86,6 +87,7 @@ import { ChangelogModule } from './modules/changelog/changelog.module';
     FaucetModule,
     LeverageModule,
     SolvencyModule,
+    PartnersModule,
     ChangelogModule
   ],
   controllers: [AppController],

@@ -6,6 +6,7 @@ import { Logger } from '@nestjs/common';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { DocumentStorageService } from '../services/document-storage.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
+import { SolvencyBlockchainService } from '../../solvency/services/solvency-blockchain.service';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { NotificationType } from '../../notifications/enums/notification-type.enum';
 import { NotificationSeverity } from '../../notifications/enums/notification-type.enum';
@@ -27,6 +28,7 @@ export class VerificationProcessor extends WorkerHost {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private storageService: DocumentStorageService,
     private blockchainService: BlockchainService,
+    private solvencyBlockchainService: SolvencyBlockchainService,
     private notificationService: NotificationService,
   ) {
     super();
@@ -248,18 +250,42 @@ export class VerificationProcessor extends WorkerHost {
                     const txHash = await this.blockchainService.registerIdentity(user.walletAddress);
                     this.logger.log(`✅ Investor registered on blockchain: ${txHash}`);
 
+                    // Check if OAID registration already exists, register if not
+                    this.logger.log(`🔍 Checking for existing OAID registration for ${user.walletAddress}...`);
+                    const hasOAID = await this.solvencyBlockchainService.hasOAIDCreditLine(user.walletAddress);
+                    
+                    let oaidTxHash: string | undefined;
+
+                    if (!hasOAID) {
+                        try {
+                            this.logger.log(`🆔 Registering user in OAID system for ${user.walletAddress}...`);
+                            const oaidResult = await this.solvencyBlockchainService.registerUserInOAID(user.walletAddress);
+                            oaidTxHash = oaidResult.txHash;
+                            this.logger.log(`✅ User registered in OAID system: TX: ${oaidTxHash}`);
+                        } catch (oaidError) {
+                            this.logger.error(`⚠️ Failed to register user in OAID: ${oaidError}`);
+                            // Don't fail the whole operation if OAID registration fails
+                        }
+                    } else {
+                        this.logger.log(`✅ User already registered in OAID system`);
+                    }
+
                     // Send success notification
                     await this.notificationService.create({
                         userId: user.walletAddress,
                         walletAddress: user.walletAddress,
                         header: 'KYC Verified - Ready to Invest!',
-                        detail: 'Your KYC has been approved and your identity has been registered on-chain. You can now purchase RWA tokens!',
+                        detail: hasOAID 
+                            ? 'Your KYC has been approved and your identity has been registered on-chain. You can now purchase RWA tokens!'
+                            : 'Your KYC has been approved, identity registered, and OAID profile created on-chain. You can now purchase RWA tokens and access credit features when you deposit collateral!',
                         type: NotificationType.KYC_STATUS,
                         severity: NotificationSeverity.SUCCESS,
                         action: NotificationAction.VIEW_MARKETPLACE,
                         actionMetadata: {
                             txHash,
                             verificationScore: score,
+                            oaidRegistered: !hasOAID,
+                            oaidTxHash,
                         },
                     });
 

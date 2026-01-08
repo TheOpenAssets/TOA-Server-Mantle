@@ -7,6 +7,8 @@ import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/ass
 import { Bid, BidDocument, BidStatus } from '../../../database/schemas/bid.schema';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { TokenHolderTrackingService } from '../../yield/services/token-holder-tracking.service';
+import { SolvencyPositionService } from '../../solvency/services/solvency-position.service';
+import { PositionStatus } from '../../../database/schemas/solvency-position.schema';
 
 @Processor('event-processing')
 export class EventProcessor extends WorkerHost {
@@ -17,6 +19,7 @@ export class EventProcessor extends WorkerHost {
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private tokenHolderTrackingService: TokenHolderTrackingService,
+    private solvencyPositionService: SolvencyPositionService,
   ) {
     super();
   }
@@ -47,6 +50,25 @@ export class EventProcessor extends WorkerHost {
         return this.processAuctionEnded(job.data);
       case 'process-bid-settled':
         return this.processBidSettled(job.data);
+
+      // SolvencyVault events
+      case 'process-solvency-borrow':
+        return this.processSolvencyBorrow(job.data);
+      case 'process-solvency-repayment':
+        return this.processSolvencyRepayment(job.data);
+      case 'process-solvency-missed-payment':
+        return this.processSolvencyMissedPayment(job.data);
+      case 'process-solvency-defaulted':
+        return this.processSolvencyDefaulted(job.data);
+      case 'process-solvency-liquidated':
+        return this.processSolvencyLiquidated(job.data);
+      case 'process-solvency-liquidation-settled':
+        return this.processSolvencyLiquidationSettled(job.data);
+      case 'process-solvency-withdrawal':
+        return this.processSolvencyWithdrawal(job.data);
+      case 'process-solvency-repayment-plan':
+        return this.processSolvencyRepaymentPlan(job.data);
+
       default:
         this.logger.warn(`Unknown job name: ${job.name}`);
     }
@@ -243,8 +265,146 @@ export class EventProcessor extends WorkerHost {
   private async processTransfer(data: any) {
     const { tokenAddress, from, to, amount, txHash } = data;
     this.logger.log(`Transfer observed for ${tokenAddress}: ${from} -> ${to} [${amount}]`);
-    
+
     await this.tokenHolderTrackingService.updateHolderFromTransferEvent(tokenAddress, from, to, amount);
+  }
+
+  // ========================================
+  // SolvencyVault Event Processors
+  // ========================================
+
+  private async processSolvencyBorrow(data: any) {
+    const { positionId, amount, totalDebt, txHash, blockNumber } = data;
+    this.logger.log(`Processing SolvencyVault borrow for position ${positionId}: borrowed ${amount}, total debt ${totalDebt}`);
+
+    try {
+      // The recordBorrow method doesn't sync repayment plan from blockchain
+      // We need to sync the full position after borrow
+      await this.solvencyPositionService.syncPositionWithBlockchain(positionId);
+      this.logger.log(`✅ Position ${positionId} synced after borrow event`);
+    } catch (error: any) {
+      this.logger.error(`Failed to sync position ${positionId} after borrow: ${error.message}`);
+    }
+  }
+
+  private async processSolvencyRepayment(data: any) {
+    const { positionId, amountPaid, principal, interest, remainingDebt, txHash, blockNumber } = data;
+    this.logger.log(`Processing SolvencyVault repayment for position ${positionId}: paid ${amountPaid}, principal ${principal}, interest ${interest}`);
+
+    try {
+      await this.solvencyPositionService.recordRepayment(positionId, amountPaid, principal);
+      this.logger.log(`✅ Position ${positionId} updated after repayment`);
+    } catch (error: any) {
+      this.logger.error(`Failed to process repayment for position ${positionId}: ${error.message}`);
+    }
+  }
+
+  private async processSolvencyMissedPayment(data: any) {
+    const { positionId, missedPayments, txHash, blockNumber } = data;
+    this.logger.log(`Processing missed payment for position ${positionId}: total missed = ${missedPayments}`);
+
+    try {
+      const position = await this.solvencyPositionService.getPosition(positionId);
+      position.missedPayments = missedPayments;
+
+      // Update the repayment schedule to mark the current installment as MISSED
+      if (position.repaymentSchedule && position.repaymentSchedule.length > 0) {
+        const pendingInstallment = position.repaymentSchedule.find((i: any) => i.status === 'PENDING');
+        if (pendingInstallment) {
+          pendingInstallment.status = 'MISSED';
+        }
+      }
+
+      // Advance next payment due date
+      if (position.nextPaymentDueDate && position.installmentInterval) {
+        const intervalMs = position.installmentInterval * 1000;
+        position.nextPaymentDueDate = new Date(position.nextPaymentDueDate.getTime() + intervalMs);
+      }
+
+      await position.save();
+      this.logger.log(`✅ Position ${positionId} marked with ${missedPayments} missed payments`);
+    } catch (error: any) {
+      this.logger.error(`Failed to process missed payment for position ${positionId}: ${error.message}`);
+    }
+  }
+
+  private async processSolvencyDefaulted(data: any) {
+    const { positionId, txHash, blockNumber } = data;
+    this.logger.log(`Processing default for position ${positionId}`);
+
+    try {
+      const position = await this.solvencyPositionService.getPosition(positionId);
+      position.isDefaulted = true;
+      position.status = PositionStatus.ACTIVE; // Still active but defaulted (awaiting liquidation)
+      await position.save();
+      this.logger.log(`✅ Position ${positionId} marked as defaulted`);
+    } catch (error: any) {
+      this.logger.error(`Failed to process default for position ${positionId}: ${error.message}`);
+    }
+  }
+
+  private async processSolvencyLiquidated(data: any) {
+    const { positionId, marketplaceListingId, txHash, blockNumber } = data;
+    this.logger.log(`Processing liquidation for position ${positionId}`);
+
+    try {
+      await this.solvencyPositionService.markLiquidated(positionId, marketplaceListingId, txHash);
+      this.logger.log(`✅ Position ${positionId} marked as liquidated`);
+    } catch (error: any) {
+      this.logger.error(`Failed to process liquidation for position ${positionId}: ${error.message}`);
+    }
+  }
+
+  private async processSolvencyLiquidationSettled(data: any) {
+    const { positionId, yieldReceived, debtRepaid, userRefund, txHash, blockNumber } = data;
+    this.logger.log(`Processing liquidation settlement for position ${positionId}: yield ${yieldReceived}, debt repaid ${debtRepaid}, refund ${userRefund}`);
+
+    try {
+      const position = await this.solvencyPositionService.getPosition(positionId);
+      position.status = PositionStatus.SETTLED;
+      position.settledAt = new Date();
+      position.debtRecovered = debtRepaid;
+      await position.save();
+      this.logger.log(`✅ Position ${positionId} marked as settled`);
+    } catch (error: any) {
+      this.logger.error(`Failed to process liquidation settlement for position ${positionId}: ${error.message}`);
+    }
+  }
+
+  private async processSolvencyWithdrawal(data: any) {
+    const { positionId, amount, remainingCollateral, txHash, blockNumber } = data;
+    this.logger.log(`Processing withdrawal for position ${positionId}: withdrew ${amount}, remaining ${remainingCollateral}`);
+
+    try {
+      await this.solvencyPositionService.recordWithdrawal(positionId, amount);
+      this.logger.log(`✅ Position ${positionId} updated after withdrawal`);
+    } catch (error: any) {
+      this.logger.error(`Failed to process withdrawal for position ${positionId}: ${error.message}`);
+    }
+  }
+
+  private async processSolvencyRepaymentPlan(data: any) {
+    const { positionId, loanDuration, numberOfInstallments, installmentInterval, txHash, blockNumber } = data;
+    this.logger.log(`Processing repayment plan for position ${positionId}: ${numberOfInstallments} installments, interval ${installmentInterval}s`);
+
+    try {
+      const position = await this.solvencyPositionService.getPosition(positionId);
+
+      // This event is emitted during borrowUSDC, so the position should already have these details
+      // But we'll update them to ensure consistency
+      position.loanDuration = loanDuration;
+      position.numberOfInstallments = numberOfInstallments;
+      position.installmentInterval = installmentInterval;
+
+      // Calculate next payment due date
+      const now = new Date();
+      position.nextPaymentDueDate = new Date(now.getTime() + (installmentInterval * 1000));
+
+      await position.save();
+      this.logger.log(`✅ Position ${positionId} repayment plan updated`);
+    } catch (error: any) {
+      this.logger.error(`Failed to process repayment plan for position ${positionId}: ${error.message}`);
+    }
   }
 
   @OnWorkerEvent('completed')

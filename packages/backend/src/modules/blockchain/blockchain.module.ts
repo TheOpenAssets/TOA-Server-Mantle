@@ -28,6 +28,7 @@ import { forwardRef } from '@nestjs/common';
       name: 'event-processing',
     }),
     forwardRef(() => YieldModule),
+    forwardRef(() => import('../solvency/solvency.module').then(m => m.SolvencyModule)),
   ],
   providers: [
     BlockchainService,
