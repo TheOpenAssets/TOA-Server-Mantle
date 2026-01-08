@@ -253,7 +253,7 @@ contract OAID is Ownable, ReentrancyGuard {
     function recordCreditUsage(
         uint256 creditLineId,
         uint256 amount
-    ) external onlyOwner nonReentrant {
+    ) external onlySolvencyVault nonReentrant {
         CreditLine storage creditLine = creditLines[creditLineId];
         require(creditLine.active, "Credit line not active");
         require(amount > 0, "Amount must be > 0");
@@ -274,7 +274,7 @@ contract OAID is Ownable, ReentrancyGuard {
     function recordCreditRepayment(
         uint256 creditLineId,
         uint256 amount
-    ) external onlyOwner nonReentrant {
+    ) external onlySolvencyVault nonReentrant {
         CreditLine storage creditLine = creditLines[creditLineId];
         require(creditLine.active, "Credit line not active");
         require(amount > 0, "Amount must be > 0");

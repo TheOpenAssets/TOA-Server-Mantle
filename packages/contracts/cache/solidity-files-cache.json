@@ -1455,8 +1455,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/integrations/OAID.sol": {
-      "lastModificationDate": 1767815432493,
-      "contentHash": "fdd43bddc1e263fec9bc094818136da3",
+      "lastModificationDate": 1767851322190,
+      "contentHash": "c1229dc714928e39add58143315a1630",
       "sourceName": "contracts/integrations/OAID.sol",
       "solcConfig": {
         "version": "0.8.20",

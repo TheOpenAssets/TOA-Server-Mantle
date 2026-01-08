@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SolvencyController } from './controllers/solvency.controller';
@@ -22,7 +22,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       { name: PrivateAssetRequest.name, schema: PrivateAssetRequestSchema },
     ]),
     ScheduleModule.forRoot(),
-    BlockchainModule,
+    forwardRef(() => BlockchainModule),
     LeverageModule, // For liquidating leverage positions via admin controller
     NotificationsModule,
   ],
