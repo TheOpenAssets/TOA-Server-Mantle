@@ -58,6 +58,7 @@ export class ContractLoaderService implements OnModuleInit {
       SeniorPool: 'core/SeniorPool.sol/SeniorPool.json',
       FluxionIntegration: 'integrations/FluxionIntegration.sol/FluxionIntegration.json',
       MockFluxionDEX: 'test/MockFluxionDEX.sol/MockFluxionDEX.json',
+      SecondaryMarket: 'marketplace/SecondaryMarket.sol/SecondaryMarket.json',
     };
 
     for (const [name, relPath] of Object.entries(mapping)) {

@@ -35,6 +35,18 @@ export class Purchase {
   @Prop({ default: 'CONFIRMED' })
   status!: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'CLAIMED';
 
+  @Prop({ default: 'PRIMARY_MARKET' })
+  source!: 'PRIMARY_MARKET' | 'AUCTION' | 'SECONDARY_MARKET' | 'P2P_SELL_ORDER' | 'SECONDARY_MARKET_PURCHASE' | 'P2P_ORDER_CANCELLED';
+
+  @Prop()
+  p2pTradeId?: string; // Reference to P2PTrade if source is SECONDARY_MARKET
+
+  @Prop({ default: false })
+  soldOnSecondaryMarket?: boolean; // True if user sold these tokens on P2P market
+
+  @Prop()
+  soldP2PTradeId?: string; // Reference to P2PTrade when sold
+
   @Prop({ type: Object })
   metadata?: {
     assetName?: string;

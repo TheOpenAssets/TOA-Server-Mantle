@@ -61,6 +61,9 @@ export class EventListenerService implements OnModuleInit {
       if (this.contractLoader.hasContract('YieldVault')) {
         this.watchYieldVault();
       }
+      if (this.contractLoader.hasContract('SecondaryMarket')) {
+        this.watchSecondaryMarket();
+      }
 
       // CRITICAL FIX: Watch Transfer events for all existing deployed tokens
       // This ensures we don't miss events if the backend was restarted after token deployment
@@ -121,7 +124,7 @@ export class EventListenerService implements OnModuleInit {
             txHash: log.transactionHash,
             blockNumber: Number(log.blockNumber),
             // timestamp will be fetched in processor if needed, or we can use Date.now() approx
-            timestamp: Math.floor(Date.now() / 1000), 
+            timestamp: Math.floor(Date.now() / 1000),
           });
         }
       },
@@ -150,7 +153,7 @@ export class EventListenerService implements OnModuleInit {
             blockNumber: Number(log.blockNumber),
             timestamp: Math.floor(Date.now() / 1000),
           });
-          
+
           // Dynamically start watching this new token's transfers
           this.watchTokenTransfers(token as Address);
         }
@@ -293,9 +296,88 @@ export class EventListenerService implements OnModuleInit {
     });
   }
 
+  /**
+   * Watch SecondaryMarket (P2P Trading) Events
+   * CRITICAL: This enables real-time order creation/fill/cancel tracking
+   */
+  private watchSecondaryMarket() {
+    const address = this.contractLoader.getContractAddress('SecondaryMarket');
+    const abi = this.contractLoader.getContractAbi('SecondaryMarket');
+
+    this.logger.log(`Watching SecondaryMarket at ${address}`);
+
+    // Watch OrderCreated
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'OrderCreated',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { orderId, maker, tokenAddress, amount, pricePerToken, isBuy } = log.args;
+          this.logger.log(`[P2P Event] OrderCreated detected: #${orderId} by ${maker}`);
+          await this.eventQueue.add('process-p2p-order-created', {
+            orderId: orderId.toString(),
+            maker,
+            tokenAddress,
+            amount: amount.toString(),
+            pricePerToken: pricePerToken.toString(),
+            isBuy,
+            txHash: log.transactionHash,
+            blockNumber: Number(log.blockNumber),
+            timestamp: Math.floor(Date.now() / 1000),
+          });
+        }
+      },
+    });
+
+    // Watch OrderFilled
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'OrderFilled',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { orderId, taker, maker, tokenAddress, amountFilled, totalCost, remainingAmount } = log.args;
+          this.logger.log(`[P2P Event] OrderFilled detected: #${orderId}, amount: ${amountFilled.toString()}`);
+          await this.eventQueue.add('process-p2p-order-filled', {
+            orderId: orderId.toString(),
+            taker,
+            maker,
+            tokenAddress,
+            amountFilled: amountFilled.toString(),
+            totalCost: totalCost.toString(),
+            remainingAmount: remainingAmount.toString(),
+            txHash: log.transactionHash,
+            blockNumber: Number(log.blockNumber),
+            timestamp: Math.floor(Date.now() / 1000),
+          });
+        }
+      },
+    });
+
+    // Watch OrderCancelled
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'OrderCancelled',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { orderId } = log.args;
+          this.logger.log(`[P2P Event] OrderCancelled detected: #${orderId}`);
+          await this.eventQueue.add('process-p2p-order-cancelled', {
+            orderId: orderId.toString(),
+            txHash: log.transactionHash,
+            blockNumber: Number(log.blockNumber),
+            timestamp: Math.floor(Date.now() / 1000),
+          });
+        }
+      },
+    });
+  }
+
   private watchTokenTransfers(tokenAddress: Address) {
     this.logger.log(`Started dynamic monitoring for token: ${tokenAddress}`);
-    
+
     this.publicClient.watchContractEvent({
       address: tokenAddress,
       abi: this.contractLoader.getContractAbi('RWAToken'),

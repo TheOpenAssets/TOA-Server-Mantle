@@ -422,6 +422,7 @@ export class BidTrackerService {
           price: pricePerTokenWei.toString(), // Clearing price per token in USDC wei
           totalPayment: settlementData.cost.toString(), // Actual USDC paid in wei
           status: 'CONFIRMED',
+          source:'PRIMARY_MARKET',
           metadata: {
             assetName: asset.metadata?.invoiceNumber,
             industry: asset.metadata?.industry,

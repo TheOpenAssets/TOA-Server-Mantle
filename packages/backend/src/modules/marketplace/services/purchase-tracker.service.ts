@@ -77,6 +77,7 @@ export class PurchaseTrackerService {
       blockNumber: purchaseData.blockNumber,
       blockTimestamp: new Date(purchaseData.timestamp * 1000),
       status: 'CONFIRMED',
+      source: 'PRIMARY_MARKET',
       metadata: {
         assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
         industry: asset.metadata?.industry,
@@ -325,6 +326,7 @@ export class PurchaseTrackerService {
     const purchases = await this.purchaseModel.find({
       investorWallet: investorWallet.toLowerCase(),
       status: { $in: ['CLAIMED', 'CONFIRMED'] },
+
     })
       .sort({ createdAt: -1 });
 
@@ -334,23 +336,117 @@ export class PurchaseTrackerService {
     for (const purchase of purchases) {
       const existing = portfolioMap.get(purchase.assetId);
 
+      // CRITICAL: Calculate net investment and balance correctly
+      // - PRIMARY_MARKET/AUCTION: Money OUT (add to investment), tokens IN (add to balance)
+      // - SECONDARY_MARKET with positive amount (buyer): Money OUT (add to investment), tokens IN (add to balance)
+      // - SECONDARY_MARKET with negative amount (seller): Money IN (subtract from investment), tokens ALREADY ACCOUNTED in P2P_SELL_ORDER (skip for balance)
+      // - P2P_SELL_ORDER: No effect on investment (escrow lock), tokens OUT (subtract from balance)
+      // - P2P_ORDER_CANCELLED: No effect on investment (escrow unlock), tokens IN (add to balance)
+
+      let investmentDelta = '0';
+      let balanceDelta = purchase.amount; // Default: use purchase amount for balance
+      const amount = BigInt(purchase.amount);
+      const totalPayment = BigInt(purchase.totalPayment);
+
+      if (purchase.source === 'PRIMARY_MARKET' || purchase.source === 'AUCTION') {
+        // Initial purchase: money OUT, tokens IN
+        investmentDelta = totalPayment.toString();
+      } else if (purchase.source === 'SECONDARY_MARKET') {
+        if (amount < 0n) {
+          // Selling tokens: money IN (capital recovery) - SUBTRACT from investment
+          // CRITICAL: Don't subtract from balance - already done in P2P_SELL_ORDER lock
+          investmentDelta = (-totalPayment).toString();
+          balanceDelta = '0'; // Don't double-count balance change
+        } else {
+          // Buying tokens: money OUT - ADD to investment, tokens IN
+          investmentDelta = totalPayment.toString();
+        }
+      } else if (purchase.source === 'P2P_SELL_ORDER') {
+        // Lock in escrow: no investment change, tokens leave wallet
+        investmentDelta = '0';
+      } else if (purchase.source === 'P2P_ORDER_CANCELLED') {
+        // Unlock from escrow: no investment change, tokens return to wallet
+        investmentDelta = '0';
+      }
+
       if (existing) {
-        existing.totalAmount = (BigInt(existing.totalAmount) + BigInt(purchase.amount)).toString();
-        existing.totalInvested = (BigInt(existing.totalInvested) + BigInt(purchase.totalPayment)).toString();
+        existing.totalAmount = (BigInt(existing.totalAmount) + BigInt(balanceDelta)).toString();
+        existing.totalInvested = (BigInt(existing.totalInvested) + BigInt(investmentDelta)).toString();
         existing.purchaseCount += 1;
+        existing.transactions.push({
+          date: purchase.createdAt,
+          type: this.getTransactionType(purchase.source, amount),
+          amount: purchase.amount,
+          balanceDelta,
+          price: purchase.price,
+          totalValue: purchase.totalPayment,
+          investmentDelta,
+          txHash: purchase.txHash,
+          source: purchase.source,
+        });
       } else {
         portfolioMap.set(purchase.assetId, {
           assetId: purchase.assetId,
           tokenAddress: purchase.tokenAddress,
-          totalAmount: purchase.status === 'CLAIMED' ? '0' : purchase.amount,
-          totalInvested: purchase.totalPayment,
+          totalAmount: purchase.status === 'CLAIMED' ? '0' : balanceDelta,
+          totalInvested: investmentDelta,
           status: purchase.status,
           purchaseCount: 1,
           firstPurchase: purchase.createdAt,
           lastPurchase: purchase.createdAt,
           metadata: purchase.metadata,
+          transactions: [{
+            date: purchase.createdAt,
+            type: this.getTransactionType(purchase.source, amount),
+            amount: purchase.amount,
+            balanceDelta: balanceDelta,
+            price: purchase.price,
+            totalValue: purchase.totalPayment,
+            investmentDelta,
+            txHash: purchase.txHash,
+            source: purchase.source,
+          }],
         });
       }
+    }
+    // Format transaction history for each asset
+    for (const [assetId, item] of portfolioMap) {
+      // Sort transactions by date (oldest first for running balance calculation)
+      item.transactions.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Calculate running balances
+      let runningTokens = 0n;
+      let runningInvestment = 0n;
+
+      item.transactionHistory = item.transactions.map((tx: any) => {
+        runningTokens += BigInt(tx.amount);
+        runningInvestment += BigInt(tx.investmentDelta);
+
+        const tokenBalance = Number(runningTokens) / 1e18;
+        const investmentBalance = Number(runningInvestment) / 1e6;
+        const avgCost = runningTokens > 0n ? Number(runningInvestment) / Number(runningTokens) * 1e12 : 0;
+
+        return {
+          date: tx.date,
+          type: tx.type,
+          amount: tx.amount,
+          amountFormatted: `${(Number(tx.amount) / 1e18).toFixed(2)} tokens`,
+          price: tx.price,
+          priceFormatted: `$${(Number(tx.price) / 1e6).toFixed(2)}`,
+          totalValue: tx.totalValue,
+          totalValueFormatted: `$${(Number(tx.totalValue) / 1e6).toFixed(2)}`,
+          investmentDelta: tx.investmentDelta,
+          investmentDeltaFormatted: `$${(Number(tx.investmentDelta) / 1e6).toFixed(2)}`,
+          runningTokenBalance: tokenBalance.toFixed(2),
+          runningInvestment: investmentBalance.toFixed(2),
+          avgCostPerToken: avgCost.toFixed(2),
+          txHash: tx.txHash,
+          source: tx.source,
+        };
+      });
+
+      // Remove raw transactions array (keep only formatted history)
+      delete item.transactions;
     }
 
     // Enrich static portfolio with yield data and claim tx
@@ -526,7 +622,7 @@ export class PurchaseTrackerService {
             ...baseItem,
             mETHCollateral: position.mETHCollateral,
             usdcBorrowed: position.usdcBorrowed,
-            healthFactor: position.currentHealthFactor /100,
+            healthFactor: position.currentHealthFactor / 100,
             healthStatus: position.healthStatus,
             totalInterestPaid: position.totalInterestPaid,
             lastHarvestTime: position.lastHarvestTime,
@@ -576,6 +672,20 @@ export class PurchaseTrackerService {
       // Return empty array if leverage positions can't be fetched
       return [];
     }
+  }
+
+  /**
+   * Helper to determine transaction type from source and amount
+   */
+  private getTransactionType(source: string, amount: bigint): string {
+    if (source === 'PRIMARY_MARKET') return 'PRIMARY_PURCHASE';
+    if (source === 'AUCTION') return 'AUCTION_SETTLEMENT';
+    if (source === 'SECONDARY_MARKET') {
+      return amount > 0n ? 'SECONDARY_BUY' : 'SECONDARY_SELL';
+    }
+    if (source === 'P2P_SELL_ORDER') return 'ORDER_LOCK';
+    if (source === 'P2P_ORDER_CANCELLED') return 'ORDER_UNLOCK';
+    return 'UNKNOWN';
   }
 
   /**
