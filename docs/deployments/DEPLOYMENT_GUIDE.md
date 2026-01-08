@@ -50,7 +50,7 @@ The Mantle RWA Platform consists of:
 - RPC: `https://rpc.sepolia.mantle.xyz`
 - WSS: `wss://rpc.sepolia.mantle.xyz`
 - Chain ID: `5003`
-- Explorer: `https://explorer.sepolia.mantle.xyz`
+- Explorer: `https://sepolia.mantlescan.xyz`
 
 ---
 

@@ -31,7 +31,7 @@ async registerAsset(@Param('assetId') assetId: string) {
     message: 'Asset successfully registered on-chain',
     assetId,
     transactionHash: txHash,
-    explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
+    explorerUrl: `https://sepolia.mantlescan.xyz/tx/${txHash}`,
   };
 }
 ```
@@ -43,7 +43,7 @@ async registerAsset(@Param('assetId') assetId: string) {
   "message": "Asset successfully registered on-chain",
   "assetId": "c25b7a83-2b1c-447d-b2ef-dc95f4ae4bad",
   "transactionHash": "0xede37f66a40d0e57d27a683d7e4f42aa3cb98dd26a0c3ca8b74884884b9c4b85",
-  "explorerUrl": "https://explorer.sepolia.mantle.xyz/tx/0xede37f66a40d0e57d27a683d7e4f42aa3cb98dd26a0c3ca8b74884884b9c4b85"
+  "explorerUrl": "https://sepolia.mantlescan.xyz/tx/0xede37f66a40d0e57d27a683d7e4f42aa3cb98dd26a0c3ca8b74884884b9c4b85"
 }
 ```
 
@@ -142,7 +142,7 @@ async deployToken(@Body() dto: DeployTokenDto) {
     message: 'Token deployment initiated',
     assetId: dto.assetId,
     transactionHash: txHash,
-    explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
+    explorerUrl: `https://sepolia.mantlescan.xyz/tx/${txHash}`,
     note: 'Token address will be available once the transaction is confirmed. Check the events or query the asset.',
   };
 }
@@ -165,7 +165,7 @@ Expected response:
   "message": "Asset successfully registered on-chain",
   "assetId": "c25b7a83-2b1c-447d-b2ef-dc95f4ae4bad",
   "transactionHash": "0x...",
-  "explorerUrl": "https://explorer.sepolia.mantle.xyz/tx/0x..."
+  "explorerUrl": "https://sepolia.mantlescan.xyz/tx/0x..."
 }
 ```
 
@@ -188,7 +188,7 @@ Expected response:
   "message": "Token deployment initiated",
   "assetId": "c25b7a83-2b1c-447d-b2ef-dc95f4ae4bad",
   "transactionHash": "0x...",
-  "explorerUrl": "https://explorer.sepolia.mantle.xyz/tx/0x...",
+  "explorerUrl": "https://sepolia.mantlescan.xyz/tx/0x...",
   "note": "Token address will be available once the transaction is confirmed. Check the events or query the asset."
 }
 ```

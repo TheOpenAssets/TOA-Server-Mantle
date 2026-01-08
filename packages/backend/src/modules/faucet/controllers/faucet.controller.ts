@@ -5,7 +5,7 @@ import { RequestMethDto } from '../dto/request-meth.dto';
 
 @Controller('faucet')
 export class FaucetController {
-  constructor(private readonly faucetService: FaucetService) {}
+  constructor(private readonly faucetService: FaucetService) { }
 
   @Post('usdc')
   @HttpCode(200)
@@ -18,7 +18,7 @@ export class FaucetController {
       transactionHash: result.hash,
       amount: result.amount,
       receiverAddress: result.receiverAddress,
-      explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${result.hash}`,
+      explorerUrl: `https://sepolia.mantlescan.xyz/tx/${result.hash}`,
     };
   }
 
@@ -33,7 +33,7 @@ export class FaucetController {
       transactionHash: result.hash,
       amount: result.amount,
       receiverAddress: result.receiverAddress,
-      explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${result.hash}`,
+      explorerUrl: `https://sepolia.mantlescan.xyz/tx/${result.hash}`,
     };
   }
 }

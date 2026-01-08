@@ -93,7 +93,7 @@ async function main() {
     console.log('\n📝 Sending transaction...');
     const tx = await identityRegistry.registerIdentity(INVESTOR_ADDRESS, identity);
     console.log(`TX Hash: ${tx.hash}`);
-    console.log(`Explorer: https://explorer.sepolia.mantle.xyz/tx/${tx.hash}`);
+    console.log(`Explorer: https://sepolia.mantlescan.xyz/tx/${tx.hash}`);
     console.log('⏳ Waiting for confirmation...');
 
     const receipt = await tx.wait();

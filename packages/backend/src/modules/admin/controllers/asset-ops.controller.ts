@@ -27,7 +27,7 @@ export class AssetOpsController {
     private readonly auctionService: AuctionService,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     private readonly notificationService: NotificationService,
-  ) {}
+  ) { }
 
   @Get()
   async getAllAssets(
@@ -88,7 +88,7 @@ export class AssetOpsController {
         assetId,
         status: AssetStatus.REGISTERED,
         transactionHash: txHash,
-        explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
+        explorerUrl: `https://sepolia.mantlescan.xyz/tx/${txHash}`,
       };
     } catch (error: any) {
       // Parse blockchain errors
@@ -177,7 +177,7 @@ export class AssetOpsController {
         tokenAddress: result.tokenAddress,
         complianceAddress: result.complianceAddress,
         transactionHash: result.hash,
-        explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${result.hash}`,
+        explorerUrl: `https://sepolia.mantlescan.xyz/tx/${result.hash}`,
       };
     } catch (error: any) {
       const errorMessage = error.message || 'Unknown error';
@@ -207,7 +207,7 @@ export class AssetOpsController {
           HttpStatus.CONFLICT,
         );
       }
-      
+
       // Generic blockchain error
       throw new HttpException(
         {
@@ -232,7 +232,7 @@ export class AssetOpsController {
         assetId,
         reason,
         transactionHash: txHash,
-        explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
+        explorerUrl: `https://sepolia.mantlescan.xyz/tx/${txHash}`,
       };
     } catch (error: any) {
       throw new HttpException(
@@ -252,7 +252,7 @@ export class AssetOpsController {
     try {
       // First, get the asset and extract token address
       const asset = await this.assetModel.findOne({ assetId: dto.assetId });
-      
+
       if (!asset) {
         throw new HttpException(
           {
@@ -369,7 +369,7 @@ export class AssetOpsController {
         minInvestment,
         duration,
         transactionHash: txHash,
-        explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
+        explorerUrl: `https://sepolia.mantlescan.xyz/tx/${txHash}`,
       };
     } catch (error: any) {
       // Re-throw HttpExceptions as-is
@@ -461,7 +461,7 @@ export class AssetOpsController {
       // Return the result from endAuction with additional explorer URL
       return {
         ...result,
-        explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
+        explorerUrl: `https://sepolia.mantlescan.xyz/tx/${txHash}`,
       };
     } catch (error: any) {
       // Re-throw HttpExceptions as-is
@@ -526,7 +526,7 @@ export class AssetOpsController {
         assetId,
         tokenAddress: asset.token.address,
         transactionHash: txHash,
-        explorerUrl: `https://explorer.sepolia.mantle.xyz/tx/${txHash}`,
+        explorerUrl: `https://sepolia.mantlescan.xyz/tx/${txHash}`,
       };
     } catch (error: any) {
       // Re-throw HttpExceptions as-is

@@ -120,7 +120,7 @@ async function main() {
     await tx.wait();
 
     logSuccess('LeverageVault registered successfully!');
-    logInfo(`Transaction: https://explorer.sepolia.mantle.xyz/tx/${tx.hash}`);
+    logInfo(`Transaction: https://sepolia.mantlescan.xyz/tx/${tx.hash}`);
 
     // Verify registration
     const newVault = await seniorPool.leverageVault();

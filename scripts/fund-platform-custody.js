@@ -68,7 +68,7 @@ async function main() {
   console.log(`⏳ Transferring ${ethers.formatEther(adminBalance)} tokens to Platform Custody...`);
   const tx = await token.transfer(platformCustody, adminBalance);
   console.log(`TX Hash: ${tx.hash}`);
-  console.log(`Explorer: https://explorer.sepolia.mantle.xyz/tx/${tx.hash}`);
+  console.log(`Explorer: https://sepolia.mantlescan.xyz/tx/${tx.hash}`);
   console.log('⏳ Waiting for confirmation...');
 
   await tx.wait();

@@ -181,7 +181,7 @@ async function placeBid() {
     console.log(`Bid Price: ${pricePerToken} USDC per token`);
     console.log(`New USDC Balance: ${ethers.formatUnits(usdcBalanceAfter, 6)} USDC`);
     console.log();
-    console.log(`Explorer: https://explorer.sepolia.mantle.xyz/tx/${bidTx.hash}`);
+    console.log(`Explorer: https://sepolia.mantlescan.xyz/tx/${bidTx.hash}`);
     console.log();
 
     // Generate backend notification curl command

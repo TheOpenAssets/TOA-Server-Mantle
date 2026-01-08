@@ -39,7 +39,7 @@ export class SecondaryMarketIndexer implements OnModuleInit {
   async onModuleInit() {
     // Start syncing loop
     this.syncEvents();
-    setInterval(() => this.syncEvents(), 50000);
+    setInterval(() => this.syncEvents(), 10000);
   }
 
   async syncEvents() {

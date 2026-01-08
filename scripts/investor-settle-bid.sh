@@ -245,7 +245,7 @@ BLOCK_NUMBER=$(echo "$TX_DATA" | jq -r '.blockNumber')
 print_success "Bid settled on-chain!"
 print_info "TX Hash: $TX_HASH"
 print_info "Block: $BLOCK_NUMBER"
-print_info "Explorer: https://explorer.sepolia.mantle.xyz/tx/$TX_HASH"
+print_info "Explorer: https://sepolia.mantlescan.xyz/tx/$TX_HASH"
 echo ""
 
 # =============================================================================

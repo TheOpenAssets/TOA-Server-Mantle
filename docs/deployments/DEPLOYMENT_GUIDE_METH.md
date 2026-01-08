@@ -510,7 +510,7 @@ Expected response:
   "transactionHash": "0x...",
   "amount": "1000",
   "receiverAddress": "0x...",
-  "explorerUrl": "https://explorer.sepolia.mantle.xyz/tx/0x..."
+  "explorerUrl": "https://sepolia.mantlescan.xyz/tx/0x..."
 }
 ```
 

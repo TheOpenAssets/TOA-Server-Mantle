@@ -230,7 +230,7 @@ async function initiateLeveragePurchase(assetId, tokenAddress, tokenAmount, pric
 
     const result = await response.json();
     logSuccess(`Position created! Position ID: ${result.positionId}`);
-    logInfo(`Transaction: https://explorer.sepolia.mantle.xyz/tx/${result.transactionHash}`);
+    logInfo(`Transaction: https://sepolia.mantlescan.xyz/tx/${result.transactionHash}`);
 
     return result;
   } catch (error) {

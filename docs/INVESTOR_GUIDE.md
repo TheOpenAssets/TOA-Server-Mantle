@@ -22,7 +22,7 @@ Before you can purchase RWA tokens, you need:
    - RPC URL: `https://rpc.sepolia.mantle.xyz`
    - Chain ID: `5003`
    - Currency Symbol: `MNT`
-   - Block Explorer: `https://explorer.sepolia.mantle.xyz`
+   - Block Explorer: `https://sepolia.mantlescan.xyz`
 
 2. **MNT tokens** for gas fees (available from Mantle Sepolia faucet)
 
@@ -227,7 +227,7 @@ console.log('Your balance:', ethers.formatUnits(balance, 18), 'tokens');
 ### View Your Purchase on Explorer
 
 ```
-https://explorer.sepolia.mantle.xyz/tx/<YOUR_TX_HASH>
+https://sepolia.mantlescan.xyz/tx/<YOUR_TX_HASH>
 ```
 
 ---

@@ -124,7 +124,7 @@ elif echo "$KYC_RESULT" | grep -q "REGISTERED:"; then
   TX_HASH=$(echo "$KYC_RESULT" | grep "REGISTERED:" | cut -d':' -f2)
   echo -e "${GREEN}✓ Identity registered!${NC}"
   echo -e "${GREEN}  TX: $TX_HASH${NC}"
-  echo -e "${GREEN}  Explorer: https://explorer.sepolia.mantle.xyz/tx/$TX_HASH${NC}"
+  echo -e "${GREEN}  Explorer: https://sepolia.mantlescan.xyz/tx/$TX_HASH${NC}"
 elif echo "$KYC_RESULT" | grep -q "ERROR:"; then
   ERROR_MSG=$(echo "$KYC_RESULT" | grep "ERROR:" | cut -d':' -f2-)
   echo -e "${RED}✗ KYC registration failed: $ERROR_MSG${NC}"
@@ -420,5 +420,5 @@ echo "  Price:         $PRICE_PER_TOKEN USDC/token"
 echo "  TX Hash:       $TX_HASH"
 echo "  Bid ID:        $BID_ID"
 echo ""
-echo "Explorer: https://explorer.sepolia.mantle.xyz/tx/$TX_HASH"
+echo "Explorer: https://sepolia.mantlescan.xyz/tx/$TX_HASH"
 echo ""

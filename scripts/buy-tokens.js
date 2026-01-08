@@ -72,7 +72,7 @@ async function buyTokens() {
     const listing = await marketplaceContract.listings(assetIdBytes32);
     const tokenAddress = listing[0];
     const currentPrice = await marketplaceContract.getCurrentPrice(assetIdBytes32);
-    
+
     console.log(`Token Address: ${tokenAddress}`);
     console.log(`Current Price: ${ethers.formatUnits(currentPrice, 18)} USDC per token`);
     console.log(`Min Investment: ${ethers.formatUnits(listing[11], 18)} tokens`);
@@ -93,7 +93,7 @@ async function buyTokens() {
     // Check USDC balance
     const usdcBalance = await usdcContract.balanceOf(wallet.address);
     console.log(`USDC Balance: ${ethers.formatUnits(usdcBalance, 6)} USDC`);
-    
+
     if (usdcBalance < payment) {
       console.error('❌ Insufficient USDC balance!');
       process.exit(1);
@@ -108,7 +108,7 @@ async function buyTokens() {
     // Step 1: Approve USDC
     console.log('✅ Step 1: Approving USDC...');
     const allowance = await usdcContract.allowance(wallet.address, marketplaceAddress);
-    
+
     if (allowance < payment) {
       const approveTx = await usdcContract.approve(marketplaceAddress, payment);
       console.log(`Approve TX: ${approveTx.hash}`);
@@ -124,7 +124,7 @@ async function buyTokens() {
     const buyTx = await marketplaceContract.buyTokens(assetIdBytes32, tokenAmountWei);
     console.log(`Buy TX: ${buyTx.hash}`);
     console.log('⏳ Waiting for confirmation...');
-    
+
     const receipt = await buyTx.wait();
     console.log(`✅ Confirmed in block ${receipt.blockNumber}`);
     console.log();
@@ -140,7 +140,7 @@ async function buyTokens() {
     console.log(`New Token Balance: ${ethers.formatUnits(tokenBalanceAfter, 18)} tokens`);
     console.log(`New USDC Balance: ${ethers.formatUnits(usdcBalanceAfter, 6)} USDC`);
     console.log();
-    console.log(`Explorer: https://explorer.sepolia.mantle.xyz/tx/${buyTx.hash}`);
+    console.log(`Explorer: https://sepolia.mantlescan.xyz/tx/${buyTx.hash}`);
     console.log();
     console.log('📝 Transaction details for backend notification:');
     console.log(JSON.stringify({

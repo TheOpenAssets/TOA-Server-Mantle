@@ -13,6 +13,6 @@ export const mantleSepolia = defineChain({
     public: { http: ['https://rpc.sepolia.mantle.xyz'], webSocket: ['wss://rpc.sepolia.mantle.xyz'] },
   },
   blockExplorers: {
-    default: { name: 'Explorer', url: 'https://explorer.sepolia.mantle.xyz' },
+    default: { name: 'Explorer', url: 'https://sepolia.mantlescan.xyz' },
   },
 });

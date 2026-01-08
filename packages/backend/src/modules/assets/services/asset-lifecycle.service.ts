@@ -736,6 +736,7 @@ export class AssetLifecycleService {
             'listing.active': true, // Re-activate listing for remaining token sales
             'listing.phase': 'CONFIRMED',
             'listing.tokensSold': tokensSold.toString(),
+            'listing.status':'LISTED'
           },
         },
       );
