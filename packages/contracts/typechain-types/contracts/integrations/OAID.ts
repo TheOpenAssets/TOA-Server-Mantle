@@ -32,6 +32,12 @@ export declare namespace OAID {
     creditUsed: BigNumberish;
     solvencyPositionId: BigNumberish;
     issuedAt: BigNumberish;
+    totalPayments: BigNumberish;
+    onTimePayments: BigNumberish;
+    latePayments: BigNumberish;
+    totalAmountRepaid: BigNumberish;
+    liquidated: boolean;
+    liquidatedAt: BigNumberish;
     active: boolean;
   };
 
@@ -43,6 +49,12 @@ export declare namespace OAID {
     creditUsed: bigint,
     solvencyPositionId: bigint,
     issuedAt: bigint,
+    totalPayments: bigint,
+    onTimePayments: bigint,
+    latePayments: bigint,
+    totalAmountRepaid: bigint,
+    liquidated: boolean,
+    liquidatedAt: bigint,
     active: boolean
   ] & {
     user: string;
@@ -52,8 +64,28 @@ export declare namespace OAID {
     creditUsed: bigint;
     solvencyPositionId: bigint;
     issuedAt: bigint;
+    totalPayments: bigint;
+    onTimePayments: bigint;
+    latePayments: bigint;
+    totalAmountRepaid: bigint;
+    liquidated: boolean;
+    liquidatedAt: bigint;
     active: boolean;
   };
+
+  export type PaymentRecordStruct = {
+    timestamp: BigNumberish;
+    amount: BigNumberish;
+    onTime: boolean;
+    daysLate: BigNumberish;
+  };
+
+  export type PaymentRecordStructOutput = [
+    timestamp: bigint,
+    amount: bigint,
+    onTime: boolean,
+    daysLate: bigint
+  ] & { timestamp: bigint; amount: bigint; onTime: boolean; daysLate: bigint };
 }
 
 export interface OAIDInterface extends Interface {
@@ -62,6 +94,9 @@ export interface OAIDInterface extends Interface {
       | "creditLines"
       | "getAvailableCredit"
       | "getCreditLine"
+      | "getCreditProfile"
+      | "getCreditScore"
+      | "getPaymentHistory"
       | "getTotalAvailableCredit"
       | "getTotalCreditLimit"
       | "getUserCreditLines"
@@ -69,8 +104,10 @@ export interface OAIDInterface extends Interface {
       | "issueCreditLine"
       | "nextCreditLineId"
       | "owner"
+      | "paymentHistory"
       | "recordCreditRepayment"
       | "recordCreditUsage"
+      | "recordPayment"
       | "registerUser"
       | "registeredUsers"
       | "renounceOwnership"
@@ -91,6 +128,8 @@ export interface OAIDInterface extends Interface {
       | "CreditRepaid"
       | "CreditUsed"
       | "OwnershipTransferred"
+      | "PaymentRecorded"
+      | "PositionLiquidated"
       | "UserRegistered"
   ): EventFragment;
 
@@ -104,6 +143,18 @@ export interface OAIDInterface extends Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "getCreditLine",
+    values: [BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "getCreditProfile",
+    values: [AddressLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "getCreditScore",
+    values: [AddressLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "getPaymentHistory",
     values: [BigNumberish]
   ): string;
   encodeFunctionData(
@@ -132,12 +183,20 @@ export interface OAIDInterface extends Interface {
   ): string;
   encodeFunctionData(functionFragment: "owner", values?: undefined): string;
   encodeFunctionData(
+    functionFragment: "paymentHistory",
+    values: [BigNumberish, BigNumberish]
+  ): string;
+  encodeFunctionData(
     functionFragment: "recordCreditRepayment",
     values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "recordCreditUsage",
     values: [BigNumberish, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "recordPayment",
+    values: [BigNumberish, BigNumberish, boolean, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "registerUser",
@@ -193,6 +252,18 @@ export interface OAIDInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
+    functionFragment: "getCreditProfile",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "getCreditScore",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "getPaymentHistory",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "getTotalAvailableCredit",
     data: BytesLike
   ): Result;
@@ -218,11 +289,19 @@ export interface OAIDInterface extends Interface {
   ): Result;
   decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
   decodeFunctionResult(
+    functionFragment: "paymentHistory",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "recordCreditRepayment",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
     functionFragment: "recordCreditUsage",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "recordPayment",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -390,6 +469,56 @@ export namespace OwnershipTransferredEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
+export namespace PaymentRecordedEvent {
+  export type InputTuple = [
+    creditLineId: BigNumberish,
+    user: AddressLike,
+    amount: BigNumberish,
+    onTime: boolean,
+    daysLate: BigNumberish
+  ];
+  export type OutputTuple = [
+    creditLineId: bigint,
+    user: string,
+    amount: bigint,
+    onTime: boolean,
+    daysLate: bigint
+  ];
+  export interface OutputObject {
+    creditLineId: bigint;
+    user: string;
+    amount: bigint;
+    onTime: boolean;
+    daysLate: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace PositionLiquidatedEvent {
+  export type InputTuple = [
+    creditLineId: BigNumberish,
+    user: AddressLike,
+    timestamp: BigNumberish
+  ];
+  export type OutputTuple = [
+    creditLineId: bigint,
+    user: string,
+    timestamp: bigint
+  ];
+  export interface OutputObject {
+    creditLineId: bigint;
+    user: string;
+    timestamp: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
 export namespace UserRegisteredEvent {
   export type InputTuple = [user: AddressLike, timestamp: BigNumberish];
   export type OutputTuple = [user: string, timestamp: bigint];
@@ -449,7 +578,22 @@ export interface OAID extends BaseContract {
   creditLines: TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [string, string, bigint, bigint, bigint, bigint, bigint, boolean] & {
+      [
+        string,
+        string,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        boolean,
+        bigint,
+        boolean
+      ] & {
         user: string;
         collateralToken: string;
         collateralAmount: bigint;
@@ -457,6 +601,12 @@ export interface OAID extends BaseContract {
         creditUsed: bigint;
         solvencyPositionId: bigint;
         issuedAt: bigint;
+        totalPayments: bigint;
+        onTimePayments: bigint;
+        latePayments: bigint;
+        totalAmountRepaid: bigint;
+        liquidated: boolean;
+        liquidatedAt: bigint;
         active: boolean;
       }
     ],
@@ -472,6 +622,30 @@ export interface OAID extends BaseContract {
   getCreditLine: TypedContractMethod<
     [creditLineId: BigNumberish],
     [OAID.CreditLineStructOutput],
+    "view"
+  >;
+
+  getCreditProfile: TypedContractMethod<
+    [user: AddressLike],
+    [
+      [bigint, bigint, bigint, bigint, bigint, bigint, bigint] & {
+        activeCreditLines: bigint;
+        totalCreditLimit: bigint;
+        totalPayments: bigint;
+        onTimePayments: bigint;
+        latePayments: bigint;
+        liquidations: bigint;
+        creditScore: bigint;
+      }
+    ],
+    "view"
+  >;
+
+  getCreditScore: TypedContractMethod<[user: AddressLike], [bigint], "view">;
+
+  getPaymentHistory: TypedContractMethod<
+    [creditLineId: BigNumberish],
+    [OAID.PaymentRecordStructOutput[]],
     "view"
   >;
 
@@ -511,6 +685,19 @@ export interface OAID extends BaseContract {
 
   owner: TypedContractMethod<[], [string], "view">;
 
+  paymentHistory: TypedContractMethod<
+    [arg0: BigNumberish, arg1: BigNumberish],
+    [
+      [bigint, bigint, boolean, bigint] & {
+        timestamp: bigint;
+        amount: bigint;
+        onTime: boolean;
+        daysLate: bigint;
+      }
+    ],
+    "view"
+  >;
+
   recordCreditRepayment: TypedContractMethod<
     [creditLineId: BigNumberish, amount: BigNumberish],
     [void],
@@ -519,6 +706,17 @@ export interface OAID extends BaseContract {
 
   recordCreditUsage: TypedContractMethod<
     [creditLineId: BigNumberish, amount: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
+  recordPayment: TypedContractMethod<
+    [
+      creditLineId: BigNumberish,
+      amount: BigNumberish,
+      onTime: boolean,
+      daysLate: BigNumberish
+    ],
     [void],
     "nonpayable"
   >;
@@ -576,7 +774,22 @@ export interface OAID extends BaseContract {
   ): TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [string, string, bigint, bigint, bigint, bigint, bigint, boolean] & {
+      [
+        string,
+        string,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        boolean,
+        bigint,
+        boolean
+      ] & {
         user: string;
         collateralToken: string;
         collateralAmount: bigint;
@@ -584,6 +797,12 @@ export interface OAID extends BaseContract {
         creditUsed: bigint;
         solvencyPositionId: bigint;
         issuedAt: bigint;
+        totalPayments: bigint;
+        onTimePayments: bigint;
+        latePayments: bigint;
+        totalAmountRepaid: bigint;
+        liquidated: boolean;
+        liquidatedAt: bigint;
         active: boolean;
       }
     ],
@@ -597,6 +816,33 @@ export interface OAID extends BaseContract {
   ): TypedContractMethod<
     [creditLineId: BigNumberish],
     [OAID.CreditLineStructOutput],
+    "view"
+  >;
+  getFunction(
+    nameOrSignature: "getCreditProfile"
+  ): TypedContractMethod<
+    [user: AddressLike],
+    [
+      [bigint, bigint, bigint, bigint, bigint, bigint, bigint] & {
+        activeCreditLines: bigint;
+        totalCreditLimit: bigint;
+        totalPayments: bigint;
+        onTimePayments: bigint;
+        latePayments: bigint;
+        liquidations: bigint;
+        creditScore: bigint;
+      }
+    ],
+    "view"
+  >;
+  getFunction(
+    nameOrSignature: "getCreditScore"
+  ): TypedContractMethod<[user: AddressLike], [bigint], "view">;
+  getFunction(
+    nameOrSignature: "getPaymentHistory"
+  ): TypedContractMethod<
+    [creditLineId: BigNumberish],
+    [OAID.PaymentRecordStructOutput[]],
     "view"
   >;
   getFunction(
@@ -631,6 +877,20 @@ export interface OAID extends BaseContract {
     nameOrSignature: "owner"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
+    nameOrSignature: "paymentHistory"
+  ): TypedContractMethod<
+    [arg0: BigNumberish, arg1: BigNumberish],
+    [
+      [bigint, bigint, boolean, bigint] & {
+        timestamp: bigint;
+        amount: bigint;
+        onTime: boolean;
+        daysLate: bigint;
+      }
+    ],
+    "view"
+  >;
+  getFunction(
     nameOrSignature: "recordCreditRepayment"
   ): TypedContractMethod<
     [creditLineId: BigNumberish, amount: BigNumberish],
@@ -641,6 +901,18 @@ export interface OAID extends BaseContract {
     nameOrSignature: "recordCreditUsage"
   ): TypedContractMethod<
     [creditLineId: BigNumberish, amount: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "recordPayment"
+  ): TypedContractMethod<
+    [
+      creditLineId: BigNumberish,
+      amount: BigNumberish,
+      onTime: boolean,
+      daysLate: BigNumberish
+    ],
     [void],
     "nonpayable"
   >;
@@ -730,6 +1002,20 @@ export interface OAID extends BaseContract {
     OwnershipTransferredEvent.OutputObject
   >;
   getEvent(
+    key: "PaymentRecorded"
+  ): TypedContractEvent<
+    PaymentRecordedEvent.InputTuple,
+    PaymentRecordedEvent.OutputTuple,
+    PaymentRecordedEvent.OutputObject
+  >;
+  getEvent(
+    key: "PositionLiquidated"
+  ): TypedContractEvent<
+    PositionLiquidatedEvent.InputTuple,
+    PositionLiquidatedEvent.OutputTuple,
+    PositionLiquidatedEvent.OutputObject
+  >;
+  getEvent(
     key: "UserRegistered"
   ): TypedContractEvent<
     UserRegisteredEvent.InputTuple,
@@ -802,6 +1088,28 @@ export interface OAID extends BaseContract {
       OwnershipTransferredEvent.InputTuple,
       OwnershipTransferredEvent.OutputTuple,
       OwnershipTransferredEvent.OutputObject
+    >;
+
+    "PaymentRecorded(uint256,address,uint256,bool,uint256)": TypedContractEvent<
+      PaymentRecordedEvent.InputTuple,
+      PaymentRecordedEvent.OutputTuple,
+      PaymentRecordedEvent.OutputObject
+    >;
+    PaymentRecorded: TypedContractEvent<
+      PaymentRecordedEvent.InputTuple,
+      PaymentRecordedEvent.OutputTuple,
+      PaymentRecordedEvent.OutputObject
+    >;
+
+    "PositionLiquidated(uint256,address,uint256)": TypedContractEvent<
+      PositionLiquidatedEvent.InputTuple,
+      PositionLiquidatedEvent.OutputTuple,
+      PositionLiquidatedEvent.OutputObject
+    >;
+    PositionLiquidated: TypedContractEvent<
+      PositionLiquidatedEvent.InputTuple,
+      PositionLiquidatedEvent.OutputTuple,
+      PositionLiquidatedEvent.OutputObject
     >;
 
     "UserRegistered(address,uint256)": TypedContractEvent<

@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { Settlement } from './settlement.schema';
 
 export type SolvencyPositionDocument = SolvencyPosition & Document;
 
@@ -19,6 +20,7 @@ export enum PositionStatus {
   LIQUIDATED = 'LIQUIDATED', // Liquidation executed
   REPAID = 'REPAID',         // Loan fully repaid
   CLOSED = 'CLOSED',         // Position closed, collateral withdrawn
+  SETTLED = 'SETTLED',     // Liquidation settled and finalized
 }
 
 @Schema({ timestamps: true })
@@ -63,6 +65,37 @@ export class SolvencyPosition {
   @Prop({ type: Date })
   lastRepaymentTime?: Date;
 
+  @Prop({ type: Number, default: 0 })
+  loanDuration?: number; // Seconds
+
+  @Prop({ type: Number, default: 0 })
+  numberOfInstallments?: number;
+
+  @Prop({ type: Number, default: 0 })
+  installmentInterval?: number; // Seconds
+
+  @Prop({ type: Number, default: 0 })
+  installmentsPaid?: number; // Counter tracked by backend
+
+  @Prop({ type: Number, default: 0 })
+  missedPayments?: number; // Counter tracked by backend
+
+  @Prop({ type: Date })
+  nextPaymentDueDate?: Date; // Calculated next due date
+
+  @Prop({ type: [Object], default: [] })
+  repaymentSchedule?: Array<{
+    installmentNumber: number;
+    dueDate: Date;
+    amount: string;
+    status: 'PENDING' | 'PAID' | 'MISSED';
+    paidAt?: Date;
+    txHash?: string;
+  }>;
+
+  @Prop({ type: Boolean, default: false })
+  isDefaulted?: boolean; // Flag for default status
+
   // Liquidation details
   @Prop({ type: Date })
   liquidationTimestamp?: Date;
@@ -105,6 +138,7 @@ export class SolvencyPosition {
   // Timestamps added by Mongoose
   createdAt?: Date;
   updatedAt?: Date;
+  settledAt?: Date;
 }
 
 export const SolvencyPositionSchema = SchemaFactory.createForClass(SolvencyPosition);

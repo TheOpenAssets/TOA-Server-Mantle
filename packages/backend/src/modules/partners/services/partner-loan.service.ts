@@ -102,7 +102,9 @@ export class PartnerLoanService {
     // ═══════════════════════════════════════════════════════
     const borrowResult = await this.solvencyBlockchainService.borrowUSDC(
       position.positionId,
-      borrowDto.borrowAmount
+      borrowDto.borrowAmount,
+      borrowDto.loanDuration || 2592000, // Default 30 days
+      borrowDto.numberOfInstallments || 1 // Default 1 installment
     );
 
     // ═══════════════════════════════════════════════════════

@@ -22,15 +22,54 @@ import type {
 } from "../../../common";
 
 export interface IOAIDInterface extends Interface {
-  getFunction(nameOrSignature: "issueCreditLine"): FunctionFragment;
+  getFunction(
+    nameOrSignature:
+      | "issueCreditLine"
+      | "recordCreditRepayment"
+      | "recordCreditUsage"
+      | "recordPayment"
+      | "revokeCreditLine"
+  ): FunctionFragment;
 
   encodeFunctionData(
     functionFragment: "issueCreditLine",
     values: [AddressLike, AddressLike, BigNumberish, BigNumberish, BigNumberish]
   ): string;
+  encodeFunctionData(
+    functionFragment: "recordCreditRepayment",
+    values: [BigNumberish, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "recordCreditUsage",
+    values: [BigNumberish, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "recordPayment",
+    values: [BigNumberish, BigNumberish, boolean, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "revokeCreditLine",
+    values: [BigNumberish, string]
+  ): string;
 
   decodeFunctionResult(
     functionFragment: "issueCreditLine",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "recordCreditRepayment",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "recordCreditUsage",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "recordPayment",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "revokeCreditLine",
     data: BytesLike
   ): Result;
 }
@@ -90,6 +129,35 @@ export interface IOAID extends BaseContract {
     "nonpayable"
   >;
 
+  recordCreditRepayment: TypedContractMethod<
+    [creditLineId: BigNumberish, amount: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
+  recordCreditUsage: TypedContractMethod<
+    [creditLineId: BigNumberish, amount: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
+  recordPayment: TypedContractMethod<
+    [
+      creditLineId: BigNumberish,
+      amount: BigNumberish,
+      onTime: boolean,
+      daysLate: BigNumberish
+    ],
+    [void],
+    "nonpayable"
+  >;
+
+  revokeCreditLine: TypedContractMethod<
+    [creditLineId: BigNumberish, reason: string],
+    [void],
+    "nonpayable"
+  >;
+
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
   ): T;
@@ -105,6 +173,39 @@ export interface IOAID extends BaseContract {
       solvencyPositionId: BigNumberish
     ],
     [bigint],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "recordCreditRepayment"
+  ): TypedContractMethod<
+    [creditLineId: BigNumberish, amount: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "recordCreditUsage"
+  ): TypedContractMethod<
+    [creditLineId: BigNumberish, amount: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "recordPayment"
+  ): TypedContractMethod<
+    [
+      creditLineId: BigNumberish,
+      amount: BigNumberish,
+      onTime: boolean,
+      daysLate: BigNumberish
+    ],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "revokeCreditLine"
+  ): TypedContractMethod<
+    [creditLineId: BigNumberish, reason: string],
+    [void],
     "nonpayable"
   >;
 

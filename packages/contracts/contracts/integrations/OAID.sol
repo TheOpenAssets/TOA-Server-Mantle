@@ -16,6 +16,14 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * 4. When SolvencyVault position is liquidated, credit line is revoked
  */
 contract OAID is Ownable, ReentrancyGuard {
+    // Payment history entry
+    struct PaymentRecord {
+        uint256 timestamp;          // Payment time
+        uint256 amount;             // Amount paid (6 decimals)
+        bool onTime;                // Whether payment was on time
+        uint256 daysLate;           // Days late (0 if on time)
+    }
+
     // Credit line structure
     struct CreditLine {
         address user;                   // Borrower address
@@ -25,6 +33,12 @@ contract OAID is Ownable, ReentrancyGuard {
         uint256 creditUsed;             // Credit utilized externally (6 decimals)
         uint256 solvencyPositionId;     // Reference to SolvencyVault position
         uint256 issuedAt;               // Creation timestamp
+        uint256 totalPayments;          // Total number of payments made
+        uint256 onTimePayments;         // Number of on-time payments
+        uint256 latePayments;           // Number of late payments
+        uint256 totalAmountRepaid;      // Total amount repaid (6 decimals)
+        bool liquidated;                // Whether position was liquidated
+        uint256 liquidatedAt;           // Liquidation timestamp (0 if not liquidated)
         bool active;                    // Credit line status
     }
 
@@ -38,6 +52,9 @@ contract OAID is Ownable, ReentrancyGuard {
     // Credit line management
     mapping(uint256 => CreditLine) public creditLines;
     uint256 public nextCreditLineId;
+
+    // Payment history
+    mapping(uint256 => PaymentRecord[]) public paymentHistory; // creditLineId => payments
 
     // User credit lines
     mapping(address => uint256[]) public userCreditLines;
@@ -73,6 +90,18 @@ contract OAID is Ownable, ReentrancyGuard {
     event CreditLineRevoked(
         uint256 indexed creditLineId,
         string reason
+    );
+    event PaymentRecorded(
+        uint256 indexed creditLineId,
+        address indexed user,
+        uint256 amount,
+        bool onTime,
+        uint256 daysLate
+    );
+    event PositionLiquidated(
+        uint256 indexed creditLineId,
+        address indexed user,
+        uint256 timestamp
     );
 
     modifier onlySolvencyVault() {
@@ -194,6 +223,12 @@ contract OAID is Ownable, ReentrancyGuard {
             creditUsed: 0,
             solvencyPositionId: solvencyPositionId,
             issuedAt: block.timestamp,
+            totalPayments: 0,
+            onTimePayments: 0,
+            latePayments: 0,
+            totalAmountRepaid: 0,
+            liquidated: false,
+            liquidatedAt: 0,
             active: true
         });
 
@@ -218,7 +253,7 @@ contract OAID is Ownable, ReentrancyGuard {
     function recordCreditUsage(
         uint256 creditLineId,
         uint256 amount
-    ) external onlyOwner nonReentrant {
+    ) external onlySolvencyVault nonReentrant {
         CreditLine storage creditLine = creditLines[creditLineId];
         require(creditLine.active, "Credit line not active");
         require(amount > 0, "Amount must be > 0");
@@ -239,7 +274,7 @@ contract OAID is Ownable, ReentrancyGuard {
     function recordCreditRepayment(
         uint256 creditLineId,
         uint256 amount
-    ) external onlyOwner nonReentrant {
+    ) external onlySolvencyVault nonReentrant {
         CreditLine storage creditLine = creditLines[creditLineId];
         require(creditLine.active, "Credit line not active");
         require(amount > 0, "Amount must be > 0");
@@ -264,7 +299,53 @@ contract OAID is Ownable, ReentrancyGuard {
 
         creditLine.active = false;
 
+        // Mark as liquidated if reason contains "liquidat"
+        if (bytes(reason).length > 0 && _contains(reason, "liquidat")) {
+            creditLine.liquidated = true;
+            creditLine.liquidatedAt = block.timestamp;
+            emit PositionLiquidated(creditLineId, creditLine.user, block.timestamp);
+        }
+
         emit CreditLineRevoked(creditLineId, reason);
+    }
+
+    /**
+     * @notice Record a payment made by user (called by SolvencyVault)
+     * @param creditLineId Credit line ID
+     * @param amount Amount paid (6 decimals)
+     * @param onTime Whether payment was made on time
+     * @param daysLate Number of days late (0 if on time)
+     */
+    function recordPayment(
+        uint256 creditLineId,
+        uint256 amount,
+        bool onTime,
+        uint256 daysLate
+    ) external onlySolvencyVault nonReentrant {
+        CreditLine storage creditLine = creditLines[creditLineId];
+        require(creditLine.active, "Credit line not active");
+        // Allow amount to be 0 for missed payments (where onTime is false)
+        require(amount > 0 || !onTime, "Amount must be > 0 for on-time payments");
+
+        // Update payment statistics
+        creditLine.totalPayments++;
+        creditLine.totalAmountRepaid += amount;
+        
+        if (onTime) {
+            creditLine.onTimePayments++;
+        } else {
+            creditLine.latePayments++;
+        }
+
+        // Store payment record
+        paymentHistory[creditLineId].push(PaymentRecord({
+            timestamp: block.timestamp,
+            amount: amount,
+            onTime: onTime,
+            daysLate: daysLate
+        }));
+
+        emit PaymentRecorded(creditLineId, creditLine.user, amount, onTime, daysLate);
     }
 
     /**
@@ -333,5 +414,129 @@ contract OAID is Ownable, ReentrancyGuard {
         }
 
         return totalAvailable;
+    }
+
+    /**
+     * @notice Get payment history for a credit line
+     * @param creditLineId Credit line ID
+     * @return Array of payment records
+     */
+    function getPaymentHistory(uint256 creditLineId) external view returns (PaymentRecord[] memory) {
+        return paymentHistory[creditLineId];
+    }
+
+    /**
+     * @notice Calculate credit score for user (0-1000)
+     * @param user User address
+     * @return Credit score based on payment history
+     */
+    function getCreditScore(address user) external view returns (uint256) {
+        uint256[] memory lineIds = userCreditLines[user];
+        if (lineIds.length == 0) return 0;
+
+        uint256 totalPayments = 0;
+        uint256 totalOnTime = 0;
+        uint256 totalLiquidations = 0;
+
+        for (uint256 i = 0; i < lineIds.length; i++) {
+            CreditLine memory line = creditLines[lineIds[i]];
+            totalPayments += line.totalPayments;
+            totalOnTime += line.onTimePayments;
+            if (line.liquidated) {
+                totalLiquidations++;
+            }
+        }
+
+        // No payment history = neutral score of 500
+        if (totalPayments == 0) return 500;
+
+        // Base score from payment ratio (0-800 points)
+        uint256 paymentScore = (totalOnTime * 800) / totalPayments;
+
+        // Penalty for liquidations (-200 points per liquidation, max -400)
+        uint256 liquidationPenalty = totalLiquidations * 200;
+        if (liquidationPenalty > 400) liquidationPenalty = 400;
+
+        // Bonus for high number of on-time payments (up to +200 points)
+        uint256 volumeBonus = totalOnTime > 10 ? 200 : (totalOnTime * 20);
+
+        // Calculate final score (0-1000)
+        uint256 score = paymentScore + volumeBonus;
+        if (score > liquidationPenalty) {
+            score -= liquidationPenalty;
+        } else {
+            score = 0;
+        }
+
+        if (score > 1000) score = 1000;
+
+        return score;
+    }
+
+    /**
+     * @notice Get credit profile summary for user
+     * @param user User address
+     * @return activeCreditLines Number of active credit lines
+     * @return totalCreditLimit Total credit limit
+     * @return totalPayments Total payments made
+     * @return onTimePayments On-time payments
+     * @return latePayments Late payments
+     * @return liquidations Number of liquidated positions
+     * @return creditScore Credit score (0-1000)
+     */
+    function getCreditProfile(address user) external view returns (
+        uint256 activeCreditLines,
+        uint256 totalCreditLimit,
+        uint256 totalPayments,
+        uint256 onTimePayments,
+        uint256 latePayments,
+        uint256 liquidations,
+        uint256 creditScore
+    ) {
+        uint256[] memory lineIds = userCreditLines[user];
+        
+        for (uint256 i = 0; i < lineIds.length; i++) {
+            CreditLine memory line = creditLines[lineIds[i]];
+            if (line.active) {
+                activeCreditLines++;
+                totalCreditLimit += line.creditLimit;
+            }
+            totalPayments += line.totalPayments;
+            onTimePayments += line.onTimePayments;
+            latePayments += line.latePayments;
+            if (line.liquidated) {
+                liquidations++;
+            }
+        }
+
+        // Calculate credit score
+        creditScore = this.getCreditScore(user);
+    }
+
+    /**
+     * @notice Helper function to check if string contains substring
+     * @param str String to search in
+     * @param substr Substring to search for
+     * @return bool Whether substring is found
+     */
+    function _contains(string memory str, string memory substr) internal pure returns (bool) {
+        bytes memory strBytes = bytes(str);
+        bytes memory substrBytes = bytes(substr);
+        
+        if (substrBytes.length > strBytes.length) return false;
+        if (substrBytes.length == 0) return false;
+        
+        for (uint256 i = 0; i <= strBytes.length - substrBytes.length; i++) {
+            bool found = true;
+            for (uint256 j = 0; j < substrBytes.length; j++) {
+                if (strBytes[i + j] != substrBytes[j]) {
+                    found = false;
+                    break;
+                }
+            }
+            if (found) return true;
+        }
+        
+        return false;
     }
 }

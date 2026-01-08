@@ -27,6 +27,42 @@ export class BlockchainService {
     });
   }
 
+  private async retryWithBackoff<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 5,
+    initialDelay: number = 2000,
+  ): Promise<T> {
+    let retries = 0;
+    while (true) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        // Check for nonce errors or other transient issues
+        const errorMessage = error?.message || '';
+        const errorDetails = error?.details || '';
+        const causeMessage = error?.cause?.message || '';
+        
+        const isNonceError =
+          errorMessage.includes('nonce too low') ||
+          errorDetails.includes('nonce too low') ||
+          causeMessage.includes('nonce too low') ||
+          errorMessage.includes('replacement transaction underpriced'); // Often related to nonce reuse
+
+        if (isNonceError && retries < maxRetries) {
+          retries++;
+          const delay = initialDelay * Math.pow(1.5, retries - 1); // Exponential backoff
+          this.logger.warn(
+            `Transaction failed with nonce/replacement error. Retrying attempt ${retries}/${maxRetries} after ${Math.round(delay)}ms...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
+        throw error;
+      }
+    }
+  }
+
   async registerAsset(dto: RegisterAssetDto): Promise<Hash> {
     const { assetId, attestationHash, blobId, payload, signature } = dto;
     const wallet = this.walletService.getAdminWallet();
@@ -35,12 +71,12 @@ export class BlockchainService {
 
     this.logger.log(`Registering asset ${assetId} on-chain...`);
 
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: address as Address,
       abi,
       functionName: 'registerAsset',
       args: [assetId, attestationHash, blobId, payload, signature],
-    });
+    }));
 
     // Don't wait for receipt - return immediately
     this.logger.log(`Asset registered: ${hash}`);
@@ -54,12 +90,12 @@ export class BlockchainService {
 
     this.logger.log(`Registering identity for ${walletAddress}...`);
 
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: address as Address,
       abi,
       functionName: 'registerIdentity',
       args: [walletAddress],
-    });
+    }));
 
     this.logger.log(`Transaction submitted: ${hash}, waiting for confirmation...`);
     await this.publicClient.waitForTransactionReceipt({ 
@@ -117,12 +153,12 @@ export class BlockchainService {
 
     let hash: `0x${string}`;
     try {
-      hash = await wallet.writeContract({
+      hash = await this.retryWithBackoff(() => wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'deployTokenSuite',
         args: [assetIdBytes32, totalSupplyWei, dto.name, dto.symbol, issuer],
-      });
+      }));
 
       this.logger.log(`Transaction submitted successfully: ${hash}`);
     } catch (error) {
@@ -190,12 +226,12 @@ export class BlockchainService {
 
     this.logger.log(`Approving YieldVault to spend ${amount} USDC...`);
 
-    const approvalHash = await wallet.writeContract({
+    const approvalHash = await this.retryWithBackoff(() => wallet.writeContract({
       address: usdcAddress as Address,
       abi: usdcAbi,
       functionName: 'approve',
       args: [yieldVaultAddress, BigInt(amount)],
-    });
+    }));
 
     await this.publicClient.waitForTransactionReceipt({
       hash: approvalHash,
@@ -207,12 +243,12 @@ export class BlockchainService {
     // Step 2: Deposit yield to vault
     this.logger.log(`Depositing ${amount} USDC to YieldVault for token ${tokenAddress}...`);
 
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: yieldVaultAddress as Address,
       abi: yieldVaultAbi,
       functionName: 'depositYield',
       args: [tokenAddress, BigInt(amount)],
-    });
+    }));
 
     await this.publicClient.waitForTransactionReceipt({
       hash,
@@ -230,12 +266,12 @@ export class BlockchainService {
 
     const amountBigInts = amounts.map(a => BigInt(a));
 
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: address as Address,
       abi,
       functionName: 'distributeYieldBatch',
       args: [tokenAddress, holders, amountBigInts],
-    });
+    }));
 
     await this.publicClient.waitForTransactionReceipt({
       hash,
@@ -302,7 +338,7 @@ export class BlockchainService {
       // createListing(assetId, tokenAddress, listingType, priceOrReserve, duration, totalSupply, minInvestment)
 
       this.logger.log(`Submitting transaction...`);
-      const hash = await wallet.writeContract({
+      const hash = await this.retryWithBackoff(() => wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'createListing',
@@ -315,7 +351,7 @@ export class BlockchainService {
           totalSupplyWei,              // totalSupply
           BigInt(minInvestment),       // minInvestment
         ],
-      });
+      }));
 
       this.logger.log(`✓ Transaction submitted: ${hash}`);
       this.logger.log(`Waiting for transaction receipt...`);
@@ -396,12 +432,12 @@ export class BlockchainService {
     // Approve max amount (unlimited approval)
     const maxApproval = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'); // MaxUint256
 
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: tokenAddress as Address,
       abi: tokenAbi,
       functionName: 'approve',
       args: [marketplaceAddress as Address, maxApproval],
-    });
+    }));
 
     await this.publicClient.waitForTransactionReceipt({
       hash,
@@ -422,12 +458,12 @@ export class BlockchainService {
 
     this.logger.log(`Ending auction for asset ${assetId} with clearing price ${clearingPrice}...`);
 
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: address as Address,
       abi,
       functionName: 'endAuction',
       args: [assetIdBytes32, BigInt(clearingPrice)],
-    });
+    }));
 
     await this.publicClient.waitForTransactionReceipt({
       hash,
@@ -443,12 +479,12 @@ export class BlockchainService {
     const address = this.contractLoader.getContractAddress('AttestationRegistry');
     const abi = this.contractLoader.getContractAbi('AttestationRegistry');
 
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: address as Address,
       abi,
       functionName: 'revokeAsset',
       args: [assetId, reason],
-    });
+    }));
 
     await this.publicClient.waitForTransactionReceipt({ hash });
     return hash;
@@ -506,20 +542,20 @@ export class BlockchainService {
     if (wallet.account.address.toLowerCase() === custodyWalletAddress.toLowerCase()) {
       // If platform wallet IS custody wallet, use burn() directly
       // This avoids allowance requirement for self-burn
-      hash = await wallet.writeContract({
+      hash = await this.retryWithBackoff(() => wallet.writeContract({
         address: tokenAddress as Address,
         abi: tokenAbi,
         functionName: 'burn',
         args: [unsoldBalance],
-      });
+      }));
     } else {
       // If different, use burnFrom (requires allowance)
-      hash = await wallet.writeContract({
+      hash = await this.retryWithBackoff(() => wallet.writeContract({
         address: tokenAddress as Address,
         abi: tokenAbi,
         functionName: 'burnFrom',
         args: [custodyWalletAddress as Address, unsoldBalance],
-      });
+      }));
     }
 
     this.logger.log(`Burn transaction submitted: ${hash}`);

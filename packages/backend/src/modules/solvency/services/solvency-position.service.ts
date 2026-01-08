@@ -102,6 +102,8 @@ export class SolvencyPositionService {
   async recordBorrow(
     positionId: number,
     amountBorrowed: string,
+    loanDuration?: number,
+    numberOfInstallments?: number,
   ): Promise<SolvencyPosition> {
     const position = await this.getPosition(positionId);
 
@@ -109,6 +111,34 @@ export class SolvencyPositionService {
     const newBorrowed = currentBorrowed + BigInt(amountBorrowed);
 
     position.usdcBorrowed = newBorrowed.toString();
+
+    // Set repayment terms if provided (first borrow or refinancing)
+    if (loanDuration && numberOfInstallments && numberOfInstallments > 0) {
+      position.loanDuration = loanDuration;
+      position.numberOfInstallments = numberOfInstallments;
+      position.installmentInterval = Math.floor(loanDuration / numberOfInstallments);
+      
+      const now = new Date();
+      position.nextPaymentDueDate = new Date(now.getTime() + (position.installmentInterval * 1000));
+      
+      position.installmentsPaid = 0;
+      position.missedPayments = 0;
+      position.isDefaulted = false;
+
+      // Generate full schedule
+      const schedule = [];
+      const installmentAmount = (BigInt(amountBorrowed) / BigInt(numberOfInstallments)).toString();
+      
+      for (let i = 1; i <= numberOfInstallments; i++) {
+        schedule.push({
+          installmentNumber: i,
+          dueDate: new Date(now.getTime() + (i * position.installmentInterval * 1000)),
+          amount: installmentAmount,
+          status: 'PENDING' as const
+        });
+      }
+      position.repaymentSchedule = schedule;
+    }
 
     // Update health factor
     await this.updateHealthFactor(position);
@@ -137,6 +167,22 @@ export class SolvencyPositionService {
     const currentRepaid = BigInt(position.totalRepaid);
     position.totalRepaid = (currentRepaid + BigInt(amountRepaid)).toString();
     position.lastRepaymentTime = new Date();
+
+    // Update Schedule logic
+    if (position.repaymentSchedule && position.repaymentSchedule.length > 0) {
+      // Find first pending installment
+      const nextInstallment = position.repaymentSchedule.find((i: any) => i.status === 'PENDING');
+      if (nextInstallment) {
+        nextInstallment.status = 'PAID';
+        nextInstallment.paidAt = new Date();
+        position.installmentsPaid = (position.installmentsPaid || 0) + 1;
+        
+        // Advance nextPaymentDueDate
+        if (position.nextPaymentDueDate && position.installmentInterval) {
+          position.nextPaymentDueDate = new Date(position.nextPaymentDueDate.getTime() + (position.installmentInterval * 1000));
+        }
+      }
+    }
 
     // Update health factor
     await this.updateHealthFactor(position);
@@ -286,14 +332,22 @@ export class SolvencyPositionService {
     try {
       const onChainPosition = await this.blockchainService.getPosition(positionId);
       const outstandingDebt = await this.blockchainService.getOutstandingDebt(positionId);
+      const inLiquidation = await this.blockchainService.isPositionInLiquidation(positionId);
 
       position.collateralAmount = onChainPosition.collateralAmount;
       position.usdcBorrowed = outstandingDebt;
 
+      // Update status based on on-chain liquidation state
+      if (inLiquidation && position.status !== PositionStatus.LIQUIDATED) {
+        this.logger.log(`Position ${positionId} is in liquidation on-chain, updating status to LIQUIDATED`);
+        position.status = PositionStatus.LIQUIDATED;
+        position.liquidatedAt = new Date();
+      }
+
       await this.updateHealthFactor(position);
       await position.save();
 
-      this.logger.log(`Position ${positionId} synced with blockchain`);
+      this.logger.log(`Position ${positionId} synced with blockchain (status: ${position.status}, inLiquidation: ${inLiquidation})`);
     } catch (error: any) {
       this.logger.error(`Failed to sync position ${positionId}: ${error.message}`);
     }
@@ -329,7 +383,7 @@ export class SolvencyPositionService {
   async getAllPositions(
     status?: PositionStatus,
     healthStatus?: HealthStatus,
-  ): Promise<SolvencyPosition[]> {
+  ): Promise<SolvencyPositionDocument[]> {
     const query: any = {};
 
     if (status) {

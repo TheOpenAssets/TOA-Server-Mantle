@@ -4,10 +4,10 @@
  * Deposit RWA Tokens to Solvency Vault & Borrow USDC
  *
  * Usage:
- *   INVESTOR_KEY=0x... node scripts/deposit-to-solvency-vault.js <asset_id> <deposit_amount> [borrow_amount]
+ *   INVESTOR_KEY=0x... node scripts/deposit-to-solvency-vault.js <asset_id> <deposit_amount>
  *
  * Example:
- *   INVESTOR_KEY=0x1234... node scripts/deposit-to-solvency-vault.js 4c81f5c6-da7b-46b0-8026-0bf859950135 90 50000
+ *   INVESTOR_KEY=0x1234... node scripts/deposit-to-solvency-vault.js 4c81f5c6... 90
  *
  * This script will:
  * 1. Authenticate with backend
@@ -16,8 +16,7 @@
  * 4. Approve SolvencyVault to spend tokens
  * 5. Deposit tokens as collateral (investor signs transaction directly)
  * 6. Sync position with backend database (MANDATORY)
- * 7. Optionally borrow USDC against collateral (investor signs)
- * 8. Display position summary
+ * 7. Display position summary
  */
 
 import { ethers } from 'ethers';
@@ -70,24 +69,21 @@ function logWarning(message) {
 if (!INVESTOR_KEY) {
   logError('INVESTOR_KEY environment variable is required');
   console.log('\nUsage:');
-  console.log('  INVESTOR_KEY=0x... node scripts/deposit-to-solvency-vault.js <asset_id> <deposit_amount> [borrow_amount]');
+  console.log('  INVESTOR_KEY=0x... node scripts/deposit-to-solvency-vault.js <asset_id> <deposit_amount>');
   console.log('\nExample:');
-  console.log('  INVESTOR_KEY=0x1234... node scripts/deposit-to-solvency-vault.js 4c81f5c6-da7b-46b0-8026-0bf859950135 90 50000');
+  console.log('  INVESTOR_KEY=0x1234... node scripts/deposit-to-solvency-vault.js 4c81f5c6... 90');
   process.exit(1);
 }
 
 const assetId = process.argv[2];
 const depositAmount = process.argv[3];
-const borrowAmount = process.argv[4]; // Optional - omit to deposit only
 
 if (!assetId || !depositAmount) {
   logError('Missing required arguments');
   console.log('\nUsage:');
-  console.log('  INVESTOR_KEY=0x... node scripts/deposit-to-solvency-vault.js <asset_id> <deposit_amount> [borrow_amount]');
-  console.log('\nExample (deposit + borrow):');
-  console.log('  INVESTOR_KEY=0x1234... node scripts/deposit-to-solvency-vault.js 4c81f5c6-da7b-46b0-8026-0bf859950135 90 50000');
-  console.log('\nExample (deposit only):');
-  console.log('  INVESTOR_KEY=0x1234... node scripts/deposit-to-solvency-vault.js 4c81f5c6-da7b-46b0-8026-0bf859950135 90');
+  console.log('  INVESTOR_KEY=0x... node scripts/deposit-to-solvency-vault.js <asset_id> <deposit_amount>');
+  console.log('\nExample:');
+  console.log('  INVESTOR_KEY=0x1234... node scripts/deposit-to-solvency-vault.js 4c81f5c6... 90');
   process.exit(1);
 }
 
@@ -114,10 +110,8 @@ const ERC20_ABI = [
 
 const SOLVENCY_VAULT_ABI = [
   'function depositCollateral(address collateralToken, uint256 collateralAmount, uint256 tokenValueUSD, uint8 tokenType, bool issueOAID) external returns (uint256 positionId)',
-  'function borrowUSDC(uint256 positionId, uint256 amount) external',
   'function positions(uint256) view returns (address user, address collateralToken, uint256 collateralAmount, uint256 usdcBorrowed, uint256 tokenValueUSD, uint256 createdAt, bool active, uint8 tokenType)',
   'event PositionCreated(uint256 indexed positionId, address indexed user, address collateralToken, uint256 collateralAmount, uint256 tokenValueUSD, uint8 tokenType)',
-  'event USDCBorrowed(uint256 indexed positionId, uint256 amount, uint256 totalDebt)',
 ];
 
 async function getJWTToken(wallet) {
@@ -255,52 +249,6 @@ async function depositCollateral(wallet, solvencyVaultContract, tokenAddr, amoun
   }
 }
 
-async function borrowUSDC(solvencyVaultContract, positionId, amount) {
-  logSection('Borrow USDC Against Collateral');
-
-  logInfo(`Borrowing $${ethers.formatUnits(amount, 6)} USDC from SeniorPool...`);
-
-  try {
-    const tx = await solvencyVaultContract.borrowUSDC(positionId, amount);
-
-    logInfo(`Transaction submitted: ${tx.hash}`);
-    logInfo('Waiting for confirmation...');
-
-    const receipt = await tx.wait();
-    logSuccess(`Borrow confirmed in block ${receipt.blockNumber}`);
-
-    // Parse USDCBorrowed event
-    let borrowed = null;
-    let totalDebt = null;
-    for (const log of receipt.logs) {
-      try {
-        const parsed = solvencyVaultContract.interface.parseLog(log);
-        if (parsed.name === 'USDCBorrowed') {
-          borrowed = parsed.args.amount;
-          totalDebt = parsed.args.totalDebt;
-          logSuccess(`Borrowed: $${ethers.formatUnits(borrowed, 6)} USDC`);
-          logInfo(`Total Debt: $${ethers.formatUnits(totalDebt, 6)} USDC`);
-          break;
-        }
-      } catch (e) {
-        // Skip non-matching logs
-      }
-    }
-
-    logInfo(`Explorer: https://explorer.sepolia.mantle.xyz/tx/${tx.hash}`);
-
-    return {
-      borrowed,
-      totalDebt,
-      txHash: tx.hash,
-      blockNumber: receipt.blockNumber,
-    };
-  } catch (error) {
-    logError(`Borrow failed: ${error.message}`);
-    throw error;
-  }
-}
-
 async function getPositionOnChain(solvencyVaultContract, positionId) {
   try {
     const position = await solvencyVaultContract.positions(positionId);
@@ -401,18 +349,13 @@ async function fetchOAIDCredit(jwt) {
 }
 
 async function main() {
-  logSection('Deposit to Solvency Vault & Borrow USDC');
+  logSection('Deposit to Solvency Vault');
 
   console.log('\n📝 Configuration:');
   console.log(`  Backend URL: ${BACKEND_URL}`);
   console.log(`  RPC URL: ${RPC_URL}`);
   console.log(`  Asset ID: ${assetId}`);
   console.log(`  Deposit Amount: ${depositAmount} tokens`);
-  if (borrowAmount) {
-    console.log(`  Borrow Amount: $${borrowAmount} USDC`);
-  } else {
-    console.log(`  Borrow: Not specified (deposit only)`);
-  }
 
   // Setup provider and wallet
   const provider = new ethers.JsonRpcProvider(RPC_URL);
@@ -510,28 +453,6 @@ async function main() {
   // Sync with backend (MANDATORY)
   await syncPositionWithBackend(depositResult.positionId, depositResult, jwt);
 
-  // Calculate max borrow (70% LTV for RWA tokens)
-  const RWA_LTV = 7000; // 70%
-  const maxBorrowWei = (depositResult.tokenValueUSD * BigInt(RWA_LTV)) / BigInt(10000);
-
-  logSection('Step 7: Borrow Options');
-  logInfo(`Max borrowable: $${ethers.formatUnits(maxBorrowWei, 6)} USDC (70% LTV)`);
-
-  // Borrow USDC if amount specified
-  if (borrowAmount) {
-    const borrowAmountWei = ethers.parseUnits(borrowAmount, 6); // USDC has 6 decimals
-
-    if (borrowAmountWei > maxBorrowWei) {
-      logWarning(`Requested borrow amount ($${borrowAmount}) exceeds maximum allowed ($${ethers.formatUnits(maxBorrowWei, 6)})`);
-      logInfo('Adjusting to maximum borrowable amount...');
-      await borrowUSDC(solvencyVaultContract, depositResult.positionId, maxBorrowWei);
-    } else {
-      await borrowUSDC(solvencyVaultContract, depositResult.positionId, borrowAmountWei);
-    }
-  } else {
-    logInfo(`No borrow amount specified. You can borrow up to $${ethers.formatUnits(maxBorrowWei, 6)} USDC at any time.`);
-  }
-
   // Get final position details from chain
   logSection('Final Position Summary');
   const position = await getPositionOnChain(solvencyVaultContract, depositResult.positionId);
@@ -553,22 +474,10 @@ async function main() {
   logSection('✨ Complete!');
   logSuccess(`Position ID: ${depositResult.positionId}`);
   logSuccess(`Deposited: ${depositAmount} ${symbol}`);
-  if (borrowAmount) {
-    logSuccess(`Borrowed: $${borrowAmount} USDC`);
-  }
 
   console.log('\n📋 Next Steps:');
-  console.log('  • Monitor your position: GET /solvency/position/' + depositResult.positionId);
-  console.log('  • Check your OAID credit line: GET /solvency/oaid/my-credit');
-  if (borrowAmount) {
-    console.log('  • Repay loan: POST /solvency/repay');
-    console.log('  • Borrow more (if under LTV): Call borrowUSDC(' + depositResult.positionId + ', amount)');
-  } else {
-    console.log('  • Borrow USDC: Run this script again with borrow amount, or call borrowUSDC(' + depositResult.positionId + ', amount)');
-  }
-  console.log('  • Withdraw collateral (after full repayment): POST /solvency/withdraw');
-  console.log('');
-  logWarning('Important: Maintain health factor above 110% to avoid liquidation!');
+  console.log('  • To borrow against this collateral, run:');
+  console.log(`    node scripts/borrow-solvency-loan.js ${depositResult.positionId} <amount> <installments>`);
   console.log('');
 }
 

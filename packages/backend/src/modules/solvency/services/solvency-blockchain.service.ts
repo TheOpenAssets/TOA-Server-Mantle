@@ -21,6 +21,42 @@ export class SolvencyBlockchainService {
     });
   }
 
+  private async retryWithBackoff<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 5,
+    initialDelay: number = 2000,
+  ): Promise<T> {
+    let retries = 0;
+    while (true) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        // Check for nonce errors or other transient issues
+        const errorMessage = error?.message || '';
+        const errorDetails = error?.details || '';
+        const causeMessage = error?.cause?.message || '';
+        
+        const isNonceError =
+          errorMessage.includes('nonce too low') ||
+          errorDetails.includes('nonce too low') ||
+          causeMessage.includes('nonce too low') ||
+          errorMessage.includes('replacement transaction underpriced');
+
+        if (isNonceError && retries < maxRetries) {
+          retries++;
+          const delay = initialDelay * Math.pow(1.5, retries - 1); // Exponential backoff
+          this.logger.warn(
+            `Transaction failed with nonce/replacement error. Retrying attempt ${retries}/${maxRetries} after ${Math.round(delay)}ms...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
+        throw error;
+      }
+    }
+  }
+
   /**
    * Deposit collateral to Solvency Vault
    */
@@ -46,19 +82,19 @@ export class SolvencyBlockchainService {
 
     // Approve vault to spend user's tokens (platform executes on behalf)
     const tokenAbi = this.contractLoader.getContractAbi('RWAToken');
-    const approveHash = await wallet.writeContract({
+    const approveHash = await this.retryWithBackoff(() => wallet.writeContract({
       address: collateralTokenAddress as Address,
       abi: tokenAbi,
       functionName: 'approve',
       args: [vaultAddress, BigInt(collateralAmount)],
-    });
+    }));
 
     await this.publicClient.waitForTransactionReceipt({ hash: approveHash });
     this.logger.log(`Approval confirmed: ${approveHash}`);
 
     // Deposit collateral
     const tokenTypeEnum = tokenType === 'RWA' ? 0 : 1; // RWA = 0, PRIVATE_ASSET = 1
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: vaultAddress as Address,
       abi: vaultAbi,
       functionName: 'depositCollateral',
@@ -69,7 +105,7 @@ export class SolvencyBlockchainService {
         tokenTypeEnum,
         issueOAID,
       ],
-    });
+    }));
 
     this.logger.log(`Deposit transaction submitted: ${hash}`);
 
@@ -151,6 +187,8 @@ export class SolvencyBlockchainService {
   async borrowUSDC(
     positionId: number,
     amount: string,
+    loanDuration: number,
+    numberOfInstallments: number,
   ): Promise<{
     txHash: string;
     blockNumber: number;
@@ -161,13 +199,19 @@ export class SolvencyBlockchainService {
     const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
 
     this.logger.log(`Borrowing ${amount} USDC for position ${positionId}`);
+    this.logger.log(`Terms: ${loanDuration}s duration, ${numberOfInstallments} installments`);
 
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: vaultAddress as Address,
       abi: vaultAbi,
       functionName: 'borrowUSDC',
-      args: [BigInt(positionId), BigInt(amount)],
-    });
+      args: [
+        BigInt(positionId),
+        BigInt(amount),
+        BigInt(loanDuration),
+        BigInt(numberOfInstallments),
+      ],
+    }));
 
     this.logger.log(`Borrow transaction submitted: ${hash}`);
 
@@ -207,23 +251,23 @@ export class SolvencyBlockchainService {
     const usdcAddress = this.contractLoader.getContractAddress('USDC');
     const usdcAbi = this.contractLoader.getContractAbi('USDC');
 
-    const approveHash = await wallet.writeContract({
+    const approveHash = await this.retryWithBackoff(() => wallet.writeContract({
       address: usdcAddress as Address,
       abi: usdcAbi,
       functionName: 'approve',
       args: [vaultAddress, BigInt(amount)],
-    });
+    }));
 
     await this.publicClient.waitForTransactionReceipt({ hash: approveHash });
     this.logger.log(`USDC approval confirmed: ${approveHash}`);
 
     // Repay loan
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: vaultAddress as Address,
       abi: vaultAbi,
       functionName: 'repayLoan',
       args: [BigInt(positionId), BigInt(amount)],
-    });
+    }));
 
     this.logger.log(`Repay transaction submitted: ${hash}`);
 
@@ -280,12 +324,12 @@ export class SolvencyBlockchainService {
 
     this.logger.log(`Withdrawing ${amount} collateral from position ${positionId}`);
 
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: vaultAddress as Address,
       abi: vaultAbi,
       functionName: 'withdrawCollateral',
       args: [BigInt(positionId), BigInt(amount)],
-    });
+    }));
 
     this.logger.log(`Withdraw transaction submitted: ${hash}`);
 
@@ -321,12 +365,12 @@ export class SolvencyBlockchainService {
     this.logger.log(`Liquidating position ${positionId}`);
     this.logger.log(`Marketplace asset ID: ${marketplaceAssetId}`);
 
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: vaultAddress as Address,
       abi: vaultAbi,
       functionName: 'liquidatePosition',
       args: [BigInt(positionId), marketplaceAssetId as `0x${string}`],
-    });
+    }));
 
     this.logger.log(`Liquidation transaction submitted: ${hash}`);
 
@@ -359,6 +403,76 @@ export class SolvencyBlockchainService {
       txHash: hash,
       blockNumber: Number(receipt.blockNumber),
       discountedPrice,
+    };
+  }
+
+  /**
+   * Settle liquidation by burning RWA tokens (Admin only)
+   */
+  async settleLiquidation(positionId: number): Promise<{
+    yieldReceived: string;
+    debtRepaid: string;
+    liquidationFee: string;
+    userRefund: string;
+    txHash: string;
+  }> {
+    const wallet = this.walletService.getAdminWallet();
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+    const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
+
+    this.logger.log(`Settling liquidation for position ${positionId}`);
+
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'settleLiquidation',
+      args: [BigInt(positionId)],
+    }));
+
+    const receipt = await this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 180_000,
+    });
+
+    this.logger.log(`Liquidation settled: ${hash}`);
+
+    // Parse LiquidationSettled event
+    const logs = await this.publicClient.getLogs({
+      address: vaultAddress as Address,
+      event: {
+        type: 'event',
+        name: 'LiquidationSettled',
+        inputs: [
+          { name: 'positionId', type: 'uint256', indexed: true },
+          { name: 'yieldReceived', type: 'uint256', indexed: false },
+          { name: 'debtRepaid', type: 'uint256', indexed: false },
+          { name: 'liquidationFee', type: 'uint256', indexed: false },
+          { name: 'userRefund', type: 'uint256', indexed: false },
+        ],
+      },
+      fromBlock: receipt.blockNumber,
+      toBlock: receipt.blockNumber,
+    });
+
+    let yieldReceived = '0';
+    let debtRepaid = '0';
+    let liquidationFee = '0';
+    let userRefund = '0';
+
+    if (logs.length > 0 && logs[0] && logs[0].args) {
+      const args = logs[0].args as any;
+      yieldReceived = args.yieldReceived.toString();
+      debtRepaid = args.debtRepaid.toString();
+      liquidationFee = args.liquidationFee.toString();
+      userRefund = args.userRefund.toString();
+    }
+
+    return {
+      yieldReceived,
+      debtRepaid,
+      liquidationFee,
+      userRefund,
+      txHash: hash,
     };
   }
 
@@ -453,6 +567,56 @@ export class SolvencyBlockchainService {
   }
 
   /**
+   * Get repayment plan details
+   */
+  async getRepaymentPlan(positionId: number): Promise<{
+    loanDuration: number;
+    numberOfInstallments: number;
+    installmentInterval: number;
+    nextPaymentDue: number;
+    installmentsPaid: number;
+    missedPayments: number;
+    isActive: boolean;
+  }> {
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+    const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
+
+    const plan = await this.publicClient.readContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'getRepaymentPlan',
+      args: [BigInt(positionId)],
+    }) as any;
+
+    return {
+      loanDuration: Number(plan.loanDuration),
+      numberOfInstallments: Number(plan.numberOfInstallments),
+      installmentInterval: Number(plan.installmentInterval),
+      nextPaymentDue: Number(plan.nextPaymentDue),
+      installmentsPaid: Number(plan.installmentsPaid),
+      missedPayments: Number(plan.missedPayments),
+      isActive: plan.isActive,
+    };
+  }
+
+  /**
+   * Check if position is in liquidation
+   */
+  async isPositionInLiquidation(positionId: number): Promise<boolean> {
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+    const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
+
+    const inLiquidation = await this.publicClient.readContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'positionsInLiquidation',
+      args: [BigInt(positionId)],
+    }) as boolean;
+
+    return inLiquidation;
+  }
+
+  /**
    * Check if user has existing OAID registration
    */
   async hasOAIDCreditLine(userAddress: string): Promise<boolean> {
@@ -498,12 +662,12 @@ export class SolvencyBlockchainService {
     this.logger.log(`Registering user ${userAddress} in OAID system...`);
 
     // Register user
-    const hash = await wallet.writeContract({
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: oaidAddress as Address,
       abi: oaidAbi,
       functionName: 'registerUser',
       args: [userAddress as Address],
-    });
+    }));
 
     this.logger.log(`OAID registration transaction submitted: ${hash}`);
 
@@ -607,5 +771,139 @@ export class SolvencyBlockchainService {
       this.logger.error(`Error fetching OAID credit lines: ${error}`);
       throw error;
     }
+  }
+
+  /**
+   * Admin purchases liquidated Private Asset collateral and settles position
+   * Admin sends USDC, receives tokens, contract settles debt
+   */
+  async purchaseAndSettleLiquidation(
+    positionId: number,
+    purchaseAmountUSDC: string,
+  ): Promise<{
+    txHash: string;
+    blockNumber: number;
+    liquidationFee: string;
+    userRefund: string;
+  }> {
+    const wallet = this.walletService.getPlatformWallet();
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+    const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
+    const usdcAddress = this.contractLoader.getContractAddress('USDC');
+    const usdcAbi = this.contractLoader.getContractAbi('USDC');
+
+    this.logger.log(
+      `Admin purchasing liquidated position ${positionId} for ${purchaseAmountUSDC} USDC`,
+    );
+
+    // Approve SolvencyVault to spend admin's USDC
+    const approveHash = await this.retryWithBackoff(() => wallet.writeContract({
+      address: usdcAddress as Address,
+      abi: usdcAbi,
+      functionName: 'approve',
+      args: [vaultAddress, BigInt(purchaseAmountUSDC)],
+    }));
+
+    await this.publicClient.waitForTransactionReceipt({ hash: approveHash });
+    this.logger.log(`USDC approval confirmed: ${approveHash}`);
+
+    // Purchase and settle liquidation
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'purchaseAndSettleLiquidation',
+      args: [BigInt(positionId), BigInt(purchaseAmountUSDC)],
+    }));
+
+    this.logger.log(`Purchase and settlement transaction submitted: ${hash}`);
+
+    const receipt = await this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 300_000,
+    });
+
+    this.logger.log(
+      `Private asset liquidation settled at block ${receipt.blockNumber}`,
+    );
+
+    // Parse event to get liquidation fee and user refund
+    const logs = await this.publicClient.getLogs({
+      address: vaultAddress as Address,
+      event: {
+        type: 'event',
+        name: 'PrivateAssetLiquidationSettled',
+        inputs: [
+          { name: 'positionId', type: 'uint256', indexed: true },
+          { name: 'purchaser', type: 'address', indexed: true },
+          { name: 'purchaseAmount', type: 'uint256', indexed: false },
+          { name: 'tokensTransferred', type: 'uint256', indexed: false },
+          { name: 'debtRepaid', type: 'uint256', indexed: false },
+          { name: 'liquidationFee', type: 'uint256', indexed: false },
+          { name: 'userRefund', type: 'uint256', indexed: false },
+        ],
+      },
+      fromBlock: receipt.blockNumber,
+      toBlock: receipt.blockNumber,
+    });
+
+    let liquidationFee = '0';
+    let userRefund = '0';
+
+    if (logs.length > 0 && logs[0] && logs[0].args) {
+      const args = logs[0].args as any;
+      liquidationFee = args.liquidationFee.toString();
+      userRefund = args.userRefund.toString();
+    }
+
+    return {
+      txHash: hash,
+      blockNumber: Number(receipt.blockNumber),
+      liquidationFee,
+      userRefund,
+    };
+  }
+
+  /**
+   * Mark a missed payment (Admin only)
+   */
+  async markMissedPayment(positionId: number): Promise<string> {
+    const wallet = this.walletService.getAdminWallet();
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+    const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
+
+    this.logger.log(`Marking missed payment for position ${positionId}`);
+
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'markMissedPayment',
+      args: [BigInt(positionId)],
+    }));
+
+    await this.publicClient.waitForTransactionReceipt({ hash });
+    this.logger.log(`Missed payment marked: ${hash}`);
+    return hash;
+  }
+
+  /**
+   * Mark position as defaulted (Admin only)
+   */
+  async markDefaulted(positionId: number): Promise<string> {
+    const wallet = this.walletService.getAdminWallet();
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+    const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
+
+    this.logger.log(`Marking position ${positionId} as defaulted`);
+
+    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'markDefaulted',
+      args: [BigInt(positionId)],
+    }));
+
+    await this.publicClient.waitForTransactionReceipt({ hash });
+    this.logger.log(`Position defaulted: ${hash}`);
+    return hash;
   }
 }

@@ -22,6 +22,7 @@ import { MintPrivateAssetDto } from '../dto/mint-private-asset.dto';
 import { ApprovePrivateAssetRequestDto } from '../dto/approve-private-asset-request.dto';
 import { RejectPrivateAssetRequestDto } from '../dto/reject-private-asset-request.dto';
 import { PrivateAssetRequestStatus } from '../../../database/schemas/private-asset-request.schema';
+import { PositionStatus } from '../../../database/schemas/solvency-position.schema';
 import { ethers } from 'ethers';
 
 @Controller('admin/solvency')
@@ -411,6 +412,70 @@ export class SolvencyAdminController {
       requestId: id,
       rejectionReason: dto.rejectionReason,
       reviewedAt: request.reviewedAt,
+    };
+  }
+
+  /**
+   * Purchase and settle liquidated Private Asset position
+   * Admin buys the collateral tokens by sending USDC
+   */
+  @Post('position/:id/purchase-liquidation')
+  @HttpCode(HttpStatus.OK)
+  async purchaseAndSettleLiquidation(
+    @Param('id') id: string,
+    @Body() body: { purchaseAmount: string },
+  ) {
+    const positionId = parseInt(id);
+    
+    this.logger.log(`Admin purchasing liquidated position ${positionId}`);
+    this.logger.log(`Purchase amount: ${body.purchaseAmount} USDC (6 decimals)`);
+
+    // Get position to verify it's liquidated and is Private Asset
+    const position = await this.positionService.getPosition(positionId);
+    
+    if (!position) {
+      return {
+        success: false,
+        message: 'Position not found',
+      };
+    }
+
+    if (position.status !== PositionStatus.LIQUIDATED) {
+      return {
+        success: false,
+        message: 'Position is not liquidated',
+        currentStatus: position.status,
+      };
+    }
+
+    if (position.collateralTokenType !== 'PRIVATE_ASSET') {
+      return {
+        success: false,
+        message: 'Position collateral is not a Private Asset',
+        tokenType: position.collateralTokenType,
+      };
+    }
+
+    // Execute purchase and settlement on-chain
+    const result = await this.blockchainService.purchaseAndSettleLiquidation(
+      positionId,
+      body.purchaseAmount,
+    );
+
+    // Update position in database
+    position.status = PositionStatus.SETTLED;
+    position.settledAt = new Date();
+    await position.save();
+
+    return {
+      success: true,
+      message: 'Private asset liquidation purchased and settled',
+      positionId,
+      txHash: result.txHash,
+      blockNumber: result.blockNumber,
+      purchaseAmount: body.purchaseAmount,
+      liquidationFee: result.liquidationFee,
+      userRefund: result.userRefund,
     };
   }
 }

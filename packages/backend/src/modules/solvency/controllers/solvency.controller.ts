@@ -96,10 +96,20 @@ export class SolvencyController {
     }
 
     // Borrow on-chain
-    const result = await this.blockchainService.borrowUSDC(positionId, dto.amount);
+    const result = await this.blockchainService.borrowUSDC(
+      positionId,
+      dto.amount,
+      dto.loanDuration,
+      dto.numberOfInstallments,
+    );
 
     // Update database
-    const updatedPosition = await this.positionService.recordBorrow(positionId, dto.amount);
+    const updatedPosition = await this.positionService.recordBorrow(
+      positionId, 
+      dto.amount,
+      dto.loanDuration,
+      dto.numberOfInstallments
+    );
 
     // Update private asset debt tracking if applicable
     if (updatedPosition.collateralTokenType === 'PRIVATE_ASSET') {
@@ -296,6 +306,34 @@ export class SolvencyController {
     return {
       success: true,
       ...stats,
+    };
+  }
+
+  /**
+   * Get repayment schedule for position
+   */
+  @Get('position/:id/schedule')
+  async getRepaymentSchedule(@Request() req: any, @Param('id') id: string) {
+    const userAddress = req.user.walletAddress;
+    const positionId = parseInt(id);
+
+    // Verify position belongs to user
+    const position = await this.positionService.getPosition(positionId);
+    if (position.userAddress !== userAddress) {
+      throw new Error('Not authorized to view this position');
+    }
+
+    const schedule = await this.blockchainService.getRepaymentPlan(positionId);
+    const outstandingDebt = await this.blockchainService.getOutstandingDebt(positionId);
+
+    return {
+      success: true,
+      positionId,
+      schedule: {
+        ...schedule,
+        details: position.repaymentSchedule, // Include the detailed array with times
+      },
+      outstandingDebt,
     };
   }
 
