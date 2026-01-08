@@ -436,6 +436,7 @@ export class YieldDistributionService {
             } catch (notifError) {
               this.logger.error(`Failed to send notification: ${notifError}`);
             }
+          }
 
           } catch (error) {
             this.logger.error(`❌ Failed to settle Solvency position ${position.positionId}: ${error}`);
@@ -577,9 +578,9 @@ export class YieldDistributionService {
 
   // Helper placeholder - in prod add to BlockchainService
   private async getTotalSupply(tokenAddress: string): Promise<bigint> {
-     // TODO: Implement readContract 'totalSupply' on BlockchainService
-     // For now, returning a dummy value or fetching from Asset if available
-     const asset = await this.assetModel.findOne({'token.address': tokenAddress});
-     return asset && asset.token ? BigInt(asset.token.supply) : BigInt(0);
+    // TODO: Implement readContract 'totalSupply' on BlockchainService
+    // For now, returning a dummy value or fetching from Asset if available
+    const asset = await this.assetModel.findOne({ 'token.address': tokenAddress });
+    return asset && asset.token ? BigInt(asset.token.supply) : BigInt(0);
   }
 }

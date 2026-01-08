@@ -12,13 +12,14 @@ import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 @UseGuards(JwtAuthGuard)
 export class LeverageController {
   private readonly logger = new Logger(LeverageController.name);
+  private readonly pendingPurchases = new Set<string>();
 
   constructor(
     private readonly positionService: LeveragePositionService,
     private readonly dexService: FluxionDEXService,
     private readonly blockchainService: LeverageBlockchainService,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
-  ) {}
+  ) { }
 
   /**
    * POST /leverage/initiate
@@ -27,11 +28,19 @@ export class LeverageController {
   @Post('initiate')
   async initiateLeveragePurchase(@Request() req: any, @Body() dto: InitiateLeveragePurchaseDto) {
     const userAddress = req.user.walletAddress;
+    const lockKey = `${userAddress}:${dto.assetId}:${dto.tokenAmount}:${dto.pricePerToken}:${dto.mETHCollateral}`;
 
+    if (this.pendingPurchases.has(lockKey)) {
+      this.logger.warn(`Duplicate leverage initiate blocked for ${lockKey}`);
+      throw new Error('Leverage purchase already in progress for this request payload');
+    }
+
+    this.pendingPurchases.add(lockKey);
     this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     this.logger.log(`📊 Leverage Purchase Request Received`);
     this.logger.log(`User: ${userAddress}`);
     this.logger.log(`Asset ID: ${dto.assetId}`);
+    
 
     try {
       // Fetch Asset to get correct token address
@@ -42,7 +51,7 @@ export class LeverageController {
       if (!asset.token?.address) {
         throw new Error(`Asset ${dto.assetId} has no token address registered`);
       }
-      
+
       const rwaTokenAddress = asset.token.address;
       this.logger.log(`Token Address (DB): ${rwaTokenAddress}`);
       if (dto.tokenAddress && dto.tokenAddress.toLowerCase() !== rwaTokenAddress.toLowerCase()) {
@@ -144,20 +153,29 @@ export class LeverageController {
 
       // Update asset listing sold count
       this.logger.log(`📊 Updating asset listing sold count...`);
-      
+
       // We already fetched asset above
       if (asset && asset.listing) {
         const currentSold = BigInt(asset.listing.sold || '0');
+        this.logger.log(`Current sold: ${currentSold.toString()}`);
         const newSold = (currentSold + tokenAmountBigInt).toString();
-        
+
         await this.assetModel.updateOne(
           { assetId: dto.assetId },
           { $set: { 'listing.sold': newSold } }
         );
-        
+
         const addedTokens = Number(tokenAmountBigInt) / 1e18;
         const totalTokens = Number(newSold) / 1e18;
-        this.logger.log(`✅ Asset listing updated: +${addedTokens} tokens sold (New Total: ${totalTokens} tokens)`);
+
+        const asset2 = await this.assetModel.findOne({ assetId: dto.assetId });
+        const updatedSold = asset2?.listing?.sold ?? newSold;
+        this.logger.log(`Added tokens sold: ${addedTokens}, Total sold: ${totalTokens}, newSold DB Value: ${newSold}`);
+        if (asset2?.listing) {
+          this.logger.log(`✅ Asset listing updated: +${addedTokens} tokens sold (New Total: ${updatedSold} tokens)`);
+        } else {
+          this.logger.warn(`⚠️ Unable to verify updated listing sold count for asset ${dto.assetId}; listing missing after update`);
+        }
       } else {
         this.logger.warn(`⚠️ Asset ${dto.assetId} has no listing, skipping sold count update`);
       }
@@ -171,11 +189,43 @@ export class LeverageController {
         position,
         message: 'Leveraged position created successfully',
       };
-    } catch (error) {
+    } catch (error: any) {
+      // Gracefully handle slow finality / missing receipt while tx is actually broadcasted
+      if (typeof error?.message === 'string' && error.message.includes('TransactionReceiptNotFoundError')) {
+        const txMatch = error.message.match(/hash "([^"]+)"/);
+        const txHash = txMatch ? txMatch[1] : undefined;
+        this.logger.warn(`⚠️ Receipt not found yet. Checking DB before returning pending for tx ${txHash || 'unknown'}`);
+
+        // Small wait and DB check for a recently created position (in case the tx confirmed but receipt lagged)
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        const latest = await this.positionService.getLatestPositionForUserAsset(userAddress, dto.assetId);
+
+        if (latest) {
+          this.logger.log(`✅ Found recently indexed position ${latest.positionId} for user ${userAddress}, returning success.`);
+          return {
+            success: true,
+            positionId: latest.positionId,
+            transactionHash: latest.settlementTxHash || txHash,
+            position: latest,
+            message: 'Position created (confirmed after delayed receipt).',
+          };
+        }
+
+        return {
+          success: true,
+          pending: true,
+          positionCreated: false,
+          transactionHash: txHash,
+          message: 'Transaction broadcasted; confirmation pending. If this tx later reverts, no position will be created and you should retry.',
+        };
+      }
+
       this.logger.error(`❌ Leverage purchase failed: ${error}`);
       this.logger.error(`Stack trace:`, error);
       this.logger.error(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       throw error;
+    } finally {
+      this.pendingPurchases.delete(lockKey);
     }
   }
 

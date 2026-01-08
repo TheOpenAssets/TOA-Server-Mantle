@@ -15,7 +15,7 @@ export class LeveragePositionService {
   constructor(
     @InjectModel(LeveragePosition.name)
     private leveragePositionModel: Model<LeveragePosition>,
-  ) {}
+  ) { }
 
   /**
    * Create a new leverage position
@@ -477,6 +477,19 @@ export class LeveragePositionService {
       totalUSDCBorrowed,
       totalInterestPaid,
     };
+  }
+
+  /**
+   * Get latest position for a user & asset (most recent by createdAt)
+   */
+  async getLatestPositionForUserAsset(
+    userAddress: string,
+    assetId: string,
+  ): Promise<LeveragePosition | null> {
+    return this.leveragePositionModel
+      .findOne({ userAddress: userAddress.toLowerCase(), assetId })
+      .sort({ createdAt: -1 })
+      .exec();
   }
 
   /**

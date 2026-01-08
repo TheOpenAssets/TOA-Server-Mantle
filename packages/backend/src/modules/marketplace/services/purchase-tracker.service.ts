@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { Model, Connection } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
 import { createPublicClient, http, Hash, decodeEventLog } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
@@ -8,12 +8,12 @@ import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.s
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Settlement, SettlementDocument } from '../../../database/schemas/settlement.schema';
 import { YieldClaim, YieldClaimDocument } from '../../../database/schemas/yield-claim.schema';
+import { LeveragePosition } from '../../../database/schemas/leverage-position.schema';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
-
 @Injectable()
 export class PurchaseTrackerService {
   private readonly logger = new Logger(PurchaseTrackerService.name);
@@ -27,6 +27,7 @@ export class PurchaseTrackerService {
     @InjectModel(Settlement.name) private settlementModel: Model<SettlementDocument>,
     @InjectModel(YieldClaim.name) private yieldClaimModel: Model<YieldClaimDocument>,
     private notificationService: NotificationService,
+    @InjectConnection() private connection: Connection,
   ) {
     this.publicClient = createPublicClient({
       chain: mantleSepolia,
@@ -317,7 +318,7 @@ export class PurchaseTrackerService {
   }
 
   /**
-   * Get investor's portfolio
+   * Get investor's portfolio (includes both static purchases and leverage positions)
    */
   async getInvestorPortfolio(investorWallet: string) {
     this.logger.log(`Building portfolio for ${investorWallet.toLowerCase()} including CONFIRMED/CLAIMED purchases`);
@@ -341,7 +342,7 @@ export class PurchaseTrackerService {
         portfolioMap.set(purchase.assetId, {
           assetId: purchase.assetId,
           tokenAddress: purchase.tokenAddress,
-          totalAmount: purchase.amount,
+          totalAmount: purchase.status === 'CLAIMED' ? '0' : purchase.amount,
           totalInvested: purchase.totalPayment,
           status: purchase.status,
           purchaseCount: 1,
@@ -352,8 +353,8 @@ export class PurchaseTrackerService {
       }
     }
 
-    // Enrich portfolio with yield data
-    const portfolio = await Promise.all(
+    // Enrich static portfolio with yield data and claim tx
+    const staticPortfolio = await Promise.all(
       Array.from(portfolioMap.values()).map(async (item) => {
         try {
           // Check if settlement has been distributed for this asset
@@ -376,23 +377,36 @@ export class PurchaseTrackerService {
                 ? (userTokenBalance * settlementUSDC) / totalSupply
                 : 0n;
 
-              console.log(`CALCULATED CLAIMABLE YIELD FOR ASSET ${item.assetId}: ${claimableYieldRaw.toString()} USDC`);
+              const yieldInfo: any = {
+                settlementDistributed: true,
+                claimableYield: claimableYieldRaw.toString(), // in raw USDC (6 decimals)
+                claimableYieldFormatted: `${(Number(claimableYieldRaw) / 1e6).toFixed(2)} USDC`,
+                settlementDate: settlement.settlementDate,
+                settlementId: settlement._id,
+              };
+
+              // If status is CLAIMED, fetch yield claim transaction hash
+              if (item.status === 'CLAIMED') {
+                const yieldClaim = await this.yieldClaimModel.findOne({
+                  assetId: item.assetId,
+                  investorWallet: investorWallet.toLowerCase(),
+                });
+                if (yieldClaim) {
+                  yieldInfo.yieldClaimTxHash = yieldClaim.txHash;
+                }
+              }
 
               return {
+                purchaseType: 'STATIC',
                 ...item,
-                yieldInfo: {
-                  settlementDistributed: true,
-                  claimableYield: claimableYieldRaw.toString(), // in raw USDC (6 decimals)
-                  claimableYieldFormatted: `${(Number(claimableYieldRaw) / 1e6).toFixed(2)} USDC`,
-                  settlementDate: settlement.settlementDate,
-                  settlementId: settlement._id,
-                },
+                yieldInfo,
               };
             }
           }
 
           // No settlement yet
           return {
+            purchaseType: 'STATIC',
             ...item,
             yieldInfo: {
               settlementDistributed: false,
@@ -403,6 +417,7 @@ export class PurchaseTrackerService {
         } catch (error) {
           this.logger.error(`Error calculating yield for asset ${item.assetId}: ${error}`);
           return {
+            purchaseType: 'STATIC',
             ...item,
             yieldInfo: {
               settlementDistributed: false,
@@ -413,14 +428,154 @@ export class PurchaseTrackerService {
         }
       })
     );
-    this.logger.log(`Portfolio ready: ${portfolioMap.size} assets, ${purchases.length} purchases`);
+
+    // Fetch leverage positions for this investor
+    const leveragePortfolio = await this.getLeveragePositionsForPortfolio(investorWallet);
+
+    // Merge both portfolios
+    const portfolio = [...staticPortfolio, ...leveragePortfolio];
+
+    // Sort by date (most recent first)
+    portfolio.sort((a, b) => {
+      const dateA = a.firstPurchase || a.createdAt;
+      const dateB = b.firstPurchase || b.createdAt;
+      return new Date(dateB).getTime() - new Date(dateA).getTime();
+    });
+
     return {
       success: true,
       investorWallet,
-      totalAssets: portfolioMap.size,
+      totalAssets: portfolio.length,
       totalPurchases: purchases.length,
+      totalLeveragePositions: leveragePortfolio.length,
       portfolio,
     };
+  }
+
+  /**
+   * Get leverage positions formatted for portfolio
+   */
+  private async getLeveragePositionsForPortfolio(investorWallet: string): Promise<any[]> {
+    try {
+      // Check if LeveragePosition model is registered
+      if (!this.connection.models['LeveragePosition']) {
+        this.logger.warn('LeveragePosition model not registered, skipping leverage positions');
+        return [];
+      }
+
+      // Get model through injected connection
+      const LeveragePositionModel = this.connection.model<LeveragePosition>('LeveragePosition');
+
+      // Fetch all positions for this user (ACTIVE or SETTLED)
+      const positions = await LeveragePositionModel.find({
+        userAddress: investorWallet.toLowerCase(),
+        status: { $in: ['ACTIVE', 'SETTLED'] },
+      }).sort({ createdAt: -1 });
+
+      // Fetch asset details for all positions in parallel
+      const assetIds = positions.map(p => p.assetId);
+      const assets = await this.assetModel.find({ assetId: { $in: assetIds } });
+      const assetMap = new Map(assets.map(a => [a.assetId, a]));
+
+      // Map positions to portfolio format
+      return positions.map((position: any) => {
+        const isActive = position.status === 'ACTIVE';
+        const isSettled = position.status === 'SETTLED';
+
+        // Get asset metadata
+        const asset = assetMap.get(position.assetId);
+        const assetMetadata = asset ? {
+          assetName: `${asset.metadata?.invoiceNumber || 'N/A'} - ${asset.metadata?.buyerName || 'N/A'}`,
+          industry: asset.metadata?.industry,
+          riskTier: asset.metadata?.riskTier,
+          positionType: 'Leveraged Position',
+        } : {
+          positionType: 'Leveraged Position',
+        };
+
+        const baseItem = {
+          purchaseType: 'LEVERAGE',
+          positionId: position.positionId,
+          assetId: position.assetId,
+          tokenAddress: position.rwaTokenAddress,
+          totalAmount: position.rwaTokenAmount, // RWA tokens held
+          status: position.status,
+          createdAt: position.createdAt,
+          firstPurchase: position.createdAt, // For sorting compatibility
+          metadata: assetMetadata,
+        };
+
+        // Format harvest history
+        const harvestHistory = (position.harvestHistory || []).map((harvest: any) => ({
+          timestamp: harvest.timestamp,
+          mETHSwapped: harvest.mETHSwapped,
+          mETHSwappedFormatted: `${(Number(harvest.mETHSwapped) / 1e18)} mETH`,
+          usdcReceived: harvest.usdcReceived,
+          usdcReceivedFormatted: `${(Number(harvest.usdcReceived) / 1e6)} USDC`,
+          interestPaid: harvest.interestPaid,
+          interestPaidFormatted: `${(Number(harvest.interestPaid) / 1e6)} USDC`,
+          transactionHash: harvest.transactionHash,
+          healthFactorBefore: harvest.healthFactorBefore,
+          healthFactorBeforeFormatted: `${(harvest.healthFactorBefore / 100)}%`,
+          healthFactorAfter: harvest.healthFactorAfter,
+          healthFactorAfterFormatted: `${(harvest.healthFactorAfter / 100)}%`,
+        }));
+
+        if (isActive) {
+          return {
+            ...baseItem,
+            mETHCollateral: position.mETHCollateral,
+            usdcBorrowed: position.usdcBorrowed,
+            healthFactor: position.currentHealthFactor /100,
+            healthStatus: position.healthStatus,
+            totalInterestPaid: position.totalInterestPaid,
+            lastHarvestTime: position.lastHarvestTime,
+            harvestHistory,
+            leverageInfo: {
+              type: 'ACTIVE',
+              mETHCollateralFormatted: `${(Number(position.mETHCollateral) / 1e18).toFixed(4)} mETH`,
+              usdcBorrowedFormatted: `${(Number(position.usdcBorrowed) / 1e6).toFixed(2)} USDC`,
+              healthFactorFormatted: `${(position.currentHealthFactor / 10000).toFixed(2)}%`,
+              healthStatus: position.healthStatus,
+              totalInterestPaidFormatted: `${(Number(position.totalInterestPaid) / 1e6).toFixed(2)} USDC`,
+              claimableYield: '0', // Active positions haven't settled yet
+              claimableYieldFormatted: '0.00 USDC',
+              totalHarvests: harvestHistory.length,
+            },
+          };
+        } else if (isSettled) {
+          return {
+            ...baseItem,
+            mETHCollateral: position.mETHCollateral,
+            usdcBorrowed: position.usdcBorrowed,
+            totalInterestPaid: position.totalInterestPaid,
+            settlementTxHash: position.settlementTxHash,
+            harvestHistory,
+            leverageInfo: {
+              type: 'SETTLED',
+              mETHCollateralFormatted: `${(Number(position.mETHCollateral) / 1e18).toFixed(4)} mETH`,
+              usdcBorrowedFormatted: `${(Number(position.usdcBorrowed) / 1e6).toFixed(2)} USDC`,
+              totalInterestPaidFormatted: `${(Number(position.totalInterestPaid) / 1e6).toFixed(2)} USDC`,
+              userYield: position.userYieldDistributed || '0',
+              userYieldFormatted: `${(Number(position.userYieldDistributed || '0') / 1e6).toFixed(2)} USDC`,
+              mETHReturned: position.mETHReturnedToUser || '0',
+              mETHReturnedFormatted: `${(Number(position.mETHReturnedToUser || '0') / 1e18).toFixed(4)} mETH`,
+              settlementTxHash: position.settlementTxHash,
+              settlementDate: position.settlementTimestamp,
+              claimableYield: position.userYieldDistributed || '0',
+              claimableYieldFormatted: `${(Number(position.userYieldDistributed || '0') / 1e6).toFixed(2)} USDC`,
+              totalHarvests: harvestHistory.length,
+            },
+          };
+        }
+
+        return baseItem;
+      });
+    } catch (error: any) {
+      this.logger.error(`Error fetching leverage positions: ${error.message}`);
+      // Return empty array if leverage positions can't be fetched
+      return [];
+    }
   }
 
   /**

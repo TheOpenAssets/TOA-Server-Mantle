@@ -83,7 +83,12 @@ export class LeverageBlockchainService {
       });
 
       // Wait for transaction and parse event to get positionId
-      const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+      this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
+      const receipt = await this.publicClient.waitForTransactionReceipt({
+        hash,
+        timeout: 120_000, // 2 minutes timeout
+        pollingInterval: 2_000, // Check every 2 seconds
+      });
 
       // Parse PositionCreated event to get positionId
       let positionId: number | undefined;
@@ -135,6 +140,10 @@ export class LeverageBlockchainService {
       const methPriceUSDC = BigInt(this.methPriceService.getCurrentPrice());
       const methPriceUSD = methPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
 
+      this.logger.log(
+        `Using mETH price: $${Number(methPriceUSDC) / 1e6} (${methPriceUSD.toString()} wei)`,
+      );
+
       const hash = await wallet.writeContract({
         address: address as Address,
         abi,
@@ -142,12 +151,10 @@ export class LeverageBlockchainService {
         args: [BigInt(positionId), methPriceUSD],
       });
 
-      // Wait 5 seconds for transaction propagation (Mantle block time)
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-
-      const receipt = await this.publicClient.waitForTransactionReceipt({ 
+      const receipt = await this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 120_000 
+        timeout: 120_000, // 2 minutes timeout
+        pollingInterval: 2_000, // Check every 2 seconds
       });
       this.logger.log(`✅ Yield harvested: ${hash}`);
 
@@ -355,7 +362,12 @@ export class LeverageBlockchainService {
         args: [BigInt(positionId), yieldVaultAddress, rwaToken, tokenAmount],
       });
 
-      const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+      this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
+      const receipt = await this.publicClient.waitForTransactionReceipt({
+        hash,
+        timeout: 120_000, // 2 minutes timeout
+        pollingInterval: 2_000, // Check every 2 seconds
+      });
       this.logger.log(`✅ Yield claimed via burn: ${hash}`);
 
       // Parse YieldClaimed event from YieldVault
@@ -437,9 +449,10 @@ export class LeverageBlockchainService {
         args: [BigInt(positionId), settlementUSDC],
       });
 
-      const receipt = await this.publicClient.waitForTransactionReceipt({ 
+      const receipt = await this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 60_000, // 60 seconds timeout
+        timeout: 120_000, // 2 minutes timeout
+        pollingInterval: 2_000, // Check every 2 seconds
       });
       this.logger.log(`✅ Settlement processed: ${hash}`);
 
@@ -708,7 +721,11 @@ export class LeverageBlockchainService {
         args: [BigInt(positionId), mETHAmount],
       });
 
-      await this.publicClient.waitForTransactionReceipt({ hash });
+      await this.publicClient.waitForTransactionReceipt({
+        hash,
+        timeout: 120_000, // 2 minutes timeout
+        pollingInterval: 2_000, // Check every 2 seconds
+      });
       this.logger.log(`✅ Collateral added: ${hash}`);
       return hash;
     } catch (error) {

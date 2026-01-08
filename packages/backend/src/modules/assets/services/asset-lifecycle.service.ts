@@ -1,6 +1,7 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Connection } from 'mongoose';
+import { InjectConnection } from '@nestjs/mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
@@ -21,10 +22,12 @@ import { NotificationService } from '../../notifications/services/notification.s
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
+import { LeveragePosition } from '../../../database/schemas/leverage-position.schema';
 
 @Injectable()
 export class AssetLifecycleService {
   private readonly logger = new Logger(AssetLifecycleService.name);
+  private leveragePositionModel: Model<LeveragePosition>;
 
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
@@ -40,9 +43,11 @@ export class AssetLifecycleService {
     private announcementService: AnnouncementService,
     private configService: ConfigService,
     private notificationService: NotificationService,
-    @Inject(forwardRef(() => BlockchainService))
     private blockchainService: BlockchainService,
-  ) { }
+    @InjectConnection() connection: Connection,
+  ) {
+    this.leveragePositionModel = connection.model<LeveragePosition>(LeveragePosition.name);
+  }
 
   /**
    * Helper method to notify all admin users
@@ -862,7 +867,6 @@ export class AssetLifecycleService {
   async payoutOriginator(assetId: string) {
     this.logger.log(`Processing originator payout for asset: ${assetId}`);
 
-    // Get asset
     const asset = await this.assetModel.findOne({ assetId });
     if (!asset) {
       throw new Error('Asset not found');
@@ -873,11 +877,10 @@ export class AssetLifecycleService {
     let confirmedPurchases: any[] = [];
     let leveragePositions: any[] = [];
 
-    // Handle based on listing type
     if (asset.listing?.type === 'STATIC') {
-      // For STATIC listings: sum USDC from confirmed purchases
-      this.logger.log(`STATIC listing detected - calculating from purchases`);
+      this.logger.log(`STATIC listing detected - calculating from purchases + leverage positions`);
 
+      // 1. Get confirmed USDC purchases
       confirmedPurchases = await this.purchaseModel.find({
         assetId,
         status: 'CONFIRMED',
@@ -887,15 +890,36 @@ export class AssetLifecycleService {
         totalUsdcRaised += BigInt(purchase.totalPayment);
       }
 
-      this.logger.log(`Found ${confirmedPurchases.length} confirmed purchases`);
+      this.logger.log(`Found ${confirmedPurchases.length} confirmed USDC purchases`);
+
+      // 2. Get ACTIVE leverage positions for this asset
+      try {
+        leveragePositions = await this.leveragePositionModel.find({
+          assetId,
+          status: 'ACTIVE',
+        });
+
+        for (const position of leveragePositions) {
+          totalUsdcRaised += BigInt(position.usdcBorrowed);
+        }
+
+        this.logger.log(`Found ${leveragePositions.length} active leverage positions`);
+      } catch (error: any) {
+        this.logger.error(`Failed to fetch leverage positions: ${error.message}`);
+        // Continue with payout even if leverage fetch fails
+      }
     } else if (asset.listing?.type === 'AUCTION') {
-      this.logger.log(`AUCTION listing detected - calculating from purchases`);
-      confirmedPurchases = await this.purchaseModel.find({
+      this.logger.log(`AUCTION listing detected - calculating from bids`);
+
+      settledBids = await this.bidModel.find({
         assetId,
         status: { $in: ['CONFIRMED', 'CLAIMED'] },
       });
-      for (const purchase of confirmedPurchases) {
-        totalUsdcRaised += BigInt(purchase.totalPayment);
+
+      for (const bid of settledBids) {
+        if (bid.status === 'SETTLED') {
+          totalUsdcRaised += BigInt(bid.usdcDeposited);
+        }
       }
       this.logger.log(`Found ${confirmedPurchases.length} settlement purchases for auction`);
     } else {
@@ -949,10 +973,12 @@ export class AssetLifecycleService {
     }
 
     if (totalUsdcRaised === BigInt(0)) {
-      throw new Error('No USDC raised yet - no confirmed purchases, settled bids, or leverage positions');
+      throw new Error('No USDC raised yet - no confirmed purchases, leverage positions, or settled bids');
     }
 
     this.logger.log(`Total USDC to payout: ${totalUsdcRaised.toString()} (${Number(totalUsdcRaised) / 1e6} USDC)`);
+    this.logger.log(`  - USDC purchases: ${confirmedPurchases.length}`);
+    this.logger.log(`  - Leverage positions: ${leveragePositions.length}`);
 
     // Execute transfer on-chain
     const platformPrivateKey = this.configService.get<string>('PLATFORM_PRIVATE_KEY');
@@ -1012,17 +1038,17 @@ export class AssetLifecycleService {
       paidAt: new Date(),
     };
 
-    // Add type-specific data
     if (asset.listing?.type === 'STATIC') {
       payoutData.purchaseIds = confirmedPurchases.map(p => p._id.toString());
       payoutData.purchasesCount = confirmedPurchases.length;
+      payoutData.leveragePositionIds = leveragePositions.map(p => p._id.toString());
+      payoutData.leveragePositionsCount = leveragePositions.length;
     } else if (asset.listing?.type === 'AUCTION') {
       payoutData.purchaseIds = confirmedPurchases.map(p => p._id.toString());
       payoutData.purchasesCount = confirmedPurchases.length;
     }
 
     const payoutRecord = new this.payoutModel(payoutData);
-
     await payoutRecord.save();
     this.logger.log(`Payout record saved to MongoDB with ID: ${payoutRecord._id}`);
 
@@ -1208,7 +1234,9 @@ export class AssetLifecycleService {
       totalUsdcRaised: totalUsdcRaised.toString(),
       totalUsdcRaisedFormatted: `${Number(totalUsdcRaised) / 1e6} USDC`,
       listingType: asset.listing?.type,
-      transactionCount: asset.listing?.type === 'STATIC' ? confirmedPurchases.length : settledBids.filter(b => b.status === 'SETTLED').length,
+      transactionCount: asset.listing?.type === 'STATIC'
+        ? confirmedPurchases.length + leveragePositions.length
+        : settledBids.filter(b => b.status === 'SETTLED').length,
       transactionHash: tx.hash,
       blockNumber: receipt.blockNumber.toString(),
       payoutId: payoutRecord._id.toString(),
@@ -1218,6 +1246,7 @@ export class AssetLifecycleService {
 
   /**
    * Get purchase history for an asset (for buy history graph)
+   * Includes both regular purchases and leveraged position purchases
    */
   async getPurchaseHistory(assetId: string) {
     const asset = await this.assetModel.findOne({ assetId });
@@ -1245,6 +1274,7 @@ export class AssetLifecycleService {
           timestamp: purchase.createdAt,
           transactionHash: purchase.txHash,
           type: 'PURCHASE',
+          purchaseMethod: 'DIRECT',
         });
 
         totalTokensSold += BigInt(purchase.amount);
@@ -1265,12 +1295,60 @@ export class AssetLifecycleService {
           timestamp: purchase.createdAt,
           transactionHash: purchase.txHash,
           type: 'PURCHASE',
+          purchaseMethod: 'DIRECT',
         });
 
         totalTokensSold += BigInt(purchase.amount);
         totalUSDCRaised += BigInt(purchase.totalPayment);
       }
     }
+
+    // Get leveraged position purchases for this asset
+    try {
+      const leveragePositions = await this.leveragePositionModel
+        .find({ assetId, status: { $in: ['ACTIVE', 'SETTLED', 'LIQUIDATED', 'CLOSED'] } })
+        .sort({ createdAt: 1 })
+        .exec();
+
+      for (const position of leveragePositions) {
+        // Calculate effective price: totalPayment / tokenAmount
+        // Total payment for leverage = mETH collateral value + USDC borrowed
+        // For simplicity, we'll use USDC borrowed as the payment amount
+        const usdcBorrowed = BigInt(position.usdcBorrowed);
+        const rwaTokenAmount = BigInt(position.rwaTokenAmount);
+
+        // Calculate price per token: (usdcBorrowed * 10^18) / rwaTokenAmount
+        // This gives us USDC (6 decimals) per token (18 decimals)
+        const pricePerToken = rwaTokenAmount > BigInt(0)
+          ? (usdcBorrowed * BigInt(10 ** 18)) / rwaTokenAmount
+          : BigInt(0);
+
+        purchases.push({
+          buyer: position.userAddress,
+          tokenAmount: position.rwaTokenAmount,
+          price: pricePerToken.toString(),
+          totalPayment: position.usdcBorrowed,
+          timestamp: position.createdAt,
+          transactionHash: position.settlementTxHash || `position-${position.positionId}`,
+          type: 'PURCHASE',
+          purchaseMethod: 'LEVERAGE',
+          positionId: position.positionId,
+          mETHCollateral: position.mETHCollateral,
+          positionStatus: position.status,
+        });
+
+        totalTokensSold += rwaTokenAmount;
+        totalUSDCRaised += usdcBorrowed;
+      }
+
+      this.logger.log(`Found ${leveragePositions.length} leverage positions for asset ${assetId}`);
+    } catch (error: any) {
+      this.logger.error(`Error fetching leverage positions for purchase history: ${error.message}`);
+      // Continue without leverage positions if there's an error
+    }
+
+    // Sort all purchases by timestamp (ascending)
+    purchases.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
     // Generate chart data with cumulative tokens
     const chartData: any[] = [];
@@ -1284,6 +1362,7 @@ export class AssetLifecycleService {
         tokensPurchased: purchase.tokenAmount,
         cumulativeTokens: cumulativeTokens.toString(),
         price: purchase.price,
+        purchaseMethod: purchase.purchaseMethod,
       });
     }
 
@@ -1300,6 +1379,10 @@ export class AssetLifecycleService {
     const firstPurchaseAt = purchases.length > 0 ? purchases[0].timestamp : undefined;
     const lastPurchaseAt = purchases.length > 0 ? purchases[purchases.length - 1].timestamp : undefined;
 
+    // Count direct vs leverage purchases
+    const directPurchases = purchases.filter(p => p.purchaseMethod === 'DIRECT').length;
+    const leveragePurchases = purchases.filter(p => p.purchaseMethod === 'LEVERAGE').length;
+
     return {
       assetId,
       assetType: asset.listing?.type || asset.assetType,
@@ -1314,6 +1397,8 @@ export class AssetLifecycleService {
         averagePrice: averagePrice.toString(),
         firstPurchaseAt,
         lastPurchaseAt,
+        directPurchases,
+        leveragePurchases,
       },
     };
   }
