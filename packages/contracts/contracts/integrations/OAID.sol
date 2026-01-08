@@ -324,7 +324,8 @@ contract OAID is Ownable, ReentrancyGuard {
     ) external onlySolvencyVault nonReentrant {
         CreditLine storage creditLine = creditLines[creditLineId];
         require(creditLine.active, "Credit line not active");
-        require(amount > 0, "Amount must be > 0");
+        // Allow amount to be 0 for missed payments (where onTime is false)
+        require(amount > 0 || !onTime, "Amount must be > 0 for on-time payments");
 
         // Update payment statistics
         creditLine.totalPayments++;

@@ -620,12 +620,22 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         // Approve YieldVault to burn RWA tokens
         IERC20(position.collateralToken).approve(yieldVault, position.collateralAmount);
 
-        // Burn RWA tokens to claim USDC yield
-        yieldReceived = IYieldVault(yieldVault).claimYield(
-            position.collateralToken,
-            position.collateralAmount
-        );
+        // Get USDC balance before
+        uint256 balanceBefore = usdc.balanceOf(address(this));
 
+        // Burn RWA tokens to claim USDC yield using low-level call (no return value expected)
+        (bool success, ) = yieldVault.call(
+            abi.encodeWithSignature(
+                "claimYield(address,uint256)",
+                position.collateralToken,
+                position.collateralAmount
+            )
+        );
+        require(success, "YieldVault claim failed");
+
+        // Calculate USDC received
+        uint256 balanceAfter = usdc.balanceOf(address(this));
+        yieldReceived = balanceAfter - balanceBefore;
         require(yieldReceived > 0, "No yield received");
 
         // Get outstanding debt

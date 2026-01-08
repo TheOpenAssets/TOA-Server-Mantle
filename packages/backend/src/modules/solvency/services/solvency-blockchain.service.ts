@@ -600,6 +600,23 @@ export class SolvencyBlockchainService {
   }
 
   /**
+   * Check if position is in liquidation
+   */
+  async isPositionInLiquidation(positionId: number): Promise<boolean> {
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+    const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
+
+    const inLiquidation = await this.publicClient.readContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'positionsInLiquidation',
+      args: [BigInt(positionId)],
+    }) as boolean;
+
+    return inLiquidation;
+  }
+
+  /**
    * Check if user has existing OAID registration
    */
   async hasOAIDCreditLine(userAddress: string): Promise<boolean> {

@@ -332,14 +332,22 @@ export class SolvencyPositionService {
     try {
       const onChainPosition = await this.blockchainService.getPosition(positionId);
       const outstandingDebt = await this.blockchainService.getOutstandingDebt(positionId);
+      const inLiquidation = await this.blockchainService.isPositionInLiquidation(positionId);
 
       position.collateralAmount = onChainPosition.collateralAmount;
       position.usdcBorrowed = outstandingDebt;
 
+      // Update status based on on-chain liquidation state
+      if (inLiquidation && position.status !== PositionStatus.LIQUIDATED) {
+        this.logger.log(`Position ${positionId} is in liquidation on-chain, updating status to LIQUIDATED`);
+        position.status = PositionStatus.LIQUIDATED;
+        position.liquidatedAt = new Date();
+      }
+
       await this.updateHealthFactor(position);
       await position.save();
 
-      this.logger.log(`Position ${positionId} synced with blockchain`);
+      this.logger.log(`Position ${positionId} synced with blockchain (status: ${position.status}, inLiquidation: ${inLiquidation})`);
     } catch (error: any) {
       this.logger.error(`Failed to sync position ${positionId}: ${error.message}`);
     }

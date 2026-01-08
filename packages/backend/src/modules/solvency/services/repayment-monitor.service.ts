@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import * as path from 'path';
+import * as fs from 'fs';
 import { SolvencyPositionService } from './solvency-position.service';
 import { SolvencyBlockchainService } from './solvency-blockchain.service';
 import { NotificationService } from '../../notifications/services/notification.service';

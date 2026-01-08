@@ -1455,8 +1455,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/integrations/OAID.sol": {
-      "lastModificationDate": 1767851322190,
-      "contentHash": "c1229dc714928e39add58143315a1630",
+      "lastModificationDate": 1767853472187,
+      "contentHash": "da2985732a8b1343e2217bfa32f10b0b",
       "sourceName": "contracts/integrations/OAID.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -1495,8 +1495,8 @@
       ]
     },
     "/Users/deadbytes/Documents/Hackathons/Mantle/rwa/packages/contracts/contracts/core/SolvencyVault.sol": {
-      "lastModificationDate": 1767818160490,
-      "contentHash": "fbae6658d9f6726cd0df9919ac96acc0",
+      "lastModificationDate": 1767859641994,
+      "contentHash": "a45af06d410303e6d2fba67b0ae5717e",
       "sourceName": "contracts/core/SolvencyVault.sol",
       "solcConfig": {
         "version": "0.8.20",
