@@ -268,6 +268,122 @@ export class SolvencyAdminController {
   }
 
   /**
+   * Mark missed payment for a position
+   */
+  @Post('position/:id/mark-missed-payment')
+  @HttpCode(HttpStatus.OK)
+  async markMissedPayment(@Param('id') id: string) {
+    const positionId = parseInt(id);
+
+    this.logger.log(`Admin marking missed payment for position ${positionId}`);
+
+    try {
+      // Call blockchain to mark missed payment
+      const txHash = await this.blockchainService.markMissedPayment(positionId);
+
+      this.logger.log(`✅ Missed payment marked on-chain: ${txHash}`);
+
+      // Event listener will automatically update MongoDB
+      // But we can also sync immediately for instant feedback
+      await this.positionService.syncPositionWithBlockchain(positionId);
+
+      return {
+        success: true,
+        message: 'Missed payment marked successfully',
+        txHash,
+        positionId,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to mark missed payment for position ${positionId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark position as defaulted (3+ missed payments)
+   */
+  @Post('position/:id/mark-defaulted')
+  @HttpCode(HttpStatus.OK)
+  async markDefaulted(@Param('id') id: string) {
+    const positionId = parseInt(id);
+
+    this.logger.log(`Admin marking position ${positionId} as defaulted`);
+
+    try {
+      // Call blockchain to mark as defaulted
+      const txHash = await this.blockchainService.markDefaulted(positionId);
+
+      this.logger.log(`✅ Position marked as defaulted on-chain: ${txHash}`);
+
+      // Event listener will automatically update MongoDB
+      await this.positionService.syncPositionWithBlockchain(positionId);
+
+      return {
+        success: true,
+        message: 'Position marked as defaulted',
+        txHash,
+        positionId,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to mark position ${positionId} as defaulted: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Settle liquidated position
+   */
+  @Post('position/:id/settle-liquidation')
+  @HttpCode(HttpStatus.OK)
+  async settleLiquidation(@Param('id') id: string) {
+    const positionId = parseInt(id);
+
+    this.logger.log(`Admin settling liquidation for position ${positionId}`);
+
+    try {
+      // Get position to verify it's liquidated
+      const position = await this.positionService.getPosition(positionId);
+
+      if (!position) {
+        return {
+          success: false,
+          message: 'Position not found',
+        };
+      }
+
+      if (position.status !== PositionStatus.LIQUIDATED) {
+        return {
+          success: false,
+          message: 'Position is not liquidated',
+          currentStatus: position.status,
+        };
+      }
+
+      // Call blockchain to settle liquidation
+      const result = await this.blockchainService.settleLiquidation(positionId);
+
+      this.logger.log(`✅ Liquidation settled on-chain: ${result.txHash}`);
+
+      // Event listener will automatically update MongoDB
+      await this.positionService.syncPositionWithBlockchain(positionId);
+
+      return {
+        success: true,
+        message: 'Liquidation settled successfully',
+        txHash: result.txHash,
+        positionId,
+        yieldReceived: result.yieldReceived,
+        debtRepaid: result.debtRepaid,
+        liquidationFee: result.liquidationFee,
+        userRefund: result.userRefund,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to settle liquidation for position ${positionId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Get all private assets (admin view)
    */
   @Get('private-assets')
