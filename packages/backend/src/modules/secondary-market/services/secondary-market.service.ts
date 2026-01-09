@@ -148,49 +148,176 @@ export class SecondaryMarketService {
   }
 
   /**
-   * Get OHLCV Chart Data
-   * interval: '1h', '4h', '1d'
+   * Get OHLCV Chart Data - Returns both Order Book (speculative) and Trade (actual) candlesticks
+   * 
+   * Returns two datasets:
+   * 1. orderBookCandles: Based on order creation (shows market sentiment/liquidity intent)
+   * 2. tradeCandles: Based on filled trades (shows actual executed prices)
+   * 
+   * Time intervals: '2m', '5m', '15m', '1h', '4h', '1d'
    */
-  async getChartData(assetId: string, interval: string = '1h') {
+  async getChartData(assetId: string, interval: string = '2m') {
     this.logger.debug(`[P2P Service] Generating chart data - Asset: ${assetId}, Interval: ${interval}`);
 
-    // 1. Determine time grouping (mongo aggregation)
-    let groupFormat = '%Y-%m-%d-%H'; // Default 1h
-    if (interval === '1d') groupFormat = '%Y-%m-%d';
-    // Add more intervals as needed
+    // Determine time bucket size in milliseconds
+    const intervalMs = this.getIntervalMilliseconds(interval);
 
-    const trades = await this.tradeModel.aggregate([
-      { $match: { assetId } },
-      { $sort: { blockTimestamp: 1 } }, // Chronological for OHLC logic
-      {
-        $group: {
-          _id: {
-            $dateToString: { format: groupFormat, date: '$blockTimestamp' }
-          },
-          open: { $first: '$pricePerToken' },
-          high: { $max: '$pricePerToken' },
-          low: { $min: '$pricePerToken' },
-          close: { $last: '$pricePerToken' },
-          volume: { $sum: 1 }, // Count of trades
-          totalAmount: { $sum: { $toLong: '$amount' } }, // Sum as long to maintain precision
-          timestamp: { $first: '$blockTimestamp' }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
+    // Get order book candles (speculative - based on order creation)
+    const orderBookCandles = await this.getOrderBookCandles(assetId, intervalMs);
 
-    // Format for frontend (TradingView usually expects seconds timestamp)
-    const chartData = trades.map(t => ({
-      time: Math.floor(new Date(t.timestamp).getTime() / 1000),
-      open: Number(BigInt(t.open)) / 1e6,  // Convert USDC decimals
-      high: Number(BigInt(t.high)) / 1e6,
-      low: Number(BigInt(t.low)) / 1e6,
-      close: Number(BigInt(t.close)) / 1e6,
-      volume: Number(t.totalAmount) / 1e18, // Convert Token decimals
-    }));
+    // Get trade candles (actual - based on filled trades)
+    const tradeCandles = await this.getTradeCandles(assetId, intervalMs);
 
-    this.logger.log(`[P2P Service] Chart data generated - ${chartData.length} data points for interval: ${interval}`);
-    return chartData;
+    this.logger.log(
+      `[P2P Service] Chart data generated - ` +
+      `OrderBook: ${orderBookCandles.length} candles, ` +
+      `Trades: ${tradeCandles.length} candles, ` +
+      `Interval: ${interval}`
+    );
+
+    return {
+      interval,
+      intervalMs,
+      orderBookCandles,  // Speculative data from orders
+      tradeCandles,      // Actual data from trades
+      metadata: {
+        orderBookDescription: 'Candlesticks based on order creation (market sentiment/liquidity)',
+        tradeDescription: 'Candlesticks based on filled trades (actual executed prices)',
+        note: 'Order book candles show where traders want to trade, trade candles show where they actually traded'
+      }
+    };
+  }
+
+  /**
+   * Convert interval string to milliseconds
+   */
+  private getIntervalMilliseconds(interval: string): number {
+    const intervals: { [key: string]: number } = {
+      '2m': 2 * 60 * 1000,
+      '5m': 5 * 60 * 1000,
+      '15m': 15 * 60 * 1000,
+      '30m': 30 * 60 * 1000,
+      '1h': 60 * 60 * 1000,
+      '4h': 4 * 60 * 60 * 1000,
+      '1d': 24 * 60 * 60 * 1000,
+    };
+    const defaultInterval = 2 * 60 * 1000; // 2 minutes
+    return intervals[interval] || defaultInterval;
+  }
+
+  /**
+   * Generate Order Book Candles (Speculative)
+   * Shows where traders WANT to trade based on order creation
+   */
+  private async getOrderBookCandles(assetId: string, intervalMs: number) {
+    // Get all orders (including cancelled ones for historical context)
+    const orders = await this.orderModel.find({ assetId })
+      .sort({ blockTimestamp: 1 })
+      .lean();
+
+    if (orders.length === 0) {
+      return [];
+    }
+
+    // Group orders into time buckets
+    const buckets = new Map<number, any[]>();
+
+    for (const order of orders) {
+      const timestamp = new Date(order.blockTimestamp).getTime();
+      const bucketTime = Math.floor(timestamp / intervalMs) * intervalMs;
+
+      if (!buckets.has(bucketTime)) {
+        buckets.set(bucketTime, []);
+      }
+      buckets.get(bucketTime)!.push(order);
+    }
+
+    // Convert buckets to OHLCV candles
+    const candles = [];
+    for (const [bucketTime, bucketOrders] of Array.from(buckets.entries()).sort((a, b) => a[0] - b[0])) {
+      if (bucketOrders.length === 0) continue;
+
+      const prices = bucketOrders.map(o => BigInt(o.pricePerToken));
+      const volumes = bucketOrders.map(o => BigInt(o.initialAmount));
+
+      const open = Number(BigInt(bucketOrders[0].pricePerToken)) / 1e6;
+      const close = Number(BigInt(bucketOrders[bucketOrders.length - 1].pricePerToken)) / 1e6;
+      const high = Number(prices.reduce((max, p) => p > max ? p : max)) / 1e6;
+      const low = Number(prices.reduce((min, p) => p < min ? p : min)) / 1e6;
+      const volume = Number(volumes.reduce((sum, v) => sum + v, 0n)) / 1e18;
+
+      candles.push({
+        time: Math.floor(bucketTime / 1000), // Unix timestamp in seconds
+        open: parseFloat(open.toFixed(2)),
+        high: parseFloat(high.toFixed(2)),
+        low: parseFloat(low.toFixed(2)),
+        close: parseFloat(close.toFixed(2)),
+        volume: parseFloat(volume.toFixed(2)),
+        orderCount: bucketOrders.length,
+        buyOrders: bucketOrders.filter(o => o.isBuy).length,
+        sellOrders: bucketOrders.filter(o => !o.isBuy).length,
+      });
+    }
+
+    return candles;
+  }
+
+  /**
+   * Generate Trade Candles (Actual)
+   * Shows where trades ACTUALLY executed
+   */
+  private async getTradeCandles(assetId: string, intervalMs: number) {
+    // Get all trades
+    const trades = await this.tradeModel.find({ assetId })
+      .sort({ blockTimestamp: 1 })
+      .lean();
+
+    if (trades.length === 0) {
+      return [];
+    }
+
+    // Group trades into time buckets
+    const buckets = new Map<number, any[]>();
+
+    for (const trade of trades) {
+      const timestamp = new Date(trade.blockTimestamp).getTime();
+      const bucketTime = Math.floor(timestamp / intervalMs) * intervalMs;
+
+      if (!buckets.has(bucketTime)) {
+        buckets.set(bucketTime, []);
+      }
+      buckets.get(bucketTime)!.push(trade);
+    }
+
+    // Convert buckets to OHLCV candles
+    const candles = [];
+    for (const [bucketTime, bucketTrades] of Array.from(buckets.entries()).sort((a, b) => a[0] - b[0])) {
+      if (bucketTrades.length === 0) continue;
+
+      const prices = bucketTrades.map(t => BigInt(t.pricePerToken));
+      const volumes = bucketTrades.map(t => BigInt(t.amount));
+      const values = bucketTrades.map(t => BigInt(t.totalValue));
+
+      const open = Number(BigInt(bucketTrades[0].pricePerToken)) / 1e6;
+      const close = Number(BigInt(bucketTrades[bucketTrades.length - 1].pricePerToken)) / 1e6;
+      const high = Number(prices.reduce((max, p) => p > max ? p : max)) / 1e6;
+      const low = Number(prices.reduce((min, p) => p < min ? p : min)) / 1e6;
+      const volume = Number(volumes.reduce((sum, v) => sum + v, 0n)) / 1e18;
+      const totalValue = Number(values.reduce((sum, v) => sum + v, 0n)) / 1e6;
+
+      candles.push({
+        time: Math.floor(bucketTime / 1000), // Unix timestamp in seconds
+        open: parseFloat(open.toFixed(2)),
+        high: parseFloat(high.toFixed(2)),
+        low: parseFloat(low.toFixed(2)),
+        close: parseFloat(close.toFixed(2)),
+        volume: parseFloat(volume.toFixed(2)),
+        totalValue: parseFloat(totalValue.toFixed(2)),
+        tradeCount: bucketTrades.length,
+      });
+    }
+
+    return candles;
   }
   /**
    * Get transaction data for creating an order on-chain

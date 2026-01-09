@@ -354,23 +354,28 @@ export class EventProcessor extends WorkerHost {
     }
 
     // Send notification to order creator
-    await this.notificationService.create({
-      userId: maker,
-      walletAddress: maker,
-      header: 'Order Created Successfully',
-      detail: `Your ${isBuy ? 'buy' : 'sell'} order for ${amountFmt} tokens at $${priceFmt} has been created.`,
-      type: NotificationType.ORDER_CREATED,
-      severity: NotificationSeverity.SUCCESS,
-      action: NotificationAction.VIEW_PORTFOLIO,
-      actionMetadata: {
-        assetId,
-        orderId,
-        isBuy,
-        amount: amountFmt,
-        price: priceFmt,
-        txHash
-      }
-    });
+    try {
+      await this.notificationService.create({
+        userId: maker,
+        walletAddress: maker,
+        header: 'Order Created Successfully',
+        detail: `Your ${isBuy ? 'buy' : 'sell'} order for ${amountFmt} tokens at $${priceFmt} has been created.`,
+        type: NotificationType.ORDER_CREATED,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_PORTFOLIO,
+        actionMetadata: {
+          assetId,
+          orderId,
+          isBuy,
+          amount: amountFmt,
+          price: priceFmt,
+          txHash
+        }
+      });
+      this.logger.log(`[P2P Event Processor] ✅ Notification sent to maker: ${maker.substring(0, 8)}... for ORDER_CREATED`);
+    } catch (error: any) {
+      this.logger.error(`[P2P Event Processor] ❌ Failed to send ORDER_CREATED notification to ${maker}: ${error.message}`);
+    }
 
     // Emit real-time update
     this.sseService.emitToAll('orderbook_update', { assetId, type: 'create', orderId });
@@ -482,43 +487,53 @@ export class EventProcessor extends WorkerHost {
     }
 
     // Send notifications
-    await this.notificationService.create({
-      userId: maker,
-      walletAddress: maker,
-      header: 'Order Filled',
-      detail: `Your ${order.isBuy ? 'buy' : 'sell'} order for ${amountFmt} tokens was filled at $${(Number(order.pricePerToken) / 1e6).toFixed(2)}.`,
-      type: NotificationType.ORDER_FILLED,
-      severity: NotificationSeverity.SUCCESS,
-      action: NotificationAction.VIEW_PORTFOLIO,
-      actionMetadata: {
-        assetId: order.assetId,
-        orderId,
-        amount: amountFmt,
-        price: (Number(order.pricePerToken) / 1e6).toFixed(2),
-        totalCost: (Number(totalCost) / 1e6).toFixed(2),
-        txHash,
-        tradeId: trade.tradeId
-      }
-    });
+    try {
+      await this.notificationService.create({
+        userId: maker,
+        walletAddress: maker,
+        header: 'Order Filled',
+        detail: `Your ${order.isBuy ? 'buy' : 'sell'} order for ${amountFmt} tokens was filled at $${(Number(order.pricePerToken) / 1e6).toFixed(2)}.`,
+        type: NotificationType.ORDER_FILLED,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_PORTFOLIO,
+        actionMetadata: {
+          assetId: order.assetId,
+          orderId,
+          amount: amountFmt,
+          price: (Number(order.pricePerToken) / 1e6).toFixed(2),
+          totalCost: (Number(totalCost) / 1e6).toFixed(2),
+          txHash,
+          tradeId: trade.tradeId
+        }
+      });
+      this.logger.log(`[P2P Event Processor] ✅ Notification sent to maker: ${maker.substring(0, 8)}... for ORDER_FILLED`);
+    } catch (error: any) {
+      this.logger.error(`[P2P Event Processor] ❌ Failed to send ORDER_FILLED notification to maker ${maker}: ${error.message}`);
+    }
 
-    await this.notificationService.create({
-      userId: taker,
-      walletAddress: taker,
-      header: 'Trade Executed',
-      detail: `You successfully ${order.isBuy ? 'sold' : 'bought'} ${amountFmt} tokens at $${(Number(order.pricePerToken) / 1e6).toFixed(2)}.`,
-      type: NotificationType.ORDER_FILLED,
-      severity: NotificationSeverity.SUCCESS,
-      action: NotificationAction.VIEW_PORTFOLIO,
-      actionMetadata: {
-        assetId: order.assetId,
-        orderId,
-        amount: amountFmt,
-        price: (Number(order.pricePerToken) / 1e6).toFixed(2),
-        totalCost: (Number(totalCost) / 1e6).toFixed(2),
-        txHash,
-        tradeId: trade.tradeId
-      }
-    });
+    try {
+      await this.notificationService.create({
+        userId: taker,
+        walletAddress: taker,
+        header: 'Trade Executed',
+        detail: `You successfully ${order.isBuy ? 'sold' : 'bought'} ${amountFmt} tokens at $${(Number(order.pricePerToken) / 1e6).toFixed(2)}.`,
+        type: NotificationType.ORDER_FILLED,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_PORTFOLIO,
+        actionMetadata: {
+          assetId: order.assetId,
+          orderId,
+          amount: amountFmt,
+          price: (Number(order.pricePerToken) / 1e6).toFixed(2),
+          totalCost: (Number(totalCost) / 1e6).toFixed(2),
+          txHash,
+          tradeId: trade.tradeId
+        }
+      });
+      this.logger.log(`[P2P Event Processor] ✅ Notification sent to taker: ${taker.substring(0, 8)}... for ORDER_FILLED`);
+    } catch (error: any) {
+      this.logger.error(`[P2P Event Processor] ❌ Failed to send ORDER_FILLED notification to taker ${taker}: ${error.message}`);
+    }
 
     // Emit real-time update
     this.sseService.emitToAll('orderbook_update', { assetId: order.assetId, type: 'fill', orderId });
@@ -587,22 +602,27 @@ export class EventProcessor extends WorkerHost {
       }
 
       // Send notification to order creator
-      await this.notificationService.create({
-        userId: order.maker,
-        walletAddress: order.maker,
-        header: 'Order Cancelled',
-        detail: `Your ${order.isBuy ? 'buy' : 'sell'} order for ${remainingFmt} tokens has been cancelled${!order.isBuy ? ' and tokens returned to your wallet' : ''}.`,
-        type: NotificationType.ORDER_CANCELLED,
-        severity: NotificationSeverity.INFO,
-        action: NotificationAction.VIEW_PORTFOLIO,
-        actionMetadata: {
-          assetId: order.assetId,
-          orderId,
-          amount: remainingFmt,
-          price: (Number(order.pricePerToken) / 1e6).toFixed(2),
-          txHash
-        }
-      });
+      try {
+        await this.notificationService.create({
+          userId: order.maker,
+          walletAddress: order.maker,
+          header: 'Order Cancelled',
+          detail: `Your ${order.isBuy ? 'buy' : 'sell'} order for ${remainingFmt} tokens has been cancelled${!order.isBuy ? ' and tokens returned to your wallet' : ''}.`,
+          type: NotificationType.ORDER_CANCELLED,
+          severity: NotificationSeverity.INFO,
+          action: NotificationAction.VIEW_PORTFOLIO,
+          actionMetadata: {
+            assetId: order.assetId,
+            orderId,
+            amount: remainingFmt,
+            price: (Number(order.pricePerToken) / 1e6).toFixed(2),
+            txHash
+          }
+        });
+        this.logger.log(`[P2P Event Processor] ✅ Notification sent to maker: ${order.maker.substring(0, 8)}... for ORDER_CANCELLED`);
+      } catch (error: any) {
+        this.logger.error(`[P2P Event Processor] ❌ Failed to send ORDER_CANCELLED notification to ${order.maker}: ${error.message}`);
+      }
 
       // Emit real-time update
       this.sseService.emitToAll('orderbook_update', { assetId: order.assetId, type: 'cancel', orderId });

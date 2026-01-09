@@ -213,23 +213,28 @@ export class SecondaryMarketIndexer implements OnModuleInit {
     }
 
     // Send notification to order creator
-    await this.notificationService.create({
-      userId: maker,
-      walletAddress: maker,
-      header: 'Order Created Successfully',
-      detail: `Your ${isBuy ? 'buy' : 'sell'} order for ${amountFormatted} tokens at $${priceFormatted} has been created.`,
-      type: NotificationType.ORDER_CREATED,
-      severity: NotificationSeverity.SUCCESS,
-      action: NotificationAction.VIEW_PORTFOLIO,
-      actionMetadata: {
-        assetId,
-        orderId: orderId.toString(),
-        isBuy,
-        amount: amountFormatted,
-        price: priceFormatted,
-        txHash
-      }
-    });
+    try {
+      await this.notificationService.create({
+        userId: maker,
+        walletAddress: maker,
+        header: 'Order Created Successfully',
+        detail: `Your ${isBuy ? 'buy' : 'sell'} order for ${amountFormatted} tokens at $${priceFormatted} has been created.`,
+        type: NotificationType.ORDER_CREATED,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_PORTFOLIO,
+        actionMetadata: {
+          assetId,
+          orderId: orderId.toString(),
+          isBuy,
+          amount: amountFormatted,
+          price: priceFormatted,
+          txHash
+        }
+      });
+      this.logger.log(`[P2P Indexer] ✅ Notification sent to maker: ${maker.substring(0, 8)}... for ORDER_CREATED`);
+    } catch (error: any) {
+      this.logger.error(`[P2P Indexer] ❌ Failed to send ORDER_CREATED notification to ${maker}: ${error.message}`);
+    }
 
     // Real-time update
     this.sseService.emitToAll('orderbook_update', { assetId, type: 'create' });
@@ -296,46 +301,54 @@ export class SecondaryMarketIndexer implements OnModuleInit {
 
     // Notifications
     // Notify Maker
-    await this.notificationService.create({
-      userId: maker,
-      walletAddress: maker,
-      header: 'Order Filled',
-      detail: `Your ${order.isBuy ? 'buy' : 'sell'} order for ${amountFmt} tokens was filled at $${(Number(order.pricePerToken) / 1e6).toFixed(2)}.`,
-      type: NotificationType.ORDER_FILLED,
-      severity: NotificationSeverity.SUCCESS,
-      action: NotificationAction.VIEW_PORTFOLIO,
-      actionMetadata: {
-        assetId: order.assetId,
-        orderId: orderId.toString(),
-        amount: amountFmt,
-        price: (Number(order.pricePerToken) / 1e6).toFixed(2),
-        totalCost: costFmt,
-        txHash,
-        tradeId: trade.tradeId
-      }
-    });
+    try {
+      await this.notificationService.create({
+        userId: maker,
+        walletAddress: maker,
+        header: 'Order Filled',
+        detail: `Your ${order.isBuy ? 'buy' : 'sell'} order for ${amountFmt} tokens was filled at $${(Number(order.pricePerToken) / 1e6).toFixed(2)}.`,
+        type: NotificationType.ORDER_FILLED,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_PORTFOLIO,
+        actionMetadata: {
+          assetId: order.assetId,
+          orderId: orderId.toString(),
+          amount: amountFmt,
+          price: (Number(order.pricePerToken) / 1e6).toFixed(2),
+          totalCost: costFmt,
+          txHash,
+          tradeId: trade.tradeId
+        }
+      });
+      this.logger.log(`[P2P Indexer] ✅ Notification sent to maker: ${maker.substring(0, 8)}... for ORDER_FILLED`);
+    } catch (error: any) {
+      this.logger.error(`[P2P Indexer] ❌ Failed to send ORDER_FILLED notification to maker ${maker}: ${error.message}`);
+    }
 
     // Notify Taker
-    await this.notificationService.create({
-      userId: taker,
-      walletAddress: taker,
-      header: 'Trade Executed',
-      detail: `You successfully ${order.isBuy ? 'sold' : 'bought'} ${amountFmt} tokens at $${(Number(order.pricePerToken) / 1e6).toFixed(2)}.`,
-      type: NotificationType.ORDER_FILLED,
-      severity: NotificationSeverity.SUCCESS,
-      action: NotificationAction.VIEW_PORTFOLIO,
-      actionMetadata: {
-        assetId: order.assetId,
-        orderId: orderId.toString(),
-        amount: amountFmt,
-        price: (Number(order.pricePerToken) / 1e6).toFixed(2),
-        totalCost: costFmt,
-        txHash,
-        tradeId: trade.tradeId
-      }
-    });
-
-    // this.logger.log(`[P2P Indexer] Sent notifications to maker and taker`);
+    try {
+      await this.notificationService.create({
+        userId: taker,
+        walletAddress: taker,
+        header: 'Trade Executed',
+        detail: `You successfully ${order.isBuy ? 'sold' : 'bought'} ${amountFmt} tokens at $${(Number(order.pricePerToken) / 1e6).toFixed(2)}.`,
+        type: NotificationType.ORDER_FILLED,
+        severity: NotificationSeverity.SUCCESS,
+        action: NotificationAction.VIEW_PORTFOLIO,
+        actionMetadata: {
+          assetId: order.assetId,
+          orderId: orderId.toString(),
+          amount: amountFmt,
+          price: (Number(order.pricePerToken) / 1e6).toFixed(2),
+          totalCost: costFmt,
+          txHash,
+          tradeId: trade.tradeId
+        }
+      });
+      this.logger.log(`[P2P Indexer] ✅ Notification sent to taker: ${taker.substring(0, 8)}... for ORDER_FILLED`);
+    } catch (error: any) {
+      this.logger.error(`[P2P Indexer] ❌ Failed to send ORDER_FILLED notification to taker ${taker}: ${error.message}`);
+    }
 
     // Real-time update
     this.sseService.emitToAll('orderbook_update', { assetId: order.assetId, type: 'fill' });
@@ -400,22 +413,27 @@ export class SecondaryMarketIndexer implements OnModuleInit {
       }
 
       // Send notification to order creator
-      await this.notificationService.create({
-        userId: order.maker,
-        walletAddress: order.maker,
-        header: 'Order Cancelled',
-        detail: `Your ${order.isBuy ? 'buy' : 'sell'} order for ${remainingFmt} tokens has been cancelled${!order.isBuy ? ' and tokens returned to your wallet' : ''}.`,
-        type: NotificationType.ORDER_CANCELLED,
-        severity: NotificationSeverity.INFO,
-        action: NotificationAction.VIEW_PORTFOLIO,
-        actionMetadata: {
-          assetId: order.assetId,
-          orderId: orderId.toString(),
-          amount: remainingFmt,
-          price: (Number(order.pricePerToken) / 1e6).toFixed(2),
-          txHash
-        }
-      });
+      try {
+        await this.notificationService.create({
+          userId: order.maker,
+          walletAddress: order.maker,
+          header: 'Order Cancelled',
+          detail: `Your ${order.isBuy ? 'buy' : 'sell'} order for ${remainingFmt} tokens has been cancelled${!order.isBuy ? ' and tokens returned to your wallet' : ''}.`,
+          type: NotificationType.ORDER_CANCELLED,
+          severity: NotificationSeverity.INFO,
+          action: NotificationAction.VIEW_PORTFOLIO,
+          actionMetadata: {
+            assetId: order.assetId,
+            orderId: orderId.toString(),
+            amount: remainingFmt,
+            price: (Number(order.pricePerToken) / 1e6).toFixed(2),
+            txHash
+          }
+        });
+        this.logger.log(`[P2P Indexer] ✅ Notification sent to maker: ${order.maker.substring(0, 8)}... for ORDER_CANCELLED`);
+      } catch (error: any) {
+        this.logger.error(`[P2P Indexer] ❌ Failed to send ORDER_CANCELLED notification to ${order.maker}: ${error.message}`);
+      }
 
       this.sseService.emitToAll('orderbook_update', { assetId: order.assetId, type: 'cancel' });
     } else {

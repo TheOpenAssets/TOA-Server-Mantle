@@ -127,7 +127,7 @@ export class TokenBalanceService {
 
         // 4. Calculate tradeable balance
         const walletBalanceBigInt = BigInt(walletBalance);
-        const tradeableBalance = walletBalanceBigInt - lockedInOrders;
+        const tradeableBalance = walletBalanceBigInt;
 
         // Ensure tradeable balance is not negative (shouldn't happen but safety check)
         const finalTradeableBalance = tradeableBalance < BigInt(0) ? BigInt(0) : tradeableBalance;

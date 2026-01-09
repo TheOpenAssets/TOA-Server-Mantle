@@ -34,11 +34,15 @@ export class SecondaryMarketController {
   @Get(':assetId/chart')
   async getChartData(
     @Param('assetId') assetId: string,
-    @Query('interval') interval: string = '1h',
+    @Query('interval') interval: string = '2m',
   ) {
     this.logger.log(`[P2P] Fetching chart data for asset: ${assetId}, interval: ${interval}`);
     const chartData = await this.secondaryMarketService.getChartData(assetId, interval);
-    this.logger.debug(`[P2P] Chart data retrieved - ${chartData.length} data points`);
+    this.logger.debug(
+      `[P2P] Chart data retrieved - ` +
+      `OrderBook: ${chartData.orderBookCandles.length} candles, ` +
+      `Trades: ${chartData.tradeCandles.length} candles`
+    );
     return chartData;
   }
 
