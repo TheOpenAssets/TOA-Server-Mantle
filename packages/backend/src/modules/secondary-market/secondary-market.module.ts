@@ -8,9 +8,10 @@ import { LeveragePosition, LeveragePositionSchema } from '../../database/schemas
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SecondaryMarketService } from './services/secondary-market.service';
-import { SecondaryMarketIndexer } from './services/secondary-market-indexer.service';
+// import { SecondaryMarketIndexer } from './services/secondary-market-indexer.service';
 import { TokenBalanceService } from './services/token-balance.service';
 import { SecondaryMarketController } from './controllers/secondary-market.controller';
+import { clear } from 'console';
 
 @Module({
   imports: [
@@ -25,7 +26,7 @@ import { SecondaryMarketController } from './controllers/secondary-market.contro
     NotificationsModule,
   ],
   controllers: [SecondaryMarketController],
-  providers: [SecondaryMarketService, SecondaryMarketIndexer, TokenBalanceService],
+  providers: [SecondaryMarketService, TokenBalanceService],
   exports: [SecondaryMarketService, TokenBalanceService],
 })
 export class SecondaryMarketModule { }

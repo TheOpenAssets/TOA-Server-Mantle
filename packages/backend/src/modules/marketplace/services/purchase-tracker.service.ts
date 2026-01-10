@@ -356,7 +356,6 @@ export class PurchaseTrackerService {
           // Selling tokens: money IN (capital recovery) - SUBTRACT from investment
           // CRITICAL: Don't subtract from balance - already done in P2P_SELL_ORDER lock
           investmentDelta = (-totalPayment).toString();
-          balanceDelta = '0'; // Don't double-count balance change
         } else {
           // Buying tokens: money OUT - ADD to investment, tokens IN
           investmentDelta = totalPayment.toString();
@@ -366,7 +365,7 @@ export class PurchaseTrackerService {
         investmentDelta = '0';
       } else if (purchase.source === 'P2P_ORDER_CANCELLED') {
         // Unlock from escrow: no investment change, tokens return to wallet
-        investmentDelta = '0';
+        investmentDelta = (-totalPayment).toString();;
       }
 
       if (existing) {

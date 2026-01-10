@@ -141,7 +141,6 @@ export class SecondaryMarketService {
     this.logger.debug(`[P2P Service] Fetching active orders for user: ${walletAddress}`);
     const orders = await this.orderModel.find({
       maker: walletAddress.toLowerCase(),
-      status: OrderStatus.OPEN,
     }).sort({ createdAt: -1 });
     this.logger.log(`[P2P Service] User ${walletAddress} has ${orders.length} active orders`);
     return orders;
@@ -367,6 +366,10 @@ export class SecondaryMarketService {
     // Find the createOrder function
     const createOrderAbi = abi.find((item: any) => item.name === 'createOrder' && item.type === 'function');
 
+    if (!createOrderAbi) {
+      throw new Error('createOrder function not found in SecondaryMarket ABI');
+    }
+
     this.logger.debug(`[P2P Service] Create order tx data prepared for contract: ${contractAddress}`);
     return {
       to: contractAddress,
@@ -392,6 +395,10 @@ export class SecondaryMarketService {
 
     const fillOrderAbi = abi.find((item: any) => item.name === 'fillOrder' && item.type === 'function');
 
+    if (!fillOrderAbi) {
+      throw new Error('fillOrder function not found in SecondaryMarket ABI');
+    }
+
     this.logger.debug(`[P2P Service] Fill order tx data prepared for orderId: ${orderId}`);
     return {
       to: contractAddress,
@@ -411,6 +418,10 @@ export class SecondaryMarketService {
     const abi = this.contractLoader.getContractAbi('SecondaryMarket');
 
     const cancelOrderAbi = abi.find((item: any) => item.name === 'cancelOrder' && item.type === 'function');
+
+    if (!cancelOrderAbi) {
+      throw new Error('cancelOrder function not found in SecondaryMarket ABI');
+    }
 
     this.logger.debug(`[P2P Service] Cancel order tx data prepared for orderId: ${orderId}`);
     return {

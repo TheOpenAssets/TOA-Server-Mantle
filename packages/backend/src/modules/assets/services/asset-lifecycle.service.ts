@@ -893,23 +893,6 @@ export class AssetLifecycleService {
 
     this.logger.log(`Found ${confirmedPurchases.length} confirmed PRIMARY_MARKET purchases`);
 
-    // 2. Get ACTIVE leverage positions for this asset (STATIC only, but safe to query for AUCTION too)
-    try {
-      leveragePositions = await this.leveragePositionModel.find({
-        assetId,
-        status: 'ACTIVE',
-      });
-
-      for (const position of leveragePositions) {
-        totalUsdcRaised += BigInt(position.usdcBorrowed);
-      }
-
-      this.logger.log(`Found ${leveragePositions.length} active leverage positions`);
-    } catch (error: any) {
-      this.logger.error(`Failed to fetch leverage positions: ${error.message}`);
-      // Continue with payout even if leverage fetch fails
-    }
-
     // ========================================================================
     // CHECK FOR LEVERAGE POSITIONS
     // ========================================================================

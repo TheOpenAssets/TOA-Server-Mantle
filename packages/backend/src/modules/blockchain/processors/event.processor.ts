@@ -482,27 +482,69 @@ export class EventProcessor extends WorkerHost {
 
       this.logger.log(`[P2P Event Processor] ✅ Purchase record created for buyer: ${trade.buyer.substring(0, 8)}... (+${amountFmt} tokens)`);
 
-      // CRITICAL: Seller sends tokens (negative Purchase record)
-      // For SELL orders: this offsets the initial negative lock
-      // For BUY orders: this creates the negative record for the seller (taker)
-      const negativeAmount = '-' + amountFilled;
-      await this.purchaseModel.create({
-        txHash: `${txHash}-sell`,
-        assetId: order.assetId,
-        investorWallet: trade.seller,
-        tokenAddress: tokenAddress.toLowerCase(),
-        amount: negativeAmount, // NEGATIVE - tokens leaving seller
-        price: order.pricePerToken,
-        totalPayment: totalCost,
-        blockNumber,
-        blockTimestamp: new Date(timestamp * 1000),
-        status: 'CONFIRMED',
-        source: 'SECONDARY_MARKET',
-        p2pTradeId: trade.tradeId,
-        metadata,
-      });
+      // CRITICAL: Handle seller's tokens
+      if (!order.isBuy) {
+        // This was a SELL order, the seller is the MAKER.
+        // Find the original P2P_SELL_ORDER record and update it to be the final SECONDARY_MARKET sale.
+        const sellLockRecord = await this.purchaseModel.findOneAndUpdate(
+          {
+            p2pTradeId: `order-${orderId}`,
+            source: 'P2P_SELL_ORDER',
+            investorWallet: trade.seller, // Ensure we update the correct user's record
+          },
+          {
+            $set: {
+              source: 'SECONDARY_MARKET',
+              txHash: `${txHash}-sell`, // Update to the fill transaction hash
+              totalPayment: totalCost, // Update to the actual value received
+              p2pTradeId: trade.tradeId, // Update reference to the final trade
+            },
+          }, { new: true }
+        );
 
-      this.logger.log(`[P2P Event Processor] ✅ Purchase record created for seller: ${trade.seller.substring(0, 8)}... (-${amountFmt} tokens)`);
+        if (sellLockRecord) {
+          this.logger.log(`[P2P Event Processor] ✅ Updated seller's (maker) lock record to SECONDARY_MARKET sale: ${trade.seller.substring(0, 8)}...`);
+        } else {
+          this.logger.error(`[P2P Event Processor] ❌ Could not find original sell lock record for order ${orderId} to update.`);
+          // As a fallback, create a new record, though this indicates a potential issue.
+          await this.purchaseModel.create({
+            txHash: `${txHash}-sell`,
+            assetId: order.assetId,
+            investorWallet: trade.seller,
+            tokenAddress: tokenAddress.toLowerCase(),
+            amount: '-' + amountFilled,
+            price: order.pricePerToken,
+            totalPayment: totalCost,
+            blockNumber,
+            blockTimestamp: new Date(timestamp * 1000),
+            status: 'CONFIRMED',
+            source: 'SECONDARY_MARKET',
+            p2pTradeId: trade.tradeId,
+            metadata,
+          });
+          this.logger.warn(`[P2P Event Processor] Created fallback purchase record for seller.`);
+        }
+      } else {
+        // This was a BUY order, the seller is the TAKER.
+        // Create a new negative purchase record for them as no lock existed.
+        const negativeAmount = '-' + amountFilled;
+        await this.purchaseModel.create({
+          txHash: `${txHash}-sell`,
+          assetId: order.assetId,
+          investorWallet: trade.seller,
+          tokenAddress: tokenAddress.toLowerCase(),
+          amount: negativeAmount,
+          price: order.pricePerToken,
+          totalPayment: totalCost,
+          blockNumber,
+          blockTimestamp: new Date(timestamp * 1000),
+          status: 'CONFIRMED',
+          source: 'SECONDARY_MARKET',
+          p2pTradeId: trade.tradeId,
+          metadata,
+        });
+        this.logger.log(`[P2P Event Processor] ✅ Created new purchase record for seller (taker): ${trade.seller.substring(0, 8)}... (-${amountFmt} tokens)`);
+      }
 
     } catch (error: any) {
       this.logger.error(`[P2P Event Processor] Failed to create Purchase records: ${error.message}`);

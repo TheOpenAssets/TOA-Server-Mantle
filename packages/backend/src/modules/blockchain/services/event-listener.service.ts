@@ -314,22 +314,27 @@ export class EventListenerService implements OnModuleInit {
       abi,
       eventName: 'OrderCreated',
       onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { orderId, maker, tokenAddress, amount, pricePerToken, isBuy } = log.args;
-          this.logger.log(`[P2P Event] OrderCreated detected: #${orderId} by ${maker}`);
-          await this.eventQueue.add('process-p2p-order-created', {
-            orderId: orderId.toString(),
-            maker,
-            tokenAddress,
-            amount: amount.toString(),
-            pricePerToken: pricePerToken.toString(),
-            isBuy,
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-            timestamp: Math.floor(Date.now() / 1000),
-          });
+        try {
+          for (const log of logs as any[]) {
+            const { orderId, maker, tokenAddress, amount, pricePerToken, isBuy } = log.args;
+            this.logger.log(`[P2P Event] OrderCreated detected: #${orderId} by ${maker}`);
+            await this.eventQueue.add('process-p2p-order-created', {
+              orderId: orderId.toString(),
+              maker,
+              tokenAddress,
+              amount: amount.toString(),
+              pricePerToken: pricePerToken.toString(),
+              isBuy,
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+              timestamp: Math.floor(Date.now() / 1000),
+            });
+          }
+        } catch (error: any) {
+          this.logger.error(`Error processing OrderCreated logs: ${error.message}`);
         }
       },
+      onError: (error) => this.logger.error(`Error watching OrderCreated: ${error.message}`),
     });
 
     // Watch OrderFilled
@@ -338,23 +343,28 @@ export class EventListenerService implements OnModuleInit {
       abi,
       eventName: 'OrderFilled',
       onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { orderId, taker, maker, tokenAddress, amountFilled, totalCost, remainingAmount } = log.args;
-          this.logger.log(`[P2P Event] OrderFilled detected: #${orderId}, amount: ${amountFilled.toString()}`);
-          await this.eventQueue.add('process-p2p-order-filled', {
-            orderId: orderId.toString(),
-            taker,
-            maker,
-            tokenAddress,
-            amountFilled: amountFilled.toString(),
-            totalCost: totalCost.toString(),
-            remainingAmount: remainingAmount.toString(),
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-            timestamp: Math.floor(Date.now() / 1000),
-          });
+        try {
+          for (const log of logs as any[]) {
+            const { orderId, taker, maker, tokenAddress, amountFilled, totalCost, remainingAmount } = log.args;
+            this.logger.log(`[P2P Event] OrderFilled detected: #${orderId}, amount: ${amountFilled.toString()}`);
+            await this.eventQueue.add('process-p2p-order-filled', {
+              orderId: orderId.toString(),
+              taker,
+              maker,
+              tokenAddress,
+              amountFilled: amountFilled.toString(),
+              totalCost: totalCost.toString(),
+              remainingAmount: remainingAmount.toString(),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+              timestamp: Math.floor(Date.now() / 1000),
+            });
+          }
+        } catch (error: any) {
+          this.logger.error(`Error processing OrderFilled logs: ${error.message}`);
         }
       },
+      onError: (error) => this.logger.error(`Error watching OrderFilled: ${error.message}`),
     });
 
     // Watch OrderCancelled
@@ -363,17 +373,22 @@ export class EventListenerService implements OnModuleInit {
       abi,
       eventName: 'OrderCancelled',
       onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { orderId } = log.args;
-          this.logger.log(`[P2P Event] OrderCancelled detected: #${orderId}`);
-          await this.eventQueue.add('process-p2p-order-cancelled', {
-            orderId: orderId.toString(),
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-            timestamp: Math.floor(Date.now() / 1000),
-          });
+        try {
+          for (const log of logs as any[]) {
+            const { orderId } = log.args;
+            this.logger.log(`[P2P Event] OrderCancelled detected: #${orderId}`);
+            await this.eventQueue.add('process-p2p-order-cancelled', {
+              orderId: orderId.toString(),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+              timestamp: Math.floor(Date.now() / 1000),
+            });
+          }
+        } catch (error: any) {
+          this.logger.error(`Error processing OrderCancelled logs: ${error.message}`);
         }
       },
+      onError: (error) => this.logger.error(`Error watching OrderCancelled: ${error.message}`),
     });
   }
 
