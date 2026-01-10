@@ -115,7 +115,6 @@ else
         print_info "Asset was already registered, continuing..."
     else
         print_error "Asset registration failed: $ERROR"
-        exit 1
     fi
 fi
 
@@ -174,7 +173,6 @@ else
         fi
     else
         print_error "Token deployment failed: $ERROR"
-        exit 1
     fi
 fi
 

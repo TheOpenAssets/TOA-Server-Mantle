@@ -8,6 +8,7 @@ import { VerificationProcessor } from './processors/verification.processor';
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SolvencyModule } from '../solvency/solvency.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       name: 'kyc-verification',
     }),
     forwardRef(() => BlockchainModule),
+    forwardRef(() => SolvencyModule),
     NotificationsModule,
   ],
   controllers: [KycController],

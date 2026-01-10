@@ -8,6 +8,7 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { SolvencyBlockchainService } from '../services/solvency-blockchain.service';
@@ -18,6 +19,7 @@ import { BorrowDto } from '../dto/borrow.dto';
 import { RepayDto } from '../dto/repay.dto';
 import { WithdrawCollateralDto } from '../dto/withdraw-collateral.dto';
 import { UploadPrivateAssetRequestDto } from '../dto/upload-private-asset-request.dto';
+import { TokenType } from 'src/database/schemas/solvency-position.schema';
 
 @Controller('solvency')
 @UseGuards(JwtAuthGuard)
@@ -94,10 +96,20 @@ export class SolvencyController {
     }
 
     // Borrow on-chain
-    const result = await this.blockchainService.borrowUSDC(positionId, dto.amount);
+    const result = await this.blockchainService.borrowUSDC(
+      positionId,
+      dto.amount,
+      dto.loanDuration,
+      dto.numberOfInstallments,
+    );
 
     // Update database
-    const updatedPosition = await this.positionService.recordBorrow(positionId, dto.amount);
+    const updatedPosition = await this.positionService.recordBorrow(
+      positionId, 
+      dto.amount,
+      dto.loanDuration,
+      dto.numberOfInstallments
+    );
 
     // Update private asset debt tracking if applicable
     if (updatedPosition.collateralTokenType === 'PRIVATE_ASSET') {
@@ -205,6 +217,48 @@ export class SolvencyController {
   }
 
   /**
+   * Sync on-chain position with backend database
+   * Called after investor deposits collateral directly via contract
+   */
+  @Post('sync-position')
+  @HttpCode(HttpStatus.CREATED)
+  async syncPosition(@Request() req: any, @Body() dto: { positionId: string; txHash: string; blockNumber: number }) {
+    const userAddress = req.user.walletAddress;
+
+    if (!dto.positionId || !dto.txHash) {
+      throw new BadRequestException('Missing required fields: positionId, txHash');
+    }
+
+    // Fetch position details from chain
+    const positionId = parseInt(dto.positionId);
+    const positionData = await this.blockchainService.getPositionFromChain(positionId);
+
+    // Verify position belongs to user
+    if (positionData.user.toLowerCase() !== userAddress.toLowerCase()) {
+      throw new BadRequestException('Position does not belong to authenticated user');
+    }
+
+    // Create database record
+    const position = await this.positionService.createPosition(
+      positionId,
+      positionData.user,
+      positionData.collateralToken,
+      positionData.tokenType === 0 ? TokenType.RWA : TokenType.PRIVATE_ASSET,
+      positionData.collateralAmount.toString(),
+      positionData.tokenValueUSD.toString(),
+      dto.txHash,
+      dto.blockNumber || 0,
+      false, // OAID issuance tracked separately
+    );
+
+    return {
+      success: true,
+      message: 'Position synced with backend',
+      position,
+    };
+  }
+
+  /**
    * Get my positions
    */
   @Get('positions/my')
@@ -252,6 +306,60 @@ export class SolvencyController {
     return {
       success: true,
       ...stats,
+    };
+  }
+
+  /**
+   * Get repayment schedule for position
+   */
+  @Get('position/:id/schedule')
+  async getRepaymentSchedule(@Request() req: any, @Param('id') id: string) {
+    const userAddress = req.user.walletAddress;
+    const positionId = parseInt(id);
+
+    // Verify position belongs to user
+    const position = await this.positionService.getPosition(positionId);
+    if (position.userAddress !== userAddress) {
+      throw new Error('Not authorized to view this position');
+    }
+
+    const schedule = await this.blockchainService.getRepaymentPlan(positionId);
+    const outstandingDebt = await this.blockchainService.getOutstandingDebt(positionId);
+
+    return {
+      success: true,
+      positionId,
+      schedule: {
+        ...schedule,
+        details: position.repaymentSchedule, // Include the detailed array with times
+      },
+      outstandingDebt,
+    };
+  }
+
+  /**
+   * Get my OAID credit line details
+   */
+  @Get('oaid/my-credit')
+  async getMyOAIDCredit(@Request() req: any) {
+    const userAddress = req.user.walletAddress;
+
+    const creditData = await this.blockchainService.getOAIDCreditLines(userAddress);
+
+    return {
+      success: true,
+      userAddress,
+      totalCreditLimit: creditData.totalCreditLimit,
+      totalCreditUsed: creditData.totalCreditUsed,
+      totalAvailableCredit: creditData.totalAvailableCredit,
+      creditLines: creditData.creditLines,
+      summary: {
+        activeCreditLines: creditData.creditLines.filter(line => line.active).length,
+        totalCreditLines: creditData.creditLines.length,
+        utilizationRate: creditData.totalCreditLimit !== '0'
+          ? ((Number(creditData.totalCreditUsed) / Number(creditData.totalCreditLimit)) * 100).toFixed(2) + '%'
+          : '0%',
+      },
     };
   }
 

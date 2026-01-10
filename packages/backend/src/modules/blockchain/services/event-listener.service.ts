@@ -64,7 +64,9 @@ export class EventListenerService implements OnModuleInit {
       if (this.contractLoader.hasContract('SecondaryMarket')) {
         this.watchSecondaryMarket();
       }
-
+      if (this.contractLoader.hasContract('SolvencyVault')) {
+        this.watchSolvencyVault();
+      }
       // CRITICAL FIX: Watch Transfer events for all existing deployed tokens
       // This ensures we don't miss events if the backend was restarted after token deployment
       await this.watchExistingTokens();
@@ -395,5 +397,164 @@ export class EventListenerService implements OnModuleInit {
         }
       },
     });
+  }
+
+  private watchSolvencyVault() {
+    const address = this.contractLoader.getContractAddress('SolvencyVault');
+    const abi = this.contractLoader.getContractAbi('SolvencyVault');
+
+    // Watch USDCBorrowed
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'USDCBorrowed',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { positionId, amount, totalDebt } = log.args;
+          await this.eventQueue.add('process-solvency-borrow', {
+            positionId: Number(positionId),
+            amount: amount.toString(),
+            totalDebt: totalDebt.toString(),
+            txHash: log.transactionHash,
+            blockNumber: Number(log.blockNumber),
+          });
+        }
+      },
+    });
+
+    // Watch LoanRepaid
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'LoanRepaid',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { positionId, amountPaid, principal, interest, remainingDebt } = log.args;
+          await this.eventQueue.add('process-solvency-repayment', {
+            positionId: Number(positionId),
+            amountPaid: amountPaid.toString(),
+            principal: principal.toString(),
+            interest: interest.toString(),
+            remainingDebt: remainingDebt.toString(),
+            txHash: log.transactionHash,
+            blockNumber: Number(log.blockNumber),
+          });
+        }
+      },
+    });
+
+    // Watch MissedPaymentMarked
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'MissedPaymentMarked',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { positionId, missedPayments } = log.args;
+          await this.eventQueue.add('process-solvency-missed-payment', {
+            positionId: Number(positionId),
+            missedPayments: Number(missedPayments),
+            txHash: log.transactionHash,
+            blockNumber: Number(log.blockNumber),
+          });
+        }
+      },
+    });
+
+    // Watch PositionDefaulted
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'PositionDefaulted',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { positionId } = log.args;
+          await this.eventQueue.add('process-solvency-defaulted', {
+            positionId: Number(positionId),
+            txHash: log.transactionHash,
+            blockNumber: Number(log.blockNumber),
+          });
+        }
+      },
+    });
+
+    // Watch PositionLiquidated
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'PositionLiquidated',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { positionId, marketplaceListingId } = log.args;
+          await this.eventQueue.add('process-solvency-liquidated', {
+            positionId: Number(positionId),
+            marketplaceListingId: marketplaceListingId,
+            txHash: log.transactionHash,
+            blockNumber: Number(log.blockNumber),
+          });
+        }
+      },
+    });
+
+    // Watch LiquidationSettled
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'LiquidationSettled',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { positionId, yieldReceived, debtRepaid, userRefund } = log.args;
+          await this.eventQueue.add('process-solvency-liquidation-settled', {
+            positionId: Number(positionId),
+            yieldReceived: yieldReceived.toString(),
+            debtRepaid: debtRepaid.toString(),
+            userRefund: userRefund.toString(),
+            txHash: log.transactionHash,
+            blockNumber: Number(log.blockNumber),
+          });
+        }
+      },
+    });
+
+    // Watch CollateralWithdrawn
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'CollateralWithdrawn',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { positionId, amount, remainingCollateral } = log.args;
+          await this.eventQueue.add('process-solvency-withdrawal', {
+            positionId: Number(positionId),
+            amount: amount.toString(),
+            remainingCollateral: remainingCollateral.toString(),
+            txHash: log.transactionHash,
+            blockNumber: Number(log.blockNumber),
+          });
+        }
+      },
+    });
+
+    // Watch RepaymentPlanCreated
+    this.publicClient.watchContractEvent({
+      address: address as Address,
+      abi,
+      eventName: 'RepaymentPlanCreated',
+      onLogs: async (logs) => {
+        for (const log of logs as any[]) {
+          const { positionId, loanDuration, numberOfInstallments, installmentInterval } = log.args;
+          await this.eventQueue.add('process-solvency-repayment-plan', {
+            positionId: Number(positionId),
+            loanDuration: Number(loanDuration),
+            numberOfInstallments: Number(numberOfInstallments),
+            installmentInterval: Number(installmentInterval),
+            txHash: log.transactionHash,
+            blockNumber: Number(log.blockNumber),
+          });
+        }
+      },
+    });
+
+    this.logger.log(`Watching SolvencyVault at ${address}`);
   }
 }

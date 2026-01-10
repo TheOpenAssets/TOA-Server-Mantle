@@ -8,25 +8,35 @@ import {
   HttpCode,
   HttpStatus,
   Query,
+  Logger,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminRoleGuard } from '../../admin/guards/admin-role.guard';
 import { SolvencyBlockchainService } from '../services/solvency-blockchain.service';
 import { SolvencyPositionService } from '../services/solvency-position.service';
 import { PrivateAssetService } from '../services/private-asset.service';
+import { LeverageBlockchainService } from '../../leverage/services/leverage-blockchain.service';
+import { LeveragePositionService } from '../../leverage/services/leverage-position.service';
+import { MethPriceService } from '../../blockchain/services/meth-price.service';
 import { MintPrivateAssetDto } from '../dto/mint-private-asset.dto';
 import { ApprovePrivateAssetRequestDto } from '../dto/approve-private-asset-request.dto';
 import { RejectPrivateAssetRequestDto } from '../dto/reject-private-asset-request.dto';
 import { PrivateAssetRequestStatus } from '../../../database/schemas/private-asset-request.schema';
+import { PositionStatus } from '../../../database/schemas/solvency-position.schema';
 import { ethers } from 'ethers';
 
 @Controller('admin/solvency')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
 export class SolvencyAdminController {
+  private readonly logger = new Logger(SolvencyAdminController.name);
+
   constructor(
     private blockchainService: SolvencyBlockchainService,
     private positionService: SolvencyPositionService,
     private privateAssetService: PrivateAssetService,
+    private leverageBlockchainService: LeverageBlockchainService,
+    private leveragePositionService: LeveragePositionService,
+    private methPriceService: MethPriceService,
   ) {}
 
   /**
@@ -143,9 +153,65 @@ export class SolvencyAdminController {
    */
   @Post('liquidate/:id')
   @HttpCode(HttpStatus.OK)
-  async liquidatePosition(@Param('id') id: string) {
+  async liquidatePosition(
+    @Param('id') id: string,
+    @Body('testPrice') testPrice?: string,
+  ) {
     const positionId = parseInt(id);
 
+    // If testPrice is provided, assume it is for LEVERAGE position testing
+    if (testPrice) {
+      this.logger.warn(`⚠️ Triggering LEVERAGE liquidation for position ${positionId} with test price: ${testPrice}`);
+      
+      const mETHPrice = ethers.parseEther(testPrice);
+      
+      // Get position details before liquidation
+      const position = await this.leveragePositionService.getPosition(positionId);
+      if (!position) {
+        throw new Error(`Position ${positionId} not found`);
+      }
+
+      this.logger.log(`📊 Position ${positionId} before liquidation:`);
+      this.logger.log(`   mETH Collateral: ${position.mETHCollateral}`);
+      this.logger.log(`   USDC Borrowed: ${position.usdcBorrowed}`);
+      this.logger.log(`   Health Factor: ${(position.currentHealthFactor / 100).toFixed(2)}%`);
+      this.logger.log(`   Status: ${position.status}`);
+      
+      const txHash = await this.leverageBlockchainService.liquidatePosition(
+        positionId,
+        mETHPrice,
+      );
+
+      this.logger.log(`✅ On-chain liquidation completed: ${txHash}`);
+      this.logger.log(`🔄 Updating database...`);
+
+      // Mark position as liquidated in database
+      await this.leveragePositionService.markLiquidated(positionId, {
+        mETHSold: position.mETHCollateral,
+        usdcRecovered: position.usdcBorrowed, // Approximate
+        shortfall: '0', // Will be calculated from events
+        txHash,
+      });
+
+      this.logger.log(`✅ Position ${positionId} marked as LIQUIDATED in database`);
+      this.logger.log(`📊 Liquidation Summary:`);
+      this.logger.log(`   Position ID: ${positionId}`);
+      this.logger.log(`   mETH Sold: ${position.mETHCollateral}`);
+      this.logger.log(`   Test Price Used: ${testPrice} USD`);
+      this.logger.log(`   TX Hash: ${txHash}`);
+
+      return {
+        success: true,
+        type: 'LEVERAGE_TEST',
+        txHash,
+        testPrice,
+        positionId,
+        mETHSold: position.mETHCollateral,
+        message: 'Position liquidated and database updated',
+      };
+    }
+
+    // Standard SolvencyVault Liquidation
     // Generate unique marketplace asset ID for liquidation
     const marketplaceAssetId = ethers.id(
       `liquidation-${positionId}-${Date.now()}`,
@@ -199,6 +265,122 @@ export class SolvencyAdminController {
       success: true,
       position,
     };
+  }
+
+  /**
+   * Mark missed payment for a position
+   */
+  @Post('position/:id/mark-missed-payment')
+  @HttpCode(HttpStatus.OK)
+  async markMissedPayment(@Param('id') id: string) {
+    const positionId = parseInt(id);
+
+    this.logger.log(`Admin marking missed payment for position ${positionId}`);
+
+    try {
+      // Call blockchain to mark missed payment
+      const txHash = await this.blockchainService.markMissedPayment(positionId);
+
+      this.logger.log(`✅ Missed payment marked on-chain: ${txHash}`);
+
+      // Event listener will automatically update MongoDB
+      // But we can also sync immediately for instant feedback
+      await this.positionService.syncPositionWithBlockchain(positionId);
+
+      return {
+        success: true,
+        message: 'Missed payment marked successfully',
+        txHash,
+        positionId,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to mark missed payment for position ${positionId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark position as defaulted (3+ missed payments)
+   */
+  @Post('position/:id/mark-defaulted')
+  @HttpCode(HttpStatus.OK)
+  async markDefaulted(@Param('id') id: string) {
+    const positionId = parseInt(id);
+
+    this.logger.log(`Admin marking position ${positionId} as defaulted`);
+
+    try {
+      // Call blockchain to mark as defaulted
+      const txHash = await this.blockchainService.markDefaulted(positionId);
+
+      this.logger.log(`✅ Position marked as defaulted on-chain: ${txHash}`);
+
+      // Event listener will automatically update MongoDB
+      await this.positionService.syncPositionWithBlockchain(positionId);
+
+      return {
+        success: true,
+        message: 'Position marked as defaulted',
+        txHash,
+        positionId,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to mark position ${positionId} as defaulted: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Settle liquidated position
+   */
+  @Post('position/:id/settle-liquidation')
+  @HttpCode(HttpStatus.OK)
+  async settleLiquidation(@Param('id') id: string) {
+    const positionId = parseInt(id);
+
+    this.logger.log(`Admin settling liquidation for position ${positionId}`);
+
+    try {
+      // Get position to verify it's liquidated
+      const position = await this.positionService.getPosition(positionId);
+
+      if (!position) {
+        return {
+          success: false,
+          message: 'Position not found',
+        };
+      }
+
+      if (position.status !== PositionStatus.LIQUIDATED) {
+        return {
+          success: false,
+          message: 'Position is not liquidated',
+          currentStatus: position.status,
+        };
+      }
+
+      // Call blockchain to settle liquidation
+      const result = await this.blockchainService.settleLiquidation(positionId);
+
+      this.logger.log(`✅ Liquidation settled on-chain: ${result.txHash}`);
+
+      // Event listener will automatically update MongoDB
+      await this.positionService.syncPositionWithBlockchain(positionId);
+
+      return {
+        success: true,
+        message: 'Liquidation settled successfully',
+        txHash: result.txHash,
+        positionId,
+        yieldReceived: result.yieldReceived,
+        debtRepaid: result.debtRepaid,
+        liquidationFee: result.liquidationFee,
+        userRefund: result.userRefund,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to settle liquidation for position ${positionId}: ${error.message}`);
+      throw error;
+    }
   }
 
   /**
@@ -346,6 +528,70 @@ export class SolvencyAdminController {
       requestId: id,
       rejectionReason: dto.rejectionReason,
       reviewedAt: request.reviewedAt,
+    };
+  }
+
+  /**
+   * Purchase and settle liquidated Private Asset position
+   * Admin buys the collateral tokens by sending USDC
+   */
+  @Post('position/:id/purchase-liquidation')
+  @HttpCode(HttpStatus.OK)
+  async purchaseAndSettleLiquidation(
+    @Param('id') id: string,
+    @Body() body: { purchaseAmount: string },
+  ) {
+    const positionId = parseInt(id);
+    
+    this.logger.log(`Admin purchasing liquidated position ${positionId}`);
+    this.logger.log(`Purchase amount: ${body.purchaseAmount} USDC (6 decimals)`);
+
+    // Get position to verify it's liquidated and is Private Asset
+    const position = await this.positionService.getPosition(positionId);
+    
+    if (!position) {
+      return {
+        success: false,
+        message: 'Position not found',
+      };
+    }
+
+    if (position.status !== PositionStatus.LIQUIDATED) {
+      return {
+        success: false,
+        message: 'Position is not liquidated',
+        currentStatus: position.status,
+      };
+    }
+
+    if (position.collateralTokenType !== 'PRIVATE_ASSET') {
+      return {
+        success: false,
+        message: 'Position collateral is not a Private Asset',
+        tokenType: position.collateralTokenType,
+      };
+    }
+
+    // Execute purchase and settlement on-chain
+    const result = await this.blockchainService.purchaseAndSettleLiquidation(
+      positionId,
+      body.purchaseAmount,
+    );
+
+    // Update position in database
+    position.status = PositionStatus.SETTLED;
+    position.settledAt = new Date();
+    await position.save();
+
+    return {
+      success: true,
+      message: 'Private asset liquidation purchased and settled',
+      positionId,
+      txHash: result.txHash,
+      blockNumber: result.blockNumber,
+      purchaseAmount: body.purchaseAmount,
+      liquidationFee: result.liquidationFee,
+      userRefund: result.userRefund,
     };
   }
 }

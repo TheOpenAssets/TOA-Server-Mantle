@@ -364,7 +364,7 @@ async function main() {
 
   // Calculate required mETH (assuming 150% LTV)
   const tokenAmountWei = ethers.parseEther(tokenAmount);
-  const pricePerToken = 800000; // $0.80 in USDC (6 decimals)
+  const pricePerToken = 850000; // $0.80 in USDC (6 decimals)
   const totalCostUSDC = (tokenAmountWei * BigInt(pricePerToken)) / ethers.parseEther('1');
 
   logInfo(`Total cost: ${totalCostUSDC / BigInt(1e6)} USDC`);
@@ -375,8 +375,8 @@ async function main() {
   logInfo(`Current mETH price: $${methPriceUSD.toFixed(2)}`);
 
   // Calculate required mETH collateral (150% LTV)
-  const requiredUSDC = (totalCostUSDC * BigInt(150)) / BigInt(100); // 150% LTV
-  // methPrice is in USDC wei (6 decimals), requiredUSDC is in USDC wei (6 decimals)
+  const requiredUSDC = (totalCostUSDC * BigInt(150) ) / BigInt(100); // 150% LTV +1 usdc rounding
+  // methPrice is in USDC wei (6 decimals), requiredUSDC is in USDC wei (6 decimals)₹
   // Formula: (requiredUSDC * 1e18) / methPrice = mETH (18 decimals)
   // Add 0.1% buffer to account for rounding errors
   const requiredMETHBase = (requiredUSDC * ethers.parseEther('1')) / BigInt(methPriceUSDCWei);

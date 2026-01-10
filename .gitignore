@@ -42,8 +42,6 @@ packages/backend/coverage/
 packages/backend/dist/
 packages/backend/node_modules/
 packages/contracts/node_modules/
-packages/contracts/artifacts/
-packages/contracts/typechain-types/
 packages/backend/local-storage/
 
 packages/backend/uploads/

@@ -14,6 +14,7 @@ import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LeverageModule } from '../leverage/leverage.module';
+import { SolvencyModule } from '../solvency/solvency.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { LeverageModule } from '../leverage/leverage.module';
     ]),
     forwardRef(() => BlockchainModule),
     forwardRef(() => LeverageModule),
+    forwardRef(() => SolvencyModule),
     NotificationsModule,
   ],
   controllers: [YieldController],

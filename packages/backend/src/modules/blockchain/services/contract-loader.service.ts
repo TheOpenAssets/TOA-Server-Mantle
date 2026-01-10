@@ -59,6 +59,9 @@ export class ContractLoaderService implements OnModuleInit {
       FluxionIntegration: 'integrations/FluxionIntegration.sol/FluxionIntegration.json',
       MockFluxionDEX: 'test/MockFluxionDEX.sol/MockFluxionDEX.json',
       SecondaryMarket: 'marketplace/SecondaryMarket.sol/SecondaryMarket.json',
+      SolvencyVault: 'core/SolvencyVault.sol/SolvencyVault.json',
+      OAID: 'integrations/OAID.sol/OAID.json',
+      PrivateAssetToken: 'core/PrivateAssetToken.sol/PrivateAssetToken.json',
     };
 
     for (const [name, relPath] of Object.entries(mapping)) {

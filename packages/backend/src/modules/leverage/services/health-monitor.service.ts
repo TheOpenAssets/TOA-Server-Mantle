@@ -101,11 +101,11 @@ export class HealthMonitorService implements OnModuleInit {
     );
 
     // Handle based on health status
-    if (healthFactor < 11000) {
-      // < 110%: Liquidatable
+    if (healthFactor < 11500) {
+      // < 115%: Liquidatable
       await this.handleLiquidation(positionId);
     } else if (healthFactor < 12500) {
-      // 110-125%: Critical
+      // 115-125%: Critical
       await this.handleCriticalHealth(positionId, healthFactor);
     } else if (healthFactor < 14000) {
       // 125-140%: Warning
@@ -119,7 +119,7 @@ export class HealthMonitorService implements OnModuleInit {
   }
 
   /**
-   * Handle liquidation (health < 110%)
+   * Handle liquidation (health < 115%)
    */
   private async handleLiquidation(positionId: number) {
     this.logger.warn(`⚠️ Position ${positionId} is liquidatable, executing liquidation...`);
@@ -183,14 +183,14 @@ export class HealthMonitorService implements OnModuleInit {
         userId: position.userAddress,
         walletAddress: position.userAddress,
         header: '🚨 Critical: Position Near Liquidation',
-        detail: `Your leveraged position health is ${(healthFactor / 100).toFixed(1)}%. Add collateral now to avoid liquidation at 110%.`,
+        detail: `Your leveraged position health is ${(healthFactor / 100).toFixed(1)}%. Add collateral now to avoid liquidation at 115% (5% penalty fee).`,
         type: NotificationType.SYSTEM_ALERT,
         severity: NotificationSeverity.WARNING,
         action: NotificationAction.VIEW_PORTFOLIO,
         actionMetadata: {
           positionId,
           healthFactor,
-          liquidationThreshold: 11000,
+          liquidationThreshold: 11500,
         },
       });
 

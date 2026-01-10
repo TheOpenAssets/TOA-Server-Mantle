@@ -15,6 +15,7 @@ import {
 } from '../../../database/schemas/private-asset-request.schema';
 import { WalletService } from '../../blockchain/services/wallet.service';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
+import { SolvencyBlockchainService } from './solvency-blockchain.service';
 import { Address, createPublicClient, http, PublicClient } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
 import { v4 as uuidv4 } from 'uuid';
@@ -32,6 +33,7 @@ export class PrivateAssetService {
     private walletService: WalletService,
     private contractLoader: ContractLoaderService,
     private configService: ConfigService,
+    private solvencyBlockchainService: SolvencyBlockchainService,
   ) {
     this.publicClient = createPublicClient({
       chain: mantleSepolia,
@@ -504,12 +506,26 @@ export class PrivateAssetService {
     request.assetId = asset.assetId;
     request.mintTransactionHash = asset.deploymentTxHash;
 
-    // TODO: Deposit directly to SolvencyVault
-    // This will be implemented by calling SolvencyBlockchainService.depositCollateral
-    // and updating request with solvencyPositionId and depositTransactionHash
+    // Deposit directly to SolvencyVault (entire token supply = 1e18 wei)
+    this.logger.log(`Depositing private asset to SolvencyVault for user ${request.requesterAddress}`);
+
+    const depositResult = await this.solvencyBlockchainService.depositCollateral(
+      request.requesterAddress, // User who owns the position
+      asset.tokenAddress,       // Collateral token address
+      totalSupply,              // Amount: 1 whole token (1e18 wei)
+      finalValuation,           // Token value in USD (6 decimals)
+      'PRIVATE_ASSET',          // Token type
+      true,                     // Issue OAID credit line
+    );
+
+    this.logger.log(`Deposit successful. Position ID: ${depositResult.positionId}, TxHash: ${depositResult.txHash}`);
+
+    // Update request with solvency position details
+    request.solvencyPositionId = depositResult.positionId;
+    request.depositTransactionHash = depositResult.txHash;
 
     await request.save();
-    this.logger.log(`Private asset request approved: ${requestId}`);
+    this.logger.log(`Private asset request approved and deposited: ${requestId}`);
 
     return {
       request,

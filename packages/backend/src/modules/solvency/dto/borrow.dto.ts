@@ -1,11 +1,21 @@
-import { IsNumberString, IsNotEmpty } from 'class-validator';
+import { IsNumberString, IsNotEmpty, IsNumber, Min } from 'class-validator';
 
 export class BorrowDto {
-  @IsNumberString()
   @IsNotEmpty()
-  positionId!: string; // Position ID
+  @IsNumberString()
+  positionId!: string;
 
-  @IsNumberString()
   @IsNotEmpty()
-  amount!: string; // USDC amount (6 decimals)
+  @IsNumberString()
+  amount!: string;
+
+  @IsNotEmpty()
+  @IsNumber()
+  @Min(1)
+  loanDuration!: number;
+
+  @IsNotEmpty()
+  @IsNumber()
+  @Min(1)
+  numberOfInstallments!: number;
 }

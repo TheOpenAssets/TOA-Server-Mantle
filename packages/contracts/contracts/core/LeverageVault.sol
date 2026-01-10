@@ -40,7 +40,8 @@ interface IPrimaryMarket {
  * 3. Backend purchases RWA tokens, transfers to vault
  * 4. Daily harvest: mETH yield → USDC → Interest payment
  * 5. Settlement: Waterfall distribution (Senior → Interest → User yield)
- * 6. Liquidation: If health factor < 110%
+ * 6. Liquidation < 115%: Sell only buffer mETH (15%), return base 100% mETH to user
+ * 7. RWA Settlement: Burn RWA tokens, repay loan, take 10% fee, refund user
  */
 contract LeverageVault is Ownable, ReentrancyGuard {
     // External contracts
@@ -62,15 +63,18 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         uint256 createdAt; // Position creation timestamp
         uint256 lastHarvestTime; // Last yield harvest timestamp
         uint256 totalInterestPaid; // Cumulative interest paid
+        uint256 liquidatedAt; // Liquidation timestamp (0 if not liquidated)
         bool active; // Position status
+        bool inLiquidation; // Whether position is in liquidation process
     }
 
     mapping(uint256 => Position) public positions;
     uint256 public nextPositionId;
 
     // Health factor parameters
-    uint256 public constant LIQUIDATION_THRESHOLD = 11000; // 110% (basis points)
+    uint256 public constant LIQUIDATION_THRESHOLD = 11500; // 115% (basis points)
     uint256 public constant INITIAL_LTV = 15000; // 150% (basis points)
+    uint256 public constant LIQUIDATION_FEE_BPS = 1000; // 10% liquidation fee (basis points)
     uint256 public constant BASIS_POINTS = 10000;
 
     // Events
@@ -90,9 +94,18 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     );
     event PositionLiquidated(
         uint256 indexed positionId,
-        uint256 mETHSold,
+        uint256 bufferMETHSold,
         uint256 usdcRecovered,
-        uint256 shortfall
+        uint256 baseMETHReturned,
+        uint256 debtRepaid
+    );
+    event LiquidationSettled(
+        uint256 indexed positionId,
+        uint256 rwaTokensBurned,
+        uint256 yieldReceived,
+        uint256 debtRepaid,
+        uint256 liquidationFee,
+        uint256 userRefund
     );
     event SettlementProcessed(
         uint256 indexed positionId,
@@ -212,7 +225,9 @@ contract LeverageVault is Ownable, ReentrancyGuard {
             createdAt: block.timestamp,
             lastHarvestTime: block.timestamp,
             totalInterestPaid: 0,
-            active: true
+            liquidatedAt: 0,
+            active: true,
+            inLiquidation: false
         });
 
         emit PositionCreated(
@@ -279,67 +294,84 @@ contract LeverageVault is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Liquidate position if health factor < 110%
+     * @notice Liquidate position if health factor < 115%
+     * @dev Sells only buffer mETH (excess over 100% LTV), returns base mETH to user, holds RWA for settlement
      * @param positionId Position ID
      * @param mETHPriceUSD Current mETH price in USD (18 decimals)
-     * @return usdcRecovered USDC recovered from liquidation
-     * @return shortfall USDC shortfall (if any)
+     * @return bufferMETHSold Amount of excess mETH sold
+     * @return usdcRecovered USDC from buffer sale
+     * @return baseMETHReturned Base mETH collateral returned to user
+     * @return debtRepaid Amount of debt repaid from buffer sale
      */
     function liquidatePosition(
         uint256 positionId,
         uint256 mETHPriceUSD
-    ) external onlyOwner nonReentrant returns (uint256 usdcRecovered, uint256 shortfall) {
+    ) external onlyOwner nonReentrant returns (uint256 bufferMETHSold, uint256 usdcRecovered, uint256 baseMETHReturned, uint256 debtRepaid) {
         Position storage position = positions[positionId];
         require(position.active, "Position not active");
+        require(!position.inLiquidation, "Already in liquidation");
         require(mETHPriceUSD > 0, "Invalid mETH price");
 
         // Verify liquidation is necessary
         uint256 healthFactor = getHealthFactor(positionId, mETHPriceUSD);
         require(healthFactor < LIQUIDATION_THRESHOLD, "Position is healthy");
 
-        // Swap all mETH collateral for USDC
-        uint256 mETHAmount = position.mETHCollateral;
-        mETH.approve(fluxionIntegration, mETHAmount);
+        address positionUser = position.user;
+        uint256 outstandingDebt = ISeniorPool(seniorPool).getOutstandingDebt(positionId);
+
+        // Calculate base collateral (100% of debt value in mETH)
+        // baseMETH = (debt * 1e30) / mETHPrice
+        uint256 baseMETHAmount = (outstandingDebt * 1e30) / mETHPriceUSD;
+        
+        // Calculate buffer (excess collateral = total - base)
+        bufferMETHSold = position.mETHCollateral > baseMETHAmount 
+            ? position.mETHCollateral - baseMETHAmount 
+            : 0;
+
+        require(bufferMETHSold > 0, "No buffer to sell");
+
+        // Sell buffer mETH for USDC
+        mETH.approve(fluxionIntegration, bufferMETHSold);
         usdcRecovered = IFluxionIntegration(fluxionIntegration).swapMETHToUSDC(
-            mETHAmount,
+            bufferMETHSold,
             mETHPriceUSD
         );
 
-        // Get outstanding debt
-        uint256 outstandingDebt = ISeniorPool(seniorPool).getOutstandingDebt(
-            positionId
-        );
+        // Repay as much debt as possible with buffer proceeds
+        debtRepaid = usdcRecovered > outstandingDebt ? outstandingDebt : usdcRecovered;
+        if (debtRepaid > 0) {
+            usdc.approve(seniorPool, debtRepaid);
+            ISeniorPool(seniorPool).repay(positionId, debtRepaid);
+        }
 
-        // Repay as much as possible
-        uint256 repaymentAmount = usdcRecovered > outstandingDebt
-            ? outstandingDebt
-            : usdcRecovered;
-        usdc.approve(seniorPool, repaymentAmount);
-        ISeniorPool(seniorPool).repay(positionId, repaymentAmount);
+        // Return base mETH collateral to user
+        baseMETHReturned = baseMETHAmount;
+        if (baseMETHReturned > 0) {
+            require(
+                mETH.transfer(positionUser, baseMETHReturned),
+                "Base mETH transfer failed"
+            );
+        }
 
-        // Calculate shortfall
-        shortfall = outstandingDebt > usdcRecovered
-            ? outstandingDebt - usdcRecovered
-            : 0;
+        // Update position - keep active to hold RWA tokens until settlement
+        position.mETHCollateral = 0; // All mETH distributed (buffer sold, base returned)
+        position.inLiquidation = true;
+        position.liquidatedAt = block.timestamp;
 
-        // Mark position as inactive
-        position.active = false;
-        position.mETHCollateral = 0;
-
-        emit PositionLiquidated(positionId, mETHAmount, usdcRecovered, shortfall);
+        emit PositionLiquidated(positionId, bufferMETHSold, usdcRecovered, baseMETHReturned, debtRepaid);
     }
 
     /**
      * @notice Claim USDC yield by burning RWA tokens held by this vault
      * @param positionId Position ID
-     * @param yieldVault YieldVault contract address
+     * @param _yieldVault YieldVault contract address
      * @param rwaToken RWA token address
      * @param tokenAmount Amount of RWA tokens to burn
      * @return usdcReceived Amount of USDC received from YieldVault
      */
     function claimYieldFromBurn(
         uint256 positionId,
-        address yieldVault,
+        address _yieldVault,
         address rwaToken,
         uint256 tokenAmount
     ) external onlyOwner nonReentrant returns (uint256 usdcReceived) {
@@ -349,13 +381,13 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         require(tokenAmount <= position.rwaTokenAmount, "Insufficient RWA tokens");
 
         // Approve YieldVault to burn tokens from this contract
-        IERC20(rwaToken).approve(yieldVault, tokenAmount);
+        IERC20(rwaToken).approve(_yieldVault, tokenAmount);
 
         // Get USDC balance before claim
         uint256 balanceBefore = usdc.balanceOf(address(this));
 
         // Call YieldVault.claimYield to burn tokens and receive USDC
-        (bool success, ) = yieldVault.call(
+        (bool success, ) = _yieldVault.call(
             abi.encodeWithSignature("claimYield(address,uint256)", rwaToken, tokenAmount)
         );
         require(success, "YieldVault claim failed");
@@ -368,6 +400,89 @@ contract LeverageVault is Ownable, ReentrancyGuard {
         position.rwaTokenAmount -= tokenAmount;
 
         return usdcReceived;
+    }
+
+    /**
+     * @notice Settle liquidated position by burning RWA tokens for yield
+     * @dev Called after RWA settlement - burns RWA, repays remaining debt, takes 10% fee, refunds user
+     * @param positionId Position ID
+     * @return yieldReceived USDC received from burning RWA tokens
+     * @return liquidationFee 10% liquidation fee sent to admin
+     * @return userRefund Remaining USDC sent to user
+     */
+    function settleLiquidation(
+        uint256 positionId
+    ) external onlyOwner nonReentrant returns (uint256 yieldReceived, uint256 liquidationFee, uint256 userRefund) {
+        Position storage position = positions[positionId];
+        require(position.active, "Position not active");
+        require(position.inLiquidation, "Position not in liquidation");
+        require(yieldVault != address(0), "YieldVault not set");
+        require(position.rwaTokenAmount > 0, "No RWA tokens to burn");
+
+        // Approve YieldVault to burn RWA tokens
+        IERC20(position.rwaToken).approve(yieldVault, position.rwaTokenAmount);
+
+        // Get USDC balance before
+        uint256 balanceBefore = usdc.balanceOf(address(this));
+
+        // Burn RWA tokens to claim USDC yield
+        (bool success, ) = yieldVault.call(
+            abi.encodeWithSignature("claimYield(address,uint256)", position.rwaToken, position.rwaTokenAmount)
+        );
+        require(success, "YieldVault claim failed");
+
+        // Calculate USDC received
+        uint256 balanceAfter = usdc.balanceOf(address(this));
+        yieldReceived = balanceAfter - balanceBefore;
+        require(yieldReceived > 0, "No yield received");
+
+        uint256 rwaTokensBurned = position.rwaTokenAmount;
+        position.rwaTokenAmount = 0;
+
+        // Get outstanding debt
+        uint256 outstandingDebt = ISeniorPool(seniorPool).getOutstandingDebt(positionId);
+        uint256 debtRepaid = 0;
+
+        if (outstandingDebt > 0) {
+            // Repay as much debt as possible
+            uint256 repaymentAmount = yieldReceived > outstandingDebt ? outstandingDebt : yieldReceived;
+            usdc.approve(seniorPool, repaymentAmount);
+            ISeniorPool(seniorPool).repay(positionId, repaymentAmount);
+            debtRepaid = repaymentAmount;
+        }
+
+        // Calculate liquidation fee and user refund from excess
+        if (yieldReceived > debtRepaid) {
+            uint256 excess = yieldReceived - debtRepaid;
+            
+            // Calculate 10% liquidation fee
+            liquidationFee = (excess * LIQUIDATION_FEE_BPS) / BASIS_POINTS;
+            userRefund = excess - liquidationFee;
+
+            // Transfer liquidation fee to admin (owner)
+            if (liquidationFee > 0) {
+                require(
+                    usdc.transfer(owner(), liquidationFee),
+                    "Fee transfer failed"
+                );
+            }
+
+            // Transfer remaining USDC to user
+            if (userRefund > 0) {
+                require(
+                    usdc.transfer(position.user, userRefund),
+                    "Refund transfer failed"
+                );
+            }
+        } else {
+            liquidationFee = 0;
+            userRefund = 0;
+        }
+
+        // Mark position as inactive
+        position.active = false;
+
+        emit LiquidationSettled(positionId, rwaTokensBurned, yieldReceived, debtRepaid, liquidationFee, userRefund);
     }
 
     /**

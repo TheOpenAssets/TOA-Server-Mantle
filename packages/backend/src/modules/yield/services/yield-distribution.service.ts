@@ -16,6 +16,9 @@ import { NotificationAction } from '../../notifications/enums/notification-actio
 import { RecordSettlementDto } from '../dto/yield-ops.dto';
 import { LeveragePositionService } from '../../leverage/services/leverage-position.service';
 import { LeverageBlockchainService } from '../../leverage/services/leverage-blockchain.service';
+import { SolvencyPositionService } from '../../solvency/services/solvency-position.service';
+import { SolvencyBlockchainService } from '../../solvency/services/solvency-blockchain.service';
+import { PositionStatus, TokenType } from '../../../database/schemas/solvency-position.schema';
 
 @Injectable()
 export class YieldDistributionService {
@@ -34,7 +37,11 @@ export class YieldDistributionService {
     private leveragePositionService: LeveragePositionService,
     @Inject(forwardRef(() => LeverageBlockchainService))
     private leverageBlockchainService: LeverageBlockchainService,
-  ) { }
+    @Inject(forwardRef(() => SolvencyPositionService))
+    private solvencyPositionService: SolvencyPositionService,
+    @Inject(forwardRef(() => SolvencyBlockchainService))
+    private solvencyBlockchainService: SolvencyBlockchainService,
+  ) {}
 
   async recordSettlement(dto: RecordSettlementDto) {
     const asset = await this.assetModel.findOne({ assetId: dto.assetId });
@@ -194,8 +201,8 @@ export class YieldDistributionService {
     let leveragePositionsSettled = 0;
 
     try {
-      // Find all active leverage positions holding this asset's tokens
-      const leveragePositions = await this.leveragePositionService.getActivePositions();
+      // Find all leverage positions needing settlement (ACTIVE and LIQUIDATED)
+      const leveragePositions = await this.leveragePositionService.getSettlementPendingPositions();
       const relevantPositions = leveragePositions.filter(
         pos => pos.rwaTokenAddress.toLowerCase() === tokenAddress.toLowerCase()
       );
@@ -208,20 +215,73 @@ export class YieldDistributionService {
         this.logger.log(`📊 Found ${relevantPositions.length} leverage position(s) to settle`);
 
         for (const position of relevantPositions) {
-          const MAX_RETRIES = 3;
-          const RETRY_DELAY = 10000; // 10 seconds
-          let attempt = 0;
-          let success = false;
+          try {
+            this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+            this.logger.log(`🔄 Processing Position ${position.positionId}...`);
+            this.logger.log(`   User: ${position.userAddress}`);
+            this.logger.log(`   Status: ${position.status}`);
+            this.logger.log(`   RWA Tokens: ${Number(position.rwaTokenAmount) / 1e18}`);
 
-          while (attempt < MAX_RETRIES && !success) {
-            try {
-              attempt++;
-              const retryPrefix = attempt > 1 ? `[Retry ${attempt}/${MAX_RETRIES}] ` : '';
+            // Check if position was liquidated
+            const isLiquidated = position.status === 'LIQUIDATED';
 
-              this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-              this.logger.log(`${retryPrefix}🔄 Processing Position ${position.positionId}...`);
-              this.logger.log(`   User: ${position.userAddress}`);
-              this.logger.log(`   RWA Tokens: ${Number(position.rwaTokenAmount) / 1e18}`);
+            if (isLiquidated) {
+              // ============================================================
+              // LIQUIDATED POSITION FLOW
+              // ============================================================
+              this.logger.log(`\n🚨 Position is LIQUIDATED - using settleLiquidation flow`);
+              this.logger.log(`   (User already received base mETH back during liquidation)`);
+              
+              this.logger.log(`\n🔥 Settling liquidation by burning RWA tokens...`);
+              const liquidationResult = await this.leverageBlockchainService.settleLiquidation(
+                position.positionId,
+              );
+
+              this.logger.log(`✅ Liquidation settled successfully:`);
+              this.logger.log(`   💰 Yield from RWA: ${Number(liquidationResult.yieldReceived) / 1e6} USDC`);
+              this.logger.log(`   💳 Debt Repaid: ${Number(liquidationResult.debtRepaid) / 1e6} USDC`);
+              this.logger.log(`   ⚠️ Liquidation Fee (10%): ${Number(liquidationResult.liquidationFee) / 1e6} USDC → Admin`);
+              this.logger.log(`   💵 User Refund: ${Number(liquidationResult.userRefund) / 1e6} USDC`);
+              this.logger.log(`   TX: ${liquidationResult.hash}`);
+
+              // Record liquidation settlement
+              await this.leveragePositionService.updateLiquidationSettlement(position.positionId, {
+                yieldReceived: liquidationResult.yieldReceived.toString(),
+                debtRepaid: liquidationResult.debtRepaid.toString(),
+                liquidationFee: liquidationResult.liquidationFee.toString(),
+                userRefund: liquidationResult.userRefund.toString(),
+                transactionHash: liquidationResult.hash,
+              });
+
+              // Notify user
+              try {
+                const refundFormatted = (Number(liquidationResult.userRefund) / 1e6).toFixed(2);
+                const feeFormatted = (Number(liquidationResult.liquidationFee) / 1e6).toFixed(2);
+                
+                await this.notificationService.create({
+                  userId: position.userAddress,
+                  walletAddress: position.userAddress,
+                  header: 'Liquidated Position Settled',
+                  detail: `Your liquidated position #${position.positionId} has been settled. Refund: ${refundFormatted} USDC (after ${feeFormatted} USDC liquidation fee).`,
+                  type: NotificationType.PAYOUT_SETTLED,
+                  severity: NotificationSeverity.INFO,
+                  action: NotificationAction.VIEW_PORTFOLIO,
+                  actionMetadata: {
+                    positionId: position.positionId.toString(),
+                    assetId: position.assetId,
+                    wasLiquidated: true,
+                  },
+                });
+              } catch (notifError) {
+                this.logger.error(`Failed to send liquidation settlement notification: ${notifError}`);
+              }
+
+              this.logger.log(`✅ Liquidated position ${position.positionId} settled!`);
+            } else {
+              // ============================================================
+              // NORMAL POSITION FLOW (Healthy throughout)
+              // ============================================================
+              this.logger.log(`\n✅ Position is HEALTHY - using normal settlement flow`);
 
               // Step 1: Claim yield by burning RWA tokens
               this.logger.log(`\n🔥 Step 1: Burning RWA tokens to claim USDC from YieldVault...`);
@@ -269,7 +329,7 @@ export class YieldDistributionService {
               try {
                 const yieldFormatted = (Number(settlementResult.userYield) / 1e6).toFixed(2);
                 const mETHFormatted = (Number(settlementResult.mETHReturned) / 1e18).toFixed(4);
-
+                
                 await this.notificationService.create({
                   userId: position.userAddress,
                   walletAddress: position.userAddress,
@@ -288,22 +348,11 @@ export class YieldDistributionService {
               }
 
               this.logger.log(`✅ Position ${position.positionId} settled successfully!`);
-              success = true;
-            } catch (error) {
-              this.logger.error(`❌ Failed to settle position ${position.positionId} (Attempt ${attempt}/${MAX_RETRIES}): ${error}`);
-
-              if (attempt < MAX_RETRIES) {
-                const delay = RETRY_DELAY * attempt; // Exponential backoff
-                this.logger.log(`   ⏳ Waiting ${delay / 1000}s before retry...`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-              } else {
-                this.logger.error(`   ❌ Max retries reached. Moving to next position...`);
-              }
             }
-          }
-
-          if (!success) {
-            this.logger.error(`⚠️ Position ${position.positionId} settlement failed after ${MAX_RETRIES} attempts`);
+          } catch (error) {
+            this.logger.error(`❌ Failed to settle position ${position.positionId}: ${error}`);
+            this.logger.error(`   Continuing with other positions...`);
+            // Don't throw - continue with other positions
           }
         }
 
@@ -314,6 +363,87 @@ export class YieldDistributionService {
       this.logger.error(`❌ Error processing leverage positions: ${error}`);
       this.logger.error(`   Regular investor distribution was successful`);
       // Don't throw - leverage settlement is additional, not critical
+    }
+
+    // ========================================================================
+    // AUTOMATIC SOLVENCY VAULT SETTLEMENT (LIQUIDATED POSITIONS)
+    // ========================================================================
+    this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    this.logger.log(`🔍 Checking for liquidated SolvencyVault positions...`);
+
+    try {
+      // Find all liquidated Solvency positions for this asset
+      // We query ALL liquidated positions and filter in memory or add a specific query method
+      // Ideally, add getPositionsByTokenAndStatus to service, but getAllPositions works for now
+      const allLiquidated = await this.solvencyPositionService.getAllPositions(PositionStatus.LIQUIDATED);
+      const relevantSolvencyPositions = allLiquidated.filter(
+        pos => pos.collateralTokenAddress.toLowerCase() === tokenAddress.toLowerCase()
+      );
+
+      if (relevantSolvencyPositions.length === 0) {
+        this.logger.log(`✅ No liquidated SolvencyVault positions found for this asset`);
+      } else {
+        this.logger.log(`📊 Found ${relevantSolvencyPositions.length} liquidated Solvency position(s) to settle`);
+
+        for (const position of relevantSolvencyPositions) {
+          try {
+            this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+            this.logger.log(`🔄 Processing Solvency Position ${position.positionId}...`);
+            this.logger.log(`   User: ${position.userAddress}`);
+            this.logger.log(`   Status: ${position.status}`);
+            
+            // Only settle RWA tokens (Private Assets are handled differently/manually)
+            if (position.collateralTokenType !== TokenType.RWA) {
+              this.logger.log(`⚠️ Skipping non-RWA position (Type: ${position.collateralTokenType})`);
+              continue;
+            }
+
+            this.logger.log(`\n🔥 Settling liquidation by burning RWA tokens...`);
+            const result = await this.solvencyBlockchainService.settleLiquidation(
+              position.positionId
+            );
+
+            this.logger.log(`✅ Solvency liquidation settled successfully:`);
+            this.logger.log(`   💰 Yield Received: ${Number(result.yieldReceived) / 1e6} USDC`);
+            this.logger.log(`   💳 Debt Repaid: ${Number(result.debtRepaid) / 1e6} USDC`);
+            this.logger.log(`   ⚠️ Liquidation Fee: ${Number(result.liquidationFee) / 1e6} USDC`);
+            this.logger.log(`   💵 User Refund: ${Number(result.userRefund) / 1e6} USDC`);
+            this.logger.log(`   TX: ${result.txHash}`);
+
+            // Update position status
+            position.status = PositionStatus.SETTLED;
+            position.settledAt = new Date();
+            position.debtRecovered = result.debtRepaid;
+            await position.save();
+
+            // Notify user
+            try {
+              const refundFormatted = (Number(result.userRefund) / 1e6).toFixed(2);
+              
+              await this.notificationService.create({
+                userId: position.userAddress,
+                walletAddress: position.userAddress,
+                header: 'Liquidation Settled',
+                detail: `Your liquidated Solvency position #${position.positionId} has been settled via asset yield. Refund: ${refundFormatted} USDC.`,
+                type: NotificationType.PAYOUT_SETTLED,
+                severity: NotificationSeverity.INFO,
+                action: NotificationAction.VIEW_PORTFOLIO,
+                actionMetadata: {
+                  positionId: position.positionId.toString(),
+                  assetId: settlement.assetId,
+                  wasLiquidated: true,
+                },
+              });
+            } catch (notifError) {
+              this.logger.error(`Failed to send notification: ${notifError}`);
+            }
+          } catch (error) {
+            this.logger.error(`❌ Failed to settle Solvency position ${position.positionId}: ${error}`);
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error(`❌ Error processing Solvency positions: ${error}`);
     }
 
     this.logger.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
