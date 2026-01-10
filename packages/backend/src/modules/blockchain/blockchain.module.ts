@@ -36,6 +36,7 @@ import { forwardRef } from '@nestjs/common';
     }),
     forwardRef(() => YieldModule),
     forwardRef(() => NotificationsModule),
+    forwardRef(() => import('../secondary-market/secondary-market.module').then(m => m.SecondaryMarketModule)),
     forwardRef(() => import('../solvency/solvency.module').then(m => m.SolvencyModule)),
   ],
   providers: [
