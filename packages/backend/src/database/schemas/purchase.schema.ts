@@ -40,6 +40,7 @@ export class Purchase {
     assetName?: string;
     industry?: string;
     riskTier?: string;
+    type?: 'PURCHASE' | 'DEPOSIT'; // Track if this is a purchase or deposit
   };
 
   // Timestamps (automatically added by Mongoose with timestamps: true)

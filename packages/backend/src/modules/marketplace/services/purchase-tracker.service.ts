@@ -48,7 +48,58 @@ export class PurchaseTrackerService {
       throw new ConflictException('Purchase already recorded');
     }
 
-    // Validate transaction on-chain
+    // Get asset details
+    const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+    if (!asset) {
+      throw new BadRequestException('Asset not found');
+    }
+
+    // Check if this is a deposit (negative amount) or a purchase (positive amount)
+    const isDeposit = dto.amount.startsWith('-');
+
+    if (isDeposit) {
+      // Handle token deposit to contract (balance decrease)
+      this.logger.log(`Processing token deposit (balance decrease): ${dto.amount}`);
+
+      // Convert amount to wei (if not already in wei)
+      const amountWithoutSign = dto.amount.substring(1); // Remove negative sign
+      const depositAmountInWei = (BigInt(amountWithoutSign) * BigInt(10 ** 18)).toString();
+      const blockNumber = dto.blockNumber ? parseInt(dto.blockNumber) : 0;
+
+      // Record as a negative purchase to track balance decrease
+      const purchase = await this.purchaseModel.create({
+        txHash: dto.txHash,
+        assetId: dto.assetId,
+        investorWallet: investorWallet.toLowerCase(), // Store as negative in wei
+        tokenAddress: asset.token?.address || '',
+        amount: '-' + depositAmountInWei,
+        price: '0', // No price for deposits
+        totalPayment: '0', // No payment for deposits
+        blockNumber: blockNumber,
+        blockTimestamp: new Date(),
+        status: 'CONFIRMED',
+        metadata: {
+          assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
+          industry: asset.metadata?.industry,
+          riskTier: asset.metadata?.riskTier,
+          type: 'DEPOSIT', // Mark as deposit
+        },
+      });
+
+      this.logger.log(`Token deposit recorded: ${purchase._id}, amount in wei: -${depositAmountInWei}`);
+
+      return {
+        success: true,
+        purchaseId: purchase._id,
+        assetId: dto.assetId,
+        amount: '-' + depositAmountInWei,
+        totalPayment: '0',
+        tokenAddress: asset.token?.address,
+        type: 'DEPOSIT',
+      };
+    }
+
+    // Handle normal purchase (positive amount) - validate on-chain
     const purchaseData = await this.validatePurchaseTransaction(
       dto.txHash as Hash,
       dto.assetId,
@@ -57,12 +108,6 @@ export class PurchaseTrackerService {
 
     if (!purchaseData) {
       throw new BadRequestException('Invalid purchase transaction');
-    }
-
-    // Get asset details
-    const asset = await this.assetModel.findOne({ assetId: dto.assetId });
-    if (!asset) {
-      throw new BadRequestException('Asset not found');
     }
 
     // Record purchase in database
@@ -86,7 +131,7 @@ export class PurchaseTrackerService {
 
     this.logger.log(`Purchase recorded: ${purchase._id}`);
 
-    // Update asset.listing.sold with verified amount from transaction
+    // Update asset.listing.sold with verified amount from transaction (only for purchases, not deposits)
     try {
       const currentSold = BigInt(asset.listing?.sold || '0');
       const purchasedAmount = BigInt(purchaseData.amount);
@@ -335,6 +380,7 @@ export class PurchaseTrackerService {
       const existing = portfolioMap.get(purchase.assetId);
 
       if (existing) {
+        // Add purchase amount (works with both positive purchases and negative deposits)
         existing.totalAmount = (BigInt(existing.totalAmount) + BigInt(purchase.amount)).toString();
         existing.totalInvested = (BigInt(existing.totalInvested) + BigInt(purchase.totalPayment)).toString();
         existing.purchaseCount += 1;
