@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PartnerController } from './controllers/partner.controller';
 import { PartnerAdminController } from './controllers/partner-admin.controller';
@@ -17,8 +17,8 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
       { name: PartnerLoan.name, schema: PartnerLoanSchema },
       { name: PartnerApiLog.name, schema: PartnerApiLogSchema },
     ]),
-    SolvencyModule,
-    BlockchainModule,
+    forwardRef(() => SolvencyModule), // Circular dependency with SolvencyModule
+    forwardRef(() => BlockchainModule), // Circular dependency via BlockchainModule
   ],
   controllers: [PartnerController, PartnerAdminController],
   providers: [PartnerService, PartnerLoanService],
