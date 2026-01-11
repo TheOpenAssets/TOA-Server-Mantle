@@ -41,6 +41,9 @@ export class P2POrder {
   @Prop({ required: true })
   txHash!: string;
 
+  @Prop({ required: false })
+  stlTxHash!: string;
+
   @Prop({ required: true })
   blockNumber!: number;
 

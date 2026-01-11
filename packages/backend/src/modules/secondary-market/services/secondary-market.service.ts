@@ -654,6 +654,7 @@ export class SecondaryMarketService {
         { 
           $set: { 
             status: OrderStatus.CANCELLED,
+            stlTxHash: hash,
           } 
         }
       );

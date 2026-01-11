@@ -418,6 +418,7 @@ export class EventProcessor extends WorkerHost {
         remainingAmount,
         status: remainingAmount === '0' ? OrderStatus.FILLED : OrderStatus.OPEN,
         updatedAt: new Date(),
+        stlTxHash: txHash,
       },
       { new: true }
     );
@@ -616,6 +617,7 @@ export class EventProcessor extends WorkerHost {
       {
         status: OrderStatus.CANCELLED,
         updatedAt: new Date(),
+        stlTxHash: txHash,
       },
       { new: true }
     );
