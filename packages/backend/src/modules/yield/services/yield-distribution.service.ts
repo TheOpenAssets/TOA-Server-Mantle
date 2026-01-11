@@ -41,7 +41,34 @@ export class YieldDistributionService {
     private solvencyPositionService: SolvencyPositionService,
     @Inject(forwardRef(() => SolvencyBlockchainService))
     private solvencyBlockchainService: SolvencyBlockchainService,
-  ) {}
+  ) { }
+
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    description: string,
+    maxRetries = 5,
+    initialDelay = 2000,
+  ): Promise<T> {
+    let retries = 0;
+    let delay = initialDelay;
+
+    while (true) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        retries++;
+        if (retries > maxRetries) {
+          this.logger.error(`Failed ${description} after ${maxRetries} retries: ${error.message}`);
+          throw error;
+        }
+        this.logger.warn(
+          `Error in ${description} (attempt ${retries}/${maxRetries}): ${error.message}. Retrying in ${delay}ms...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay *= 2;
+      }
+    }
+  }
 
   async recordSettlement(dto: RecordSettlementDto) {
     const asset = await this.assetModel.findOne({ assetId: dto.assetId });
@@ -231,7 +258,7 @@ export class YieldDistributionService {
               // ============================================================
               this.logger.log(`\n🚨 Position is LIQUIDATED - using settleLiquidation flow`);
               this.logger.log(`   (User already received base mETH back during liquidation)`);
-              
+
               this.logger.log(`\n🔥 Settling liquidation by burning RWA tokens...`);
               const liquidationResult = await this.leverageBlockchainService.settleLiquidation(
                 position.positionId,
@@ -257,7 +284,7 @@ export class YieldDistributionService {
               try {
                 const refundFormatted = (Number(liquidationResult.userRefund) / 1e6).toFixed(2);
                 const feeFormatted = (Number(liquidationResult.liquidationFee) / 1e6).toFixed(2);
-                
+
                 await this.notificationService.create({
                   userId: position.userAddress,
                   walletAddress: position.userAddress,
@@ -329,7 +356,7 @@ export class YieldDistributionService {
               try {
                 const yieldFormatted = (Number(settlementResult.userYield) / 1e6).toFixed(2);
                 const mETHFormatted = (Number(settlementResult.mETHReturned) / 1e18).toFixed(4);
-                
+
                 await this.notificationService.create({
                   userId: position.userAddress,
                   walletAddress: position.userAddress,
@@ -391,7 +418,7 @@ export class YieldDistributionService {
             this.logger.log(`🔄 Processing Solvency Position ${position.positionId}...`);
             this.logger.log(`   User: ${position.userAddress}`);
             this.logger.log(`   Status: ${position.status}`);
-            
+
             // Only settle RWA tokens (Private Assets are handled differently/manually)
             if (position.collateralTokenType !== TokenType.RWA) {
               this.logger.log(`⚠️ Skipping non-RWA position (Type: ${position.collateralTokenType})`);
@@ -419,7 +446,7 @@ export class YieldDistributionService {
             // Notify user
             try {
               const refundFormatted = (Number(result.userRefund) / 1e6).toFixed(2);
-              
+
               await this.notificationService.create({
                 userId: position.userAddress,
                 walletAddress: position.userAddress,
@@ -520,12 +547,12 @@ export class YieldDistributionService {
 
         this.logger.log(`Querying chunk: blocks ${from} to ${to}`);
 
-        const chunkLogs = await publicClient.getLogs({
+        const chunkLogs = await this.executeWithRetry(() => publicClient.getLogs({
           address: tokenAddress as Address,
           event: transferEventAbi,
           fromBlock: from,
           toBlock: to,
-        });
+        }), 'getLogs chunk');
 
         allLogs.push(...chunkLogs);
         this.logger.log(`Found ${chunkLogs.length} events in this chunk (total: ${allLogs.length})`);
@@ -552,12 +579,12 @@ export class YieldDistributionService {
       const holders: Array<{ holderAddress: string; balance: string }> = [];
 
       for (const address of uniqueAddresses) {
-        const balance = await publicClient.readContract({
+        const balance = await this.executeWithRetry(() => publicClient.readContract({
           address: tokenAddress as Address,
           abi: erc20Abi,
           functionName: 'balanceOf',
           args: [address as Address],
-        }) as bigint;
+        }), 'balanceOf check') as bigint;
 
         if (balance > 0n) {
           holders.push({

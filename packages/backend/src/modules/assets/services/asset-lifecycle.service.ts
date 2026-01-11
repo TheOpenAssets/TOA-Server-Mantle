@@ -1220,7 +1220,7 @@ export class AssetLifecycleService {
     if (asset.listing?.type === 'STATIC') {
       // Get confirmed purchases for STATIC listings
       const confirmedPurchases = await this.purchaseModel
-        .find({ assetId, status: 'CONFIRMED' })
+        .find({ assetId, status: { $in: ['CONFIRMED', 'CLAIMED'] } })
         .sort({ createdAt: 1 }) // Sort by time ascending
         .exec();
 

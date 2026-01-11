@@ -27,38 +27,29 @@ export class BlockchainService {
     });
   }
 
-  private async retryWithBackoff<T>(
+  private async executeWithRetry<T>(
     operation: () => Promise<T>,
+    description: string,
     maxRetries: number = 5,
     initialDelay: number = 2000,
   ): Promise<T> {
     let retries = 0;
+    let delay = initialDelay;
+
     while (true) {
       try {
         return await operation();
       } catch (error: any) {
-        // Check for nonce errors or other transient issues
-        const errorMessage = error?.message || '';
-        const errorDetails = error?.details || '';
-        const causeMessage = error?.cause?.message || '';
-        
-        const isNonceError =
-          errorMessage.includes('nonce too low') ||
-          errorDetails.includes('nonce too low') ||
-          causeMessage.includes('nonce too low') ||
-          errorMessage.includes('replacement transaction underpriced'); // Often related to nonce reuse
-
-        if (isNonceError && retries < maxRetries) {
-          retries++;
-          const delay = initialDelay * Math.pow(1.5, retries - 1); // Exponential backoff
-          this.logger.warn(
-            `Transaction failed with nonce/replacement error. Retrying attempt ${retries}/${maxRetries} after ${Math.round(delay)}ms...`
-          );
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          continue;
+        retries++;
+        if (retries > maxRetries) {
+          this.logger.error(`Failed ${description} after ${maxRetries} retries: ${error.message}`);
+          throw error;
         }
-
-        throw error;
+        this.logger.warn(
+          `Error in ${description} (attempt ${retries}/${maxRetries}): ${error.message}. Retrying in ${delay}ms...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay *= 2;
       }
     }
   }
@@ -71,12 +62,12 @@ export class BlockchainService {
 
     this.logger.log(`Registering asset ${assetId} on-chain...`);
 
-    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+    const hash = await this.executeWithRetry(() => wallet.writeContract({
       address: address as Address,
       abi,
       functionName: 'registerAsset',
       args: [assetId, attestationHash, blobId, payload, signature],
-    }));
+    }), 'registerAsset write');
 
     // Don't wait for receipt - return immediately
     this.logger.log(`Asset registered: ${hash}`);
@@ -90,18 +81,18 @@ export class BlockchainService {
 
     this.logger.log(`Registering identity for ${walletAddress}...`);
 
-    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+    const hash = await this.executeWithRetry(() => wallet.writeContract({
       address: address as Address,
       abi,
       functionName: 'registerIdentity',
       args: [walletAddress],
-    }));
+    }), 'registerIdentity write');
 
     this.logger.log(`Transaction submitted: ${hash}, waiting for confirmation...`);
-    await this.publicClient.waitForTransactionReceipt({ 
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
       timeout: 300_000, // 5 minutes timeout
-    });
+    }), 'registerIdentity receipt');
     this.logger.log(`Identity registration confirmed for ${walletAddress}`);
     return hash;
   }
@@ -145,7 +136,7 @@ export class BlockchainService {
     const balance = await this.publicClient.getBalance({ address: wallet.account.address as Address });
     this.logger.log(`Admin wallet ${wallet.account.address} balance: ${Number(balance) / 1e18} MNT`);
 
-    if (balance === 0n) {
+    if (balance === BigInt(0)) {
       throw new Error(`Admin wallet has no MNT for gas. Please fund ${wallet.account.address}`);
     }
 
@@ -153,12 +144,12 @@ export class BlockchainService {
 
     let hash: `0x${string}`;
     try {
-      hash = await this.retryWithBackoff(() => wallet.writeContract({
+      hash = await this.executeWithRetry(() => wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'deployTokenSuite',
         args: [assetIdBytes32, totalSupplyWei, dto.name, dto.symbol, issuer],
-      }));
+      }), 'deployTokenSuite write');
 
       this.logger.log(`Transaction submitted successfully: ${hash}`);
     } catch (error) {
@@ -170,11 +161,11 @@ export class BlockchainService {
     this.logger.log(`Waiting for transaction confirmation...`);
 
     // Wait for transaction receipt (increased timeout for Mantle RPC)
-    const receipt = await this.publicClient.waitForTransactionReceipt({
+    const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
       timeout: 180_000, // 3 minute timeout (Mantle RPC can be slow)
       pollingInterval: 2_000, // Check every 2 seconds
-    });
+    }), 'deployTokenSuite receipt');
 
     this.logger.log(`Transaction confirmed in block ${receipt.blockNumber}`);
 
@@ -226,35 +217,35 @@ export class BlockchainService {
 
     this.logger.log(`Approving YieldVault to spend ${amount} USDC...`);
 
-    const approvalHash = await this.retryWithBackoff(() => wallet.writeContract({
+    const approvalHash = await this.executeWithRetry(() => wallet.writeContract({
       address: usdcAddress as Address,
       abi: usdcAbi,
       functionName: 'approve',
       args: [yieldVaultAddress, BigInt(amount)],
-    }));
+    }), 'approve USDC write');
 
-    await this.publicClient.waitForTransactionReceipt({
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash: approvalHash,
       timeout: 180_000, // 3 minute timeout (Mantle RPC can be slow)
       pollingInterval: 2_000, // Check every 2 seconds
-    });
+    }), 'approve USDC receipt');
     this.logger.log(`USDC approved in tx: ${approvalHash}`);
 
     // Step 2: Deposit yield to vault
     this.logger.log(`Depositing ${amount} USDC to YieldVault for token ${tokenAddress}...`);
 
-    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+    const hash = await this.executeWithRetry(() => wallet.writeContract({
       address: yieldVaultAddress as Address,
       abi: yieldVaultAbi,
       functionName: 'depositYield',
       args: [tokenAddress, BigInt(amount)],
-    }));
+    }), 'depositYield write');
 
-    await this.publicClient.waitForTransactionReceipt({
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
       timeout: 180_000, // 3 minute timeout (Mantle RPC can be slow)
       pollingInterval: 2_000, // Check every 2 seconds
-    });
+    }), 'depositYield receipt');
     this.logger.log(`Yield deposited in tx: ${hash}`);
     return hash;
   }
@@ -266,18 +257,18 @@ export class BlockchainService {
 
     const amountBigInts = amounts.map(a => BigInt(a));
 
-    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+    const hash = await this.executeWithRetry(() => wallet.writeContract({
       address: address as Address,
       abi,
       functionName: 'distributeYieldBatch',
       args: [tokenAddress, holders, amountBigInts],
-    }));
+    }), 'distributeYieldBatch write');
 
-    await this.publicClient.waitForTransactionReceipt({
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
       timeout: 180_000, // 3 minute timeout (Mantle RPC can be slow)
       pollingInterval: 2_000, // Check every 2 seconds
-    });
+    }), 'distributeYieldBatch receipt');
     return hash;
   }
 
@@ -338,7 +329,7 @@ export class BlockchainService {
       // createListing(assetId, tokenAddress, listingType, priceOrReserve, duration, totalSupply, minInvestment)
 
       this.logger.log(`Submitting transaction...`);
-      const hash = await this.retryWithBackoff(() => wallet.writeContract({
+      const hash = await this.executeWithRetry(() => wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'createListing',
@@ -351,16 +342,16 @@ export class BlockchainService {
           totalSupplyWei,              // totalSupply
           BigInt(minInvestment),       // minInvestment
         ],
-      }));
+      }), 'createListing write');
 
       this.logger.log(`✓ Transaction submitted: ${hash}`);
       this.logger.log(`Waiting for transaction receipt...`);
 
-      const receipt = await this.publicClient.waitForTransactionReceipt({
+      const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
         timeout: 180_000,
         pollingInterval: 2_000,
-      });
+      }), 'createListing receipt');
 
       this.logger.log(`✓ Transaction confirmed in block ${receipt.blockNumber}`);
       this.logger.log(`Transaction status: ${receipt.status}`);
@@ -417,12 +408,12 @@ export class BlockchainService {
     this.logger.log(`Approving marketplace ${marketplaceAddress} to spend tokens from ${tokenAddress}`);
 
     // Check current allowance
-    const currentAllowance = await this.publicClient.readContract({
+    const currentAllowance = await this.executeWithRetry(() => this.publicClient.readContract({
       address: tokenAddress as Address,
       abi: tokenAbi,
       functionName: 'allowance',
       args: [wallet.account.address, marketplaceAddress as Address],
-    }) as bigint;
+    }), 'allowance check') as bigint;
 
     if (currentAllowance > 0n) {
       this.logger.log(`Marketplace already has approval: ${currentAllowance.toString()}`);
@@ -432,18 +423,18 @@ export class BlockchainService {
     // Approve max amount (unlimited approval)
     const maxApproval = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'); // MaxUint256
 
-    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+    const hash = await this.executeWithRetry(() => wallet.writeContract({
       address: tokenAddress as Address,
       abi: tokenAbi,
       functionName: 'approve',
       args: [marketplaceAddress as Address, maxApproval],
-    }));
+    }), 'approve marketplace write');
 
-    await this.publicClient.waitForTransactionReceipt({
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
       timeout: 180_000,
       pollingInterval: 2_000,
-    });
+    }), 'approve marketplace receipt');
 
     this.logger.log(`Marketplace approved in tx: ${hash}`);
     return hash;
@@ -458,18 +449,18 @@ export class BlockchainService {
 
     this.logger.log(`Ending auction for asset ${assetId} with clearing price ${clearingPrice}...`);
 
-    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+    const hash = await this.executeWithRetry(() => wallet.writeContract({
       address: address as Address,
       abi,
       functionName: 'endAuction',
       args: [assetIdBytes32, BigInt(clearingPrice)],
-    }));
+    }), 'endAuction write');
 
-    await this.publicClient.waitForTransactionReceipt({
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
       timeout: 180_000, // 3 minute timeout
       pollingInterval: 2_000,
-    });
+    }), 'endAuction receipt');
     this.logger.log(`Auction ended in tx: ${hash}`);
     return hash;
   }
@@ -479,14 +470,14 @@ export class BlockchainService {
     const address = this.contractLoader.getContractAddress('AttestationRegistry');
     const abi = this.contractLoader.getContractAbi('AttestationRegistry');
 
-    const hash = await this.retryWithBackoff(() => wallet.writeContract({
+    const hash = await this.executeWithRetry(() => wallet.writeContract({
       address: address as Address,
       abi,
       functionName: 'revokeAsset',
       args: [assetId, reason],
-    }));
+    }), 'revokeAsset write');
 
-    await this.publicClient.waitForTransactionReceipt({ hash });
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({ hash }), 'revokeAsset receipt');
     return hash;
   }
 
@@ -511,12 +502,12 @@ export class BlockchainService {
 
     this.logger.log(`Checking unsold token balance in custody wallet ${custodyWalletAddress}...`);
 
-    const unsoldBalance = await this.publicClient.readContract({
+    const unsoldBalance = await this.executeWithRetry(() => this.publicClient.readContract({
       address: tokenAddress as Address,
       abi: tokenAbi,
       functionName: 'balanceOf',
       args: [custodyWalletAddress as Address],
-    }) as bigint;
+    }), 'check unsold balance') as bigint;
 
     this.logger.log(`Custody wallet holds ${unsoldBalance.toString()} wei (${Number(unsoldBalance) / 1e18} tokens)`);
 
@@ -524,12 +515,12 @@ export class BlockchainService {
       this.logger.log(`✅ No unsold tokens to burn - all tokens were sold`);
 
       // Get current total supply
-      const totalSupply = await this.publicClient.readContract({
+      const totalSupply = await this.executeWithRetry(() => this.publicClient.readContract({
         address: tokenAddress as Address,
         abi: tokenAbi,
         functionName: 'totalSupply',
         args: [],
-      }) as bigint;
+      }), 'get totalSupply') as bigint;
 
       return { tokensBurned: 0n, newTotalSupply: totalSupply, txHash: '' };
     }
@@ -542,39 +533,39 @@ export class BlockchainService {
     if (wallet.account.address.toLowerCase() === custodyWalletAddress.toLowerCase()) {
       // If platform wallet IS custody wallet, use burn() directly
       // This avoids allowance requirement for self-burn
-      hash = await this.retryWithBackoff(() => wallet.writeContract({
+      hash = await this.executeWithRetry(() => wallet.writeContract({
         address: tokenAddress as Address,
         abi: tokenAbi,
         functionName: 'burn',
         args: [unsoldBalance],
-      }));
+      }), 'burn write');
     } else {
       // If different, use burnFrom (requires allowance)
-      hash = await this.retryWithBackoff(() => wallet.writeContract({
+      hash = await this.executeWithRetry(() => wallet.writeContract({
         address: tokenAddress as Address,
         abi: tokenAbi,
         functionName: 'burnFrom',
         args: [custodyWalletAddress as Address, unsoldBalance],
-      }));
+      }), 'burnFrom write');
     }
 
     this.logger.log(`Burn transaction submitted: ${hash}`);
 
-    await this.publicClient.waitForTransactionReceipt({
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
       timeout: 180_000,
       pollingInterval: 2_000,
-    });
+    }), 'burn receipt');
 
     this.logger.log(`✅ Burn transaction confirmed in tx: ${hash}`);
 
     // Get new total supply after burn
-    const newTotalSupply = await this.publicClient.readContract({
+    const newTotalSupply = await this.executeWithRetry(() => this.publicClient.readContract({
       address: tokenAddress as Address,
       abi: tokenAbi,
       functionName: 'totalSupply',
       args: [],
-    }) as bigint;
+    }), 'get totalSupply after burn') as bigint;
 
     this.logger.log(`New total supply: ${newTotalSupply.toString()} wei (${Number(newTotalSupply) / 1e18} tokens)`);
 
@@ -590,11 +581,11 @@ export class BlockchainService {
     const address = this.contractLoader.getContractAddress('IdentityRegistry');
     const abi = this.contractLoader.getContractAbi('IdentityRegistry');
 
-    return await this.publicClient.readContract({
+    return await this.executeWithRetry(() => this.publicClient.readContract({
       address: address as Address,
       abi,
       functionName: 'isVerified',
       args: [walletAddress],
-    }) as boolean;
+    }), 'isVerified check') as boolean;
   }
 }

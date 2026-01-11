@@ -35,6 +35,33 @@ export class PurchaseTrackerService {
     });
   }
 
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    description: string,
+    maxRetries = 5,
+    initialDelay = 2000,
+  ): Promise<T> {
+    let retries = 0;
+    let delay = initialDelay;
+
+    while (true) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        retries++;
+        if (retries > maxRetries) {
+          this.logger.error(`Failed ${description} after ${maxRetries} retries: ${error.message}`);
+          throw error;
+        }
+        this.logger.warn(
+          `Error in ${description} (attempt ${retries}/${maxRetries}): ${error.message}. Retrying in ${delay}ms...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay *= 2;
+      }
+    }
+  }
+
   /**
    * Validate and record a purchase transaction
    */
@@ -166,7 +193,7 @@ export class PurchaseTrackerService {
   } | null> {
     try {
       // Get transaction receipt
-      const receipt = await this.publicClient.getTransactionReceipt({ hash: txHash });
+      const receipt = await this.executeWithRetry(() => this.publicClient.getTransactionReceipt({ hash: txHash }), 'getTransactionReceipt');
 
       if (!receipt || receipt.status !== 'success') {
         this.logger.error(`Transaction not found or failed: ${txHash}`);
@@ -273,6 +300,7 @@ export class PurchaseTrackerService {
         investorWallet: investorWallet.toLowerCase(),
         assetId: dto.assetId,
         status: 'CONFIRMED',
+        source: { $in: ['PRIMARY_MARKET', 'SECONDARY_MARKET'] },
       },
       {
         $set: { status: 'CLAIMED' },
@@ -330,11 +358,15 @@ export class PurchaseTrackerService {
     })
       .sort({ createdAt: -1 });
 
+    console.log("Purchaswes fetched:", purchases);
     // Group by asset
     const portfolioMap = new Map<string, any>();
 
+    console.log(`[Portfolio] Total purchases found: ${purchases.length}`);
+
     for (const purchase of purchases) {
       const existing = portfolioMap.get(purchase.assetId);
+      console.log(`[Portfolio] Processing purchase ${purchase._id} for asset ${purchase.assetId}`);
 
       // CRITICAL: Calculate net investment and balance correctly
       // - PRIMARY_MARKET/AUCTION: Money OUT (add to investment), tokens IN (add to balance)
@@ -348,25 +380,36 @@ export class PurchaseTrackerService {
       const amount = BigInt(purchase.amount);
       const totalPayment = BigInt(purchase.totalPayment);
 
+      console.log('STEP START --------------------------------');
+
+
+
       if (purchase.source === 'PRIMARY_MARKET' || purchase.source === 'AUCTION') {
+        console.log(`[Portfolio] Condition: PRIMARY_MARKET/AUCTION`);
         // Initial purchase: money OUT, tokens IN
         investmentDelta = totalPayment.toString();
       } else if (purchase.source === 'SECONDARY_MARKET') {
         if (amount < 0n) {
+          console.log(`[Portfolio] Condition: SECONDARY_MARKET (Sell)`);
           // Selling tokens: money IN (capital recovery) - SUBTRACT from investment
           // CRITICAL: Don't subtract from balance - already done in P2P_SELL_ORDER lock
           investmentDelta = (-totalPayment).toString();
         } else {
+          console.log(`[Portfolio] Condition: SECONDARY_MARKET (Buy)`);
           // Buying tokens: money OUT - ADD to investment, tokens IN
           investmentDelta = totalPayment.toString();
         }
       } else if (purchase.source === 'P2P_SELL_ORDER') {
+        console.log(`[Portfolio] Condition: P2P_SELL_ORDER`);
         // Lock in escrow: no investment change, tokens leave wallet
         investmentDelta = '0';
       } else if (purchase.source === 'P2P_ORDER_CANCELLED') {
+        console.log(`[Portfolio] Condition: P2P_ORDER_CANCELLED`);
         // Unlock from escrow: no investment change, tokens return to wallet
         investmentDelta = (-totalPayment).toString();;
       }
+
+      console.log(`[Portfolio] Deltas - Investment: ${investmentDelta}, BalanceDelta: ${balanceDelta}`);
 
       if (existing) {
         existing.totalAmount = (BigInt(existing.totalAmount) + BigInt(balanceDelta)).toString();
@@ -382,12 +425,14 @@ export class PurchaseTrackerService {
           investmentDelta,
           txHash: purchase.txHash,
           source: purchase.source,
-        });
+        })
+          console.log('TOTAL AMOUNT :', existing.totalAmount);
+          ;
       } else {
         portfolioMap.set(purchase.assetId, {
           assetId: purchase.assetId,
           tokenAddress: purchase.tokenAddress,
-          totalAmount: purchase.status === 'CLAIMED' ? '0' : balanceDelta,
+          totalAmount: balanceDelta,
           totalInvested: investmentDelta,
           status: purchase.status,
           purchaseCount: 1,
@@ -463,7 +508,9 @@ export class PurchaseTrackerService {
 
             if (asset && asset.tokenParams?.totalSupply) {
               const userTokenBalance = BigInt(item.totalAmount);
+              console.log('USER TOKEN BALANCE:', userTokenBalance.toString());
               const settlementUSDC = BigInt(settlement.usdcAmount);
+              console.log('SETTLEMENT USDC AMOUNT:', settlementUSDC.toString());
               const totalSupply = BigInt(asset.token?.supply || '0');
               console.log('TOTAL SUPPLY AFTER BURNING UNSOLD TOKENS:', totalSupply.toString());
 
@@ -471,6 +518,8 @@ export class PurchaseTrackerService {
               const claimableYieldRaw = totalSupply > 0n
                 ? (userTokenBalance * settlementUSDC) / totalSupply
                 : 0n;
+              
+              console.log('CLAIMABLE YIELD RAW:', claimableYieldRaw.toString());
 
               const yieldInfo: any = {
                 settlementDistributed: true,
@@ -479,6 +528,8 @@ export class PurchaseTrackerService {
                 settlementDate: settlement.settlementDate,
                 settlementId: settlement._id,
               };
+
+              console.log('YIELD INFO:', yieldInfo);
 
               // If status is CLAIMED, fetch yield claim transaction hash
               if (item.status === 'CLAIMED') {

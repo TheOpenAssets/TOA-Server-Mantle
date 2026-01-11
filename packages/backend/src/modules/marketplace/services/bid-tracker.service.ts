@@ -33,6 +33,33 @@ export class BidTrackerService {
     });
   }
 
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    description: string,
+    maxRetries = 5,
+    initialDelay = 2000,
+  ): Promise<T> {
+    let retries = 0;
+    let delay = initialDelay;
+
+    while (true) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        retries++;
+        if (retries > maxRetries) {
+          this.logger.error(`Failed ${description} after ${maxRetries} retries: ${error.message}`);
+          throw error;
+        }
+        this.logger.warn(
+          `Error in ${description} (attempt ${retries}/${maxRetries}): ${error.message}. Retrying in ${delay}ms...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay *= 2;
+      }
+    }
+  }
+
   /**
    * Validate and record a bid transaction
    */
@@ -140,7 +167,7 @@ export class BidTrackerService {
   } | null> {
     try {
       // Get transaction receipt
-      const receipt = await this.publicClient.getTransactionReceipt({ hash: txHash });
+      const receipt = await this.executeWithRetry(() => this.publicClient.getTransactionReceipt({ hash: txHash }), 'getTransactionReceipt');
 
       if (!receipt || receipt.status !== 'success') {
         this.logger.error(`Transaction not found or failed: ${txHash}`);
@@ -422,7 +449,7 @@ export class BidTrackerService {
           price: pricePerTokenWei.toString(), // Clearing price per token in USDC wei
           totalPayment: settlementData.cost.toString(), // Actual USDC paid in wei
           status: 'CONFIRMED',
-          source:'PRIMARY_MARKET',
+          source: 'PRIMARY_MARKET',
           metadata: {
             assetName: asset.metadata?.invoiceNumber,
             industry: asset.metadata?.industry,
@@ -489,7 +516,7 @@ export class BidTrackerService {
   } | null> {
     try {
       // Get transaction receipt
-      const receipt = await this.publicClient.getTransactionReceipt({ hash: txHash });
+      const receipt = await this.executeWithRetry(() => this.publicClient.getTransactionReceipt({ hash: txHash }), 'getTransactionReceipt');
 
       if (!receipt || receipt.status !== 'success') {
         this.logger.error(`Transaction not found or failed: ${txHash}`);

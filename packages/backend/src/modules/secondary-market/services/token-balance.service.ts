@@ -38,6 +38,33 @@ export class TokenBalanceService {
         });
     }
 
+    private async executeWithRetry<T>(
+        operation: () => Promise<T>,
+        description: string,
+        maxRetries = 5,
+        initialDelay = 2000,
+    ): Promise<T> {
+        let retries = 0;
+        let delay = initialDelay;
+
+        while (true) {
+            try {
+                return await operation();
+            } catch (error: any) {
+                retries++;
+                if (retries > maxRetries) {
+                    this.logger.error(`Failed ${description} after ${maxRetries} retries: ${error.message}`);
+                    throw error;
+                }
+                this.logger.warn(
+                    `Error in ${description} (attempt ${retries}/${maxRetries}): ${error.message}. Retrying in ${delay}ms...`,
+                );
+                await new Promise((resolve) => setTimeout(resolve, delay));
+                delay *= 2;
+            }
+        }
+    }
+
     /**
      * Get user's actual wallet balance from RWAToken contract
      */
@@ -55,12 +82,12 @@ export class TokenBalanceService {
                 },
             ] as const;
 
-            const balance = await this.publicClient.readContract({
+            const balance = await this.executeWithRetry(() => this.publicClient.readContract({
                 address: tokenAddress as Address,
                 abi: erc20Abi,
                 functionName: 'balanceOf',
                 args: [userAddress as Address],
-            }) as bigint;
+            }), 'getWalletBalance') as bigint;
 
             const balanceFormatted = (Number(balance) / 1e18).toFixed(4);
             this.logger.log(`[Balance Service] ✅ On-chain balance retrieved: ${balanceFormatted} tokens for ${userAddress}`);

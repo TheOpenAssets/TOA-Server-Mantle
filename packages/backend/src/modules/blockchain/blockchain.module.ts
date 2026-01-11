@@ -18,6 +18,7 @@ import { Purchase, PurchaseSchema } from '../../database/schemas/purchase.schema
 import { YieldModule } from '../yield/yield.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { forwardRef } from '@nestjs/common';
+// import { SecondaryMarketModule } from '../secondary-market/secondary-market.module';
 
 @Global()
 @Module({
@@ -53,6 +54,7 @@ import { forwardRef } from '@nestjs/common';
     ContractLoaderService,
     EventListenerService,
     MethPriceService,
+    MongooseModule,
   ],
 })
 export class BlockchainModule { }
