@@ -69,7 +69,7 @@ async function mintUSDC() {
     console.log('\n✅ Success!');
     console.log(`Balance after: ${ethers.formatUnits(balanceAfter, 6)} USDC`);
     console.log(`Minted: ${ethers.formatUnits(balanceAfter - balanceBefore, 6)} USDC`);
-    console.log(`Explorer: https://explorer.sepolia.mantle.xyz/tx/${tx.hash}`);
+    console.log(`Explorer: https://sepolia.mantlescan.xyz/tx/${tx.hash}`);
 
   } catch (error) {
     console.error('\n❌ Error minting USDC:', error.message);

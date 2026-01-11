@@ -237,7 +237,7 @@ CLAIMED_USDC=$(echo "scale=6; $CLAIMED_AMOUNT / 1000000" | bc)
 print_success "Yield claimed successfully!"
 print_info "TX Hash: $TX_HASH"
 print_info "Block: $BLOCK_NUMBER"
-print_info "Explorer: https://explorer.sepolia.mantle.xyz/tx/$TX_HASH"
+print_info "Explorer: https://sepolia.mantlescan.xyz/tx/$TX_HASH"
 echo ""
 
 # =============================================================================
@@ -303,5 +303,5 @@ echo ""
 print_cyan "Your USDC has been transferred to your wallet!"
 echo ""
 print_info "You can verify the transaction on the explorer:"
-echo "  https://explorer.sepolia.mantle.xyz/tx/$TX_HASH"
+echo "  https://sepolia.mantlescan.xyz/tx/$TX_HASH"
 echo ""

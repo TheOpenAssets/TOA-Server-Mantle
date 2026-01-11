@@ -4,7 +4,7 @@ export default registerAs('blockchain', () => ({
   rpcUrl: process.env.MANTLE_RPC_URL || 'https://rpc.sepolia.mantle.xyz',
   wssUrl: process.env.MANTLE_WSS_URL || 'wss://rpc.sepolia.mantle.xyz',
   chainId: parseInt(process.env.CHAIN_ID || '5003', 10), // Mantle Sepolia
-  
+
   // Wallets
   adminPrivateKey: process.env.ADMIN_PRIVATE_KEY,
   platformPrivateKey: process.env.PLATFORM_PRIVATE_KEY,
@@ -17,5 +17,6 @@ export default registerAs('blockchain', () => ({
     tokenFactory: process.env.TOKEN_FACTORY_ADDRESS,
     yieldVault: process.env.YIELD_VAULT_ADDRESS,
     primaryMarketplace: process.env.PRIMARY_MARKETPLACE_ADDRESS,
+    secondaryMarket: process.env.SECONDARY_MARKET_ADDRESS,
   }
 }));

@@ -2,3 +2,4 @@
 /* tslint:disable */
 /* eslint-disable */
 export type { PrimaryMarket } from "./PrimaryMarket";
+export type { SecondaryMarket } from "./SecondaryMarket";

@@ -302,7 +302,7 @@ curl -X POST "http://localhost:3000/admin/assets/$ASSET_ID/register" \
 
 **Verify on Mantle Sepolia Explorer**:
 ```
-https://explorer.sepolia.mantle.xyz/tx/0x9876abcd...
+https://sepolia.mantlescan.xyz/tx/0x9876abcd...
 ```
 
 ---

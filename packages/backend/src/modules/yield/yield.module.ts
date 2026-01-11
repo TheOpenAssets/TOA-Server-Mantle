@@ -15,6 +15,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LeverageModule } from '../leverage/leverage.module';
 import { SolvencyModule } from '../solvency/solvency.module';
+import { SecondaryMarketModule } from '../secondary-market/secondary-market.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { SolvencyModule } from '../solvency/solvency.module';
     forwardRef(() => BlockchainModule),
     forwardRef(() => LeverageModule),
     forwardRef(() => SolvencyModule),
+    forwardRef(() => SecondaryMarketModule),
     NotificationsModule,
   ],
   controllers: [YieldController],

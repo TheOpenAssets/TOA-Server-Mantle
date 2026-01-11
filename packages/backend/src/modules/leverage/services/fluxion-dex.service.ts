@@ -27,6 +27,33 @@ export class FluxionDEXService {
     });
   }
 
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    description: string,
+    maxRetries = 5,
+    initialDelay = 2000,
+  ): Promise<T> {
+    let retries = 0;
+    let delay = initialDelay;
+
+    while (true) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        retries++;
+        if (retries > maxRetries) {
+          this.logger.error(`Failed ${description} after ${maxRetries} retries: ${error.message}`);
+          throw error;
+        }
+        this.logger.warn(
+          `Error in ${description} (attempt ${retries}/${maxRetries}): ${error.message}. Retrying in ${delay}ms...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay *= 2;
+      }
+    }
+  }
+
   /**
    * Get mETH price in USD from backend MethPriceService
    * @returns Price in USD with 6 decimals (USDC wei format, e.g., 3000000000 = $3000)
@@ -53,12 +80,12 @@ export class FluxionDEXService {
         this.contractLoader.getContractAddress('FluxionIntegration');
       const fluxionABI = this.contractLoader.getContractAbi('FluxionIntegration');
 
-      const quote = (await this.publicClient.readContract({
+      const quote = (await this.executeWithRetry(() => this.publicClient.readContract({
         address: fluxionAddress as Address,
         abi: fluxionABI,
         functionName: 'getQuote',
         args: [mETHAmount],
-      })) as bigint;
+      }), 'getQuote')) as bigint;
 
       this.logger.debug(
         `Swap quote: ${Number(mETHAmount) / 1e18} mETH → ${Number(quote) / 1e6} USDC`,
@@ -124,11 +151,11 @@ export class FluxionDEXService {
         this.contractLoader.getContractAddress('FluxionIntegration');
       const fluxionABI = this.contractLoader.getContractAbi('FluxionIntegration');
 
-      const stats = (await this.publicClient.readContract({
+      const stats = (await this.executeWithRetry(() => this.publicClient.readContract({
         address: fluxionAddress as Address,
         abi: fluxionABI,
         functionName: 'getSwapStats',
-      })) as [bigint, bigint, bigint];
+      }), 'getSwapStats')) as [bigint, bigint, bigint];
 
       return {
         totalSwaps: stats[0],
@@ -151,11 +178,11 @@ export class FluxionDEXService {
       const dexAddress = this.contractLoader.getContractAddress('MockFluxionDEX');
       const dexABI = this.contractLoader.getContractAbi('MockFluxionDEX');
 
-      const reserves = (await this.publicClient.readContract({
+      const reserves = (await this.executeWithRetry(() => this.publicClient.readContract({
         address: dexAddress as Address,
         abi: dexABI,
         functionName: 'getReserves',
-      })) as [bigint, bigint];
+      }), 'getReserves')) as [bigint, bigint];
 
       const usdcReserve = reserves[1];
       const requiredUSDC = await this.getQuote(mETHAmount);

@@ -12,8 +12,13 @@ import { EventProcessor } from './processors/event.processor';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { Bid, BidSchema } from '../../database/schemas/bid.schema';
 import { User, UserSchema } from '../../database/schemas/user.schema';
+import { P2POrder, P2POrderSchema } from '../../database/schemas/p2p-order.schema';
+import { P2PTrade, P2PTradeSchema } from '../../database/schemas/p2p-trade.schema';
+import { Purchase, PurchaseSchema } from '../../database/schemas/purchase.schema';
 import { YieldModule } from '../yield/yield.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { forwardRef } from '@nestjs/common';
+// import { SecondaryMarketModule } from '../secondary-market/secondary-market.module';
 
 @Global()
 @Module({
@@ -23,11 +28,16 @@ import { forwardRef } from '@nestjs/common';
       { name: Asset.name, schema: AssetSchema },
       { name: Bid.name, schema: BidSchema },
       { name: User.name, schema: UserSchema },
+      { name: P2POrder.name, schema: P2POrderSchema },
+      { name: P2PTrade.name, schema: P2PTradeSchema },
+      { name: Purchase.name, schema: PurchaseSchema },
     ]),
     BullModule.registerQueue({
       name: 'event-processing',
     }),
     forwardRef(() => YieldModule),
+    forwardRef(() => NotificationsModule),
+    forwardRef(() => import('../secondary-market/secondary-market.module').then(m => m.SecondaryMarketModule)),
     forwardRef(() => import('../solvency/solvency.module').then(m => m.SolvencyModule)),
   ],
   providers: [
@@ -44,6 +54,7 @@ import { forwardRef } from '@nestjs/common';
     ContractLoaderService,
     EventListenerService,
     MethPriceService,
+    MongooseModule,
   ],
 })
-export class BlockchainModule {}
+export class BlockchainModule { }

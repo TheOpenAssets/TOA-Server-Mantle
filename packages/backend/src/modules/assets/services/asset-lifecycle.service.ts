@@ -734,6 +734,9 @@ export class AssetLifecycleService {
             'listing.price': clearingPrice, // Also set price field
             'listing.type': 'STATIC', // Convert to static listing for remaining tokens
             'listing.active': true, // Re-activate listing for remaining token sales
+            'listing.phase': 'CONFIRMED',
+            'listing.tokensSold': tokensSold.toString(),
+            'listing.status':'LISTED'
           },
         },
       );
@@ -871,58 +874,24 @@ export class AssetLifecycleService {
     }
 
     let totalUsdcRaised = BigInt(0);
-    let settledBids: any[] = [];
     let confirmedPurchases: any[] = [];
     let leveragePositions: any[] = [];
 
-    if (asset.listing?.type === 'STATIC') {
-      this.logger.log(`STATIC listing detected - calculating from purchases + leverage positions`);
+    // Both STATIC and AUCTION use Purchase records with source='PRIMARY_MARKET'
+    this.logger.log(`${asset.listing?.type} listing detected - calculating from purchases + leverage positions`);
 
-      // 1. Get confirmed USDC purchases
-      confirmedPurchases = await this.purchaseModel.find({
-        assetId,
-        status: 'CONFIRMED',
-      });
+    // 1. Get confirmed PRIMARY_MARKET purchases (excludes P2P trades)
+    confirmedPurchases = await this.purchaseModel.find({
+      assetId,
+      status: 'CONFIRMED',
+      source: 'PRIMARY_MARKET', // Excludes SECONDARY_MARKET (P2P trades)
+    });
 
-      for (const purchase of confirmedPurchases) {
-        totalUsdcRaised += BigInt(purchase.totalPayment);
-      }
-
-      this.logger.log(`Found ${confirmedPurchases.length} confirmed USDC purchases`);
-
-      // 2. Get ACTIVE leverage positions for this asset
-      try {
-        leveragePositions = await this.leveragePositionModel.find({
-          assetId,
-          status: 'ACTIVE',
-        });
-
-        for (const position of leveragePositions) {
-          totalUsdcRaised += BigInt(position.usdcBorrowed);
-        }
-
-        this.logger.log(`Found ${leveragePositions.length} active leverage positions`);
-      } catch (error: any) {
-        this.logger.error(`Failed to fetch leverage positions: ${error.message}`);
-        // Continue with payout even if leverage fetch fails
-      }
-    } else if (asset.listing?.type === 'AUCTION') {
-      this.logger.log(`AUCTION listing detected - calculating from bids`);
-
-      settledBids = await this.bidModel.find({
-        assetId,
-        status: { $in: ['CONFIRMED', 'CLAIMED'] },
-      });
-
-      for (const bid of settledBids) {
-        if (bid.status === 'SETTLED') {
-          totalUsdcRaised += BigInt(bid.usdcDeposited);
-        }
-      }
-      this.logger.log(`Found ${confirmedPurchases.length} settlement purchases for auction`);
-    } else {
-      throw new Error(`Unknown or missing listing type: ${asset.listing?.type}`);
+    for (const purchase of confirmedPurchases) {
+      totalUsdcRaised += BigInt(purchase.totalPayment);
     }
+
+    this.logger.log(`Found ${confirmedPurchases.length} confirmed PRIMARY_MARKET purchases`);
 
     // ========================================================================
     // CHECK FOR LEVERAGE POSITIONS
@@ -971,11 +940,11 @@ export class AssetLifecycleService {
     }
 
     if (totalUsdcRaised === BigInt(0)) {
-      throw new Error('No USDC raised yet - no confirmed purchases, leverage positions, or settled bids');
+      throw new Error('No USDC raised yet - no confirmed purchases or leverage positions');
     }
 
     this.logger.log(`Total USDC to payout: ${totalUsdcRaised.toString()} (${Number(totalUsdcRaised) / 1e6} USDC)`);
-    this.logger.log(`  - USDC purchases: ${confirmedPurchases.length}`);
+    this.logger.log(`  - PRIMARY_MARKET purchases: ${confirmedPurchases.length}`);
     this.logger.log(`  - Leverage positions: ${leveragePositions.length}`);
 
     // Execute transfer on-chain
@@ -1034,17 +1003,11 @@ export class AssetLifecycleService {
       transactionHash: tx.hash,
       blockNumber: Number(receipt.blockNumber),
       paidAt: new Date(),
+      purchaseIds: confirmedPurchases.map(p => p._id.toString()),
+      purchasesCount: confirmedPurchases.length,
+      leveragePositionIds: leveragePositions.map(p => p._id.toString()),
+      leveragePositionsCount: leveragePositions.length,
     };
-
-    if (asset.listing?.type === 'STATIC') {
-      payoutData.purchaseIds = confirmedPurchases.map(p => p._id.toString());
-      payoutData.purchasesCount = confirmedPurchases.length;
-      payoutData.leveragePositionIds = leveragePositions.map(p => p._id.toString());
-      payoutData.leveragePositionsCount = leveragePositions.length;
-    } else if (asset.listing?.type === 'AUCTION') {
-      payoutData.purchaseIds = confirmedPurchases.map(p => p._id.toString());
-      payoutData.purchasesCount = confirmedPurchases.length;
-    }
 
     const payoutRecord = new this.payoutModel(payoutData);
     await payoutRecord.save();
@@ -1232,9 +1195,7 @@ export class AssetLifecycleService {
       totalUsdcRaised: totalUsdcRaised.toString(),
       totalUsdcRaisedFormatted: `${Number(totalUsdcRaised) / 1e6} USDC`,
       listingType: asset.listing?.type,
-      transactionCount: asset.listing?.type === 'STATIC'
-        ? confirmedPurchases.length + leveragePositions.length
-        : settledBids.filter(b => b.status === 'SETTLED').length,
+      transactionCount: confirmedPurchases.length + leveragePositions.length,
       transactionHash: tx.hash,
       blockNumber: receipt.blockNumber.toString(),
       payoutId: payoutRecord._id.toString(),
@@ -1259,7 +1220,7 @@ export class AssetLifecycleService {
     if (asset.listing?.type === 'STATIC') {
       // Get confirmed purchases for STATIC listings
       const confirmedPurchases = await this.purchaseModel
-        .find({ assetId, status: 'CONFIRMED' })
+        .find({ assetId, status: { $in: ['CONFIRMED', 'CLAIMED'] } })
         .sort({ createdAt: 1 }) // Sort by time ascending
         .exec();
 

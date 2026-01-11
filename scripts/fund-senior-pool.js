@@ -144,7 +144,7 @@ async function main() {
     logInfo('Waiting for confirmation...');
     await depositTx.wait();
     logSuccess('Liquidity deposited successfully!');
-    logInfo(`Transaction: https://explorer.sepolia.mantle.xyz/tx/${depositTx.hash}`);
+    logInfo(`Transaction: https://sepolia.mantlescan.xyz/tx/${depositTx.hash}`);
     console.log();
 
     // Verify new liquidity

@@ -149,7 +149,7 @@ async function faucet() {
     console.log('\n✅ Success!');
     console.log(`Balance after: ${ethers.formatUnits(balanceAfter, 6)} USDC`);
     console.log(`Received: ${ethers.formatUnits(balanceAfter - balanceBefore, 6)} USDC`);
-    console.log(`Explorer: https://explorer.sepolia.mantle.xyz/tx/${tx.hash}`);
+    console.log(`Explorer: https://sepolia.mantlescan.xyz/tx/${tx.hash}`);
 
   } catch (error) {
     console.error('\n❌ Error:', error.message);

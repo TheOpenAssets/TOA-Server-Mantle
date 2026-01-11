@@ -70,8 +70,10 @@ export class NotificationService {
       });
 
       return notification;
-    } catch (e) {
-      this.logger.error(`Failed to create notification for ${dto.userId}`, e);
+    } catch (e: any) {
+      this.logger.error(`Failed to create notification for ${dto.userId}: ${e.message}`, e.stack);
+      // Don't re-throw - let caller handle gracefully
+      return null;
     }
   }
 
@@ -180,6 +182,9 @@ export class NotificationService {
         case NotificationType.BID_PLACED: return 'gavel';
         case NotificationType.AUCTION_WON: return 'trophy';
         case NotificationType.BID_REFUNDED: return 'cash-refund';
+        case NotificationType.ORDER_CREATED: return 'plus-circle';
+        case NotificationType.ORDER_FILLED: return 'check-circle';
+        case NotificationType.ORDER_CANCELLED: return 'close-circle';
         default: return 'bell';
     }
   }

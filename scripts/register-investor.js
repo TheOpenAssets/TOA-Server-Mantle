@@ -20,10 +20,10 @@ const OAID_ABI = [
 async function registerInvestor() {
   const investorAddress = process.argv[2] || '0x23e67597f0898f747Fa3291C8920168adF9455D0';
   const adminPrivateKey = '0x1d12932a5c3a7aa8d4f50662caa679bb2e53321e11bc5df2af9298e2ace59305';
-  
+
   const provider = new ethers.JsonRpcProvider('https://rpc.sepolia.mantle.xyz');
   const wallet = new ethers.Wallet(adminPrivateKey, provider);
-  
+
   const identityRegistry = new ethers.Contract(
     deployedContracts.contracts.IdentityRegistry,
     IDENTITY_REGISTRY_ABI,
@@ -46,7 +46,7 @@ async function registerInvestor() {
   // Step 1: Register with Identity Registry
   console.log('📋 Step 1: Identity Registry Registration');
   const isVerified = await identityRegistry.isVerified(investorAddress);
-  
+
   if (isVerified) {
     console.log('✅ Already KYC verified in Identity Registry');
   } else {

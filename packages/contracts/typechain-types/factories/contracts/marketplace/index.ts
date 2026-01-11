@@ -2,3 +2,4 @@
 /* tslint:disable */
 /* eslint-disable */
 export { PrimaryMarket__factory } from "./PrimaryMarket__factory";
+export { SecondaryMarket__factory } from "./SecondaryMarket__factory";

@@ -77,7 +77,7 @@ async function approveMarketplace() {
 
   await tx.wait();
   console.log('✅ Marketplace approved!');
-  console.log('Explorer:', `https://explorer.sepolia.mantle.xyz/tx/${tx.hash}`);
+  console.log('Explorer:', `https://sepolia.mantlescan.xyz/tx/${tx.hash}`);
   console.log();
   console.log('✅ Marketplace can now transfer tokens to buyers!');
 }

@@ -28,6 +28,33 @@ export class LeverageBlockchainService {
     });
   }
 
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    description: string,
+    maxRetries = 5,
+    initialDelay = 2000,
+  ): Promise<T> {
+    let retries = 0;
+    let delay = initialDelay;
+
+    while (true) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        retries++;
+        if (retries > maxRetries) {
+          this.logger.error(`Failed ${description} after ${maxRetries} retries: ${error.message}`);
+          throw error;
+        }
+        this.logger.warn(
+          `Error in ${description} (attempt ${retries}/${maxRetries}): ${error.message}. Retrying in ${delay}ms...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay *= 2;
+      }
+    }
+  }
+
   /**
    * Create leverage position on-chain
    * @param user User address
@@ -66,7 +93,7 @@ export class LeverageBlockchainService {
     this.logger.log(`Asset ID bytes32: ${assetIdBytes}`);
 
     try {
-      const hash = await wallet.writeContract({
+      const hash = await this.executeWithRetry(() => wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'createPosition',
@@ -80,15 +107,15 @@ export class LeverageBlockchainService {
           assetIdBytes, // Pass bytes32 assetId
           mETHPriceUSD18,
         ],
-      });
+      }), 'createPosition write');
 
       // Wait for transaction and parse event to get positionId
       this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
-      const receipt = await this.publicClient.waitForTransactionReceipt({
+      const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
         timeout: 120_000, // 2 minutes timeout
         pollingInterval: 2_000, // Check every 2 seconds
-      });
+      }), 'createPosition receipt');
 
       // Parse PositionCreated event to get positionId
       let positionId: number | undefined;
@@ -144,18 +171,18 @@ export class LeverageBlockchainService {
         `Using mETH price: $${Number(methPriceUSDC) / 1e6} (${methPriceUSD.toString()} wei)`,
       );
 
-      const hash = await wallet.writeContract({
+      const hash = await this.executeWithRetry(() => wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'harvestYield',
         args: [BigInt(positionId), methPriceUSD],
-      });
+      }), 'harvestYield write');
 
-      const receipt = await this.publicClient.waitForTransactionReceipt({
+      const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
         timeout: 120_000, // 2 minutes timeout
         pollingInterval: 2_000, // Check every 2 seconds
-      });
+      }), 'harvestYield receipt');
       this.logger.log(`✅ Yield harvested: ${hash}`);
 
       // Parse YieldHarvested event from receipt
@@ -229,22 +256,22 @@ export class LeverageBlockchainService {
 
     try {
       this.logger.log(`📤 Submitting liquidation transaction...`);
-      const hash = await wallet.writeContract({
+      const hash = await this.executeWithRetry(() => wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'liquidatePosition',
         args: [BigInt(positionId), methPriceUSD],
-      });
+      }), 'liquidatePosition write');
 
       this.logger.log(`⏳ Waiting for confirmation... TX: ${hash}`);
-      const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
-      
+      const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({ hash }), 'liquidatePosition receipt');
+
       // Parse logs to get liquidation details
       let usdcRecovered = '0';
       let shortfall = '0';
       let liquidationFee = '0';
       let excessReturned = '0';
-      
+
       try {
         // Decode PositionLiquidated event
         const liquidationEvent = receipt.logs.find(log => {
@@ -266,17 +293,17 @@ export class LeverageBlockchainService {
             data: liquidationEvent.data,
             topics: liquidationEvent.topics,
           }) as any;
-          
+
           usdcRecovered = decoded.args.usdcRecovered?.toString() || '0';
           shortfall = decoded.args.shortfall?.toString() || '0';
           liquidationFee = decoded.args.liquidationFee?.toString() || '0';
           excessReturned = decoded.args.excessReturned?.toString() || '0';
-          
+
           // If event doesn't have excessReturned (old contract), try to detect from Transfer events
           if (excessReturned === '0') {
             const usdcRecoveredBigInt = BigInt(usdcRecovered);
             const shortfallBigInt = BigInt(shortfall);
-            
+
             if (shortfallBigInt === BigInt(0) && usdcRecoveredBigInt > BigInt(0)) {
               // No shortfall means there might be excess - check for Transfer events to user
               const transferEvents = receipt.logs.filter(log => {
@@ -286,7 +313,7 @@ export class LeverageBlockchainService {
                   return false;
                 }
               });
-              
+
               // Find transfer to user (will be after debt repayment)
               if (transferEvents.length > 2) {
                 const lastTransfer = transferEvents[transferEvents.length - 1];
@@ -300,7 +327,7 @@ export class LeverageBlockchainService {
       } catch (error: any) {
         this.logger.warn(`Could not parse liquidation event details: ${error?.message || 'Unknown error'}`);
       }
-      
+
       this.logger.log(`✅ Position ${positionId} liquidated on-chain`);
       this.logger.log(`   TX Hash: ${hash}`);
       this.logger.log(`   Block: ${receipt.blockNumber}`);
@@ -314,7 +341,7 @@ export class LeverageBlockchainService {
       if (BigInt(excessReturned) > BigInt(0)) {
         this.logger.log(`   💰 Excess Returned to User: $${Number(excessReturned) / 1e6}`);
       }
-      
+
       return hash;
     } catch (error: any) {
       this.logger.error(`❌ Failed to liquidate position ${positionId}`);
@@ -355,19 +382,19 @@ export class LeverageBlockchainService {
       const position = await this.getPosition(positionId);
       const rwaToken = position.rwaToken;
 
-      const hash = await wallet.writeContract({
+      const hash = await this.executeWithRetry(() => wallet.writeContract({
         address: leverageVaultAddress as Address,
         abi: leverageVaultAbi,
         functionName: 'claimYieldFromBurn',
         args: [BigInt(positionId), yieldVaultAddress, rwaToken, tokenAmount],
-      });
+      }), 'claimYieldFromBurn write');
 
       this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
-      const receipt = await this.publicClient.waitForTransactionReceipt({
+      const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
         timeout: 120_000, // 2 minutes timeout
         pollingInterval: 2_000, // Check every 2 seconds
-      });
+      }), 'claimYieldFromBurn receipt');
       this.logger.log(`✅ Yield claimed via burn: ${hash}`);
 
       // Parse YieldClaimed event from YieldVault
@@ -442,18 +469,18 @@ export class LeverageBlockchainService {
       const position = await this.getPosition(positionId);
       const mETHReturned = position.mETHCollateral;
 
-      const hash = await wallet.writeContract({
+      const hash = await this.executeWithRetry(() => wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'processSettlement',
         args: [BigInt(positionId), settlementUSDC],
-      });
+      }), 'processSettlement write');
 
-      const receipt = await this.publicClient.waitForTransactionReceipt({
+      const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 120_000, // 2 minutes timeout
-        pollingInterval: 2_000, // Check every 2 seconds
-      });
+        timeout: 120000, // 2 minutes timeout
+        pollingInterval: 2000, // Check every 2 seconds
+      }), 'processSettlement receipt');
       this.logger.log(`✅ Settlement processed: ${hash}`);
 
       // Parse SettlementProcessed event from receipt
@@ -528,17 +555,17 @@ export class LeverageBlockchainService {
     this.logger.log(`🔥 Settling liquidation for position ${positionId}...`);
 
     try {
-      const hash = await wallet.writeContract({
+      const hash = await this.executeWithRetry(() => wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'settleLiquidation',
         args: [BigInt(positionId)],
-      });
+      }), 'settleLiquidation write');
 
-      const receipt = await this.publicClient.waitForTransactionReceipt({ 
+      const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
         timeout: 60_000,
-      });
+      }), 'settleLiquidation receipt');
       this.logger.log(`✅ Liquidation settled: ${hash}`);
 
       // Parse LiquidationSettled event
@@ -605,12 +632,12 @@ export class LeverageBlockchainService {
         this.contractLoader.getContractAddress('SeniorPool');
       const seniorPoolABI = this.contractLoader.getContractAbi('SeniorPool');
 
-      const debt = (await this.publicClient.readContract({
+      const debt = (await this.executeWithRetry(() => this.publicClient.readContract({
         address: seniorPoolAddress as Address,
         abi: seniorPoolABI,
         functionName: 'getOutstandingDebt',
         args: [BigInt(positionId)],
-      })) as bigint;
+      }), 'getOutstandingDebt')) as bigint;
 
       return debt;
     } catch (error) {
@@ -630,12 +657,12 @@ export class LeverageBlockchainService {
         this.contractLoader.getContractAddress('SeniorPool');
       const seniorPoolABI = this.contractLoader.getContractAbi('SeniorPool');
 
-      const interest = (await this.publicClient.readContract({
+      const interest = (await this.executeWithRetry(() => this.publicClient.readContract({
         address: seniorPoolAddress as Address,
         abi: seniorPoolABI,
         functionName: 'getAccruedInterest',
         args: [BigInt(positionId)],
-      })) as bigint;
+      }), 'getAccruedInterest')) as bigint;
 
       return interest;
     } catch (error) {
@@ -659,12 +686,12 @@ export class LeverageBlockchainService {
       const methPriceUSDC = BigInt(this.methPriceService.getCurrentPrice());
       const methPriceUSD = methPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
 
-      const healthFactor = (await this.publicClient.readContract({
+      const healthFactor = (await this.executeWithRetry(() => this.publicClient.readContract({
         address: leverageVaultAddress as Address,
         abi: leverageVaultABI,
         functionName: 'getHealthFactor',
         args: [BigInt(positionId), methPriceUSD],
-      })) as bigint;
+      }), 'getHealthFactor')) as bigint;
 
       return Number(healthFactor);
     } catch (error) {
@@ -684,12 +711,12 @@ export class LeverageBlockchainService {
         this.contractLoader.getContractAddress('LeverageVault');
       const leverageVaultABI = this.contractLoader.getContractAbi('LeverageVault');
 
-      const position = await this.publicClient.readContract({
+      const position = await this.executeWithRetry(() => this.publicClient.readContract({
         address: leverageVaultAddress as Address,
         abi: leverageVaultABI,
         functionName: 'getPosition',
         args: [BigInt(positionId)],
-      });
+      }), 'getPosition');
 
       return position;
     } catch (error) {
@@ -714,18 +741,18 @@ export class LeverageBlockchainService {
     );
 
     try {
-      const hash = await wallet.writeContract({
+      const hash = await this.executeWithRetry(() => wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'addCollateral',
         args: [BigInt(positionId), mETHAmount],
-      });
+      }), 'addCollateral write');
 
-      await this.publicClient.waitForTransactionReceipt({
+      await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
         timeout: 120_000, // 2 minutes timeout
         pollingInterval: 2_000, // Check every 2 seconds
-      });
+      }), 'addCollateral receipt');
       this.logger.log(`✅ Collateral added: ${hash}`);
       return hash;
     } catch (error) {
@@ -757,12 +784,12 @@ export class LeverageBlockchainService {
 
       this.logger.log(`Reading on-chain listing for asset ${assetId} (${assetIdBytes32})`);
 
-      const listing = await this.publicClient.readContract({
+      const listing = await this.executeWithRetry(() => this.publicClient.readContract({
         address: primaryMarketAddress as Address,
         abi: primaryMarketABI,
         functionName: 'listings',
         args: [assetIdBytes32],
-      }) as any;
+      }), 'getOnChainListing') as any;
 
       // Parse the listing struct
       // struct Listing { tokenAddress, assetId, listingType, staticPrice, reservePrice, endTime, clearingPrice, auctionPhase, totalSupply, sold, active, minInvestment }

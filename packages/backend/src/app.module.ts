@@ -27,6 +27,7 @@ import { LeverageModule } from './modules/leverage/leverage.module';
 import { SolvencyModule } from './modules/solvency/solvency.module';
 import { PartnersModule } from './modules/partners/partners.module';
 import { ChangelogModule } from './modules/changelog/changelog.module';
+import { SecondaryMarketModule } from './modules/secondary-market/secondary-market.module';
 
 @Module({
   imports: [
@@ -87,8 +88,9 @@ import { ChangelogModule } from './modules/changelog/changelog.module';
     FaucetModule,
     LeverageModule,
     SolvencyModule,
+    ChangelogModule,
+    SecondaryMarketModule,
     PartnersModule,
-    ChangelogModule
   ],
   controllers: [AppController],
   providers: [AppService],

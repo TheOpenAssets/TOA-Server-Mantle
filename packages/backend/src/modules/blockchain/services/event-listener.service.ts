@@ -4,7 +4,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Queue } from 'bullmq';
-import { createPublicClient, http, webSocket, Address, parseAbiItem } from 'viem';
+import { createPublicClient, http, Address, parseAbiItem, decodeEventLog, Log } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
 import { ContractLoaderService } from './contract-loader.service';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
@@ -13,6 +13,9 @@ import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 export class EventListenerService implements OnModuleInit {
   private readonly logger = new Logger(EventListenerService.name);
   private publicClient;
+  private lastBlockNumber: bigint = 0n;
+  private isPolling = false;
+  private watchedTokenAddresses: Set<string> = new Set();
 
   constructor(
     private configService: ConfigService,
@@ -20,19 +23,20 @@ export class EventListenerService implements OnModuleInit {
     @InjectQueue('event-processing') private eventQueue: Queue,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) {
-    const wssUrl = this.configService.get('blockchain.wssUrl');
+    // Use HTTP transport (polling) to avoid WebSocket subscription limits on public RPCs
+    const rpcUrl = this.configService.get('blockchain.rpcUrl');
     this.publicClient = createPublicClient({
       chain: mantleSepolia,
-      transport: wssUrl.startsWith('wss') ? webSocket(wssUrl) : http(wssUrl),
+      transport: http(rpcUrl),
     });
   }
 
-  onModuleInit() {
-    this.startListening();
+  async onModuleInit() {
+    await this.initializeListener();
   }
 
-  async startListening() {
-    this.logger.log('Starting blockchain event listeners...');
+  async initializeListener() {
+    this.logger.log('Initializing blockchain event listeners (Polling Mode)...');
 
     // Check if contracts are configured
     const contractsConfig = this.configService.get('blockchain.contracts');
@@ -40,440 +44,463 @@ export class EventListenerService implements OnModuleInit {
 
     if (!hasContracts) {
       this.logger.warn('⚠️  Contract addresses not configured. Skipping blockchain event listeners.');
-      this.logger.warn('   Deploy contracts and update .env to enable event listening.');
       return;
     }
 
-    // Only watch contracts that are configured
-    try {
-      if (this.contractLoader.hasContract('AttestationRegistry')) {
-        this.watchAttestationRegistry();
-      }
-      if (this.contractLoader.hasContract('TokenFactory')) {
-        this.watchTokenFactory();
-      }
-      if (this.contractLoader.hasContract('IdentityRegistry')) {
-        this.watchIdentityRegistry();
-      }
-      if (this.contractLoader.hasContract('PrimaryMarketplace')) {
-        this.watchPrimaryMarketplace();
-      }
-      if (this.contractLoader.hasContract('YieldVault')) {
-        this.watchYieldVault();
-      }
-      if (this.contractLoader.hasContract('SolvencyVault')) {
-        this.watchSolvencyVault();
-      }
+    // Load existing tokens to watch
+    await this.loadExistingTokens();
 
-      // CRITICAL FIX: Watch Transfer events for all existing deployed tokens
-      // This ensures we don't miss events if the backend was restarted after token deployment
-      await this.watchExistingTokens();
+    // Initialize last processed block to current block
+    try {
+      const currentBlock = await this.publicClient.getBlockNumber();
+      // Start slightly behind to ensure block availability on all RPC nodes
+      this.lastBlockNumber = currentBlock > 5n ? currentBlock - 5n : 0n;
+      this.logger.log(`Starting event polling from block ${this.lastBlockNumber}`);
     } catch (error) {
-      this.logger.error('Error starting event listeners:', error);
-      this.logger.warn('Continuing without blockchain event listeners...');
+      this.logger.error('Failed to get initial block number:', error);
+    }
+
+    // Start polling loop (every 3 seconds)
+    setInterval(() => this.pollBlockchainEvents(), 3000);
+  }
+
+  private async loadExistingTokens() {
+    try {
+      const assetsWithTokens = await this.assetModel.find({
+        'token.address': { $exists: true, $ne: null },
+      }).select('token.address');
+
+      for (const asset of assetsWithTokens) {
+        if (asset.token?.address) {
+          this.watchedTokenAddresses.add(asset.token.address.toLowerCase());
+        }
+      }
+      this.logger.log(`Loaded ${this.watchedTokenAddresses.size} tokens for monitoring`);
+    } catch (error) {
+      this.logger.error('Failed to load existing tokens:', error);
     }
   }
 
-  /**
-   * Query database for all deployed tokens and start watching their Transfer events
-   * This is critical for holder tracking after backend restarts
-   */
-  private async watchExistingTokens() {
-    try {
-      // Find all assets that have tokens deployed
-      const assetsWithTokens = await this.assetModel.find({
-        'token.address': { $exists: true, $ne: null },
-      }).select('token.address assetId');
+  private async pollBlockchainEvents() {
+    if (this.isPolling) return;
+    this.isPolling = true;
 
-      if (assetsWithTokens.length === 0) {
-        this.logger.log('No deployed tokens found in database - skipping existing token watch setup');
+    try {
+      const currentBlock = await this.publicClient.getBlockNumber();
+      // Use a buffer to avoid "block not found" errors on load-balanced RPCs
+      const safeBlock = currentBlock > 5n ? currentBlock - 5n : 0n;
+
+      if (safeBlock <= this.lastBlockNumber) {
+        this.isPolling = false;
         return;
       }
 
-      this.logger.log(`Found ${assetsWithTokens.length} deployed tokens - setting up Transfer event watchers...`);
-
-      for (const asset of assetsWithTokens) {
-        const tokenAddress = asset.token!.address;
-        this.logger.log(`  ✓ Watching transfers for token: ${tokenAddress} (Asset: ${asset.assetId})`);
-        this.watchTokenTransfers(tokenAddress as Address);
+      // Process max 100 blocks at a time to avoid RPC limits
+      const maxRange = 100n;
+      let toBlock = safeBlock;
+      if (toBlock - this.lastBlockNumber > maxRange) {
+        toBlock = this.lastBlockNumber + maxRange;
       }
 
-      this.logger.log(`✅ Successfully set up Transfer watchers for ${assetsWithTokens.length} tokens`);
-    } catch (error: any) {
-      this.logger.error(`Failed to watch existing tokens: ${error?.message || error}`);
-      // Don't throw - allow other listeners to continue working
+      const fromBlock = this.lastBlockNumber + 1n;
+
+      // Execute checks in parallel
+      await Promise.all([
+        this.checkSecondaryMarket(fromBlock, toBlock),
+        this.checkPrimaryMarketplace(fromBlock, toBlock),
+        this.checkAttestationRegistry(fromBlock, toBlock),
+        this.checkTokenFactory(fromBlock, toBlock),
+        this.checkIdentityRegistry(fromBlock, toBlock),
+        this.checkYieldVault(fromBlock, toBlock),
+        this.checkSolvencyVault(fromBlock, toBlock),
+        this.checkTokenTransfers(fromBlock, toBlock),
+      ]);
+
+      this.lastBlockNumber = toBlock;
+    } catch (error) {
+      this.logger.error('Error polling events:', error);
+    } finally {
+      this.isPolling = false;
     }
   }
 
-  private watchAttestationRegistry() {
+  private async checkAttestationRegistry(fromBlock: bigint, toBlock: bigint) {
+    if (!this.contractLoader.hasContract('AttestationRegistry')) return;
     const address = this.contractLoader.getContractAddress('AttestationRegistry');
     const abi = this.contractLoader.getContractAbi('AttestationRegistry');
 
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'AssetRegistered',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { assetId, blobId, attestationHash, attestor } = log.args;
-          await this.eventQueue.add('process-asset-registered', {
-            assetId,
-            blobId,
-            attestationHash,
-            attestor,
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-            // timestamp will be fetched in processor if needed, or we can use Date.now() approx
-            timestamp: Math.floor(Date.now() / 1000), 
-          });
-        }
-      },
-    });
+    try {
+      const logs = await this.publicClient.getLogs({
+        address: address as Address,
+        fromBlock,
+        toBlock,
+      });
 
-    this.logger.log(`Watching AttestationRegistry at ${address}`);
+      for (const log of logs) {
+        try {
+          const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics }) as { eventName: string; args: any };
+          if (decoded.eventName === 'AssetRegistered') {
+            const args = decoded.args;
+            await this.eventQueue.add('process-asset-registered', {
+              assetId: args.assetId,
+              blobId: args.blobId,
+              attestationHash: args.attestationHash,
+              attestor: args.attestor,
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+              timestamp: Math.floor(Date.now() / 1000),
+            });
+          }
+        } catch { /* ignore decode errors */ }
+      }
+    } catch (error) {
+      this.logger.error(`Error checking AttestationRegistry events: ${error}`);
+      throw error;
+    }
   }
 
-  private watchTokenFactory() {
+  private async checkTokenFactory(fromBlock: bigint, toBlock: bigint) {
+    if (!this.contractLoader.hasContract('TokenFactory')) return;
     const address = this.contractLoader.getContractAddress('TokenFactory');
     const abi = this.contractLoader.getContractAbi('TokenFactory');
 
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'TokenSuiteDeployed',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { assetId, token, compliance, totalSupply } = log.args;
-          await this.eventQueue.add('process-token-deployed', {
-            assetId,
-            tokenAddress: token,
-            complianceAddress: compliance,
-            totalSupply: totalSupply.toString(),
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-            timestamp: Math.floor(Date.now() / 1000),
-          });
-          
-          // Dynamically start watching this new token's transfers
-          this.watchTokenTransfers(token as Address);
-        }
-      },
-    });
+    try {
+      const logs = await this.publicClient.getLogs({
+        address: address as Address,
+        fromBlock,
+        toBlock,
+      });
 
-    this.logger.log(`Watching TokenFactory at ${address}`);
+      for (const log of logs) {
+        try {
+          const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics }) as { eventName: string; args: any };
+          if (decoded.eventName === 'TokenSuiteDeployed') {
+            const args = decoded.args;
+            await this.eventQueue.add('process-token-deployed', {
+              assetId: args.assetId,
+              tokenAddress: args.token,
+              complianceAddress: args.compliance,
+              totalSupply: args.totalSupply.toString(),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+              timestamp: Math.floor(Date.now() / 1000),
+            });
+
+            // Add new token to watchlist
+            this.watchedTokenAddresses.add(args.token.toLowerCase());
+          }
+        } catch { /* ignore decode errors */ }
+      }
+    } catch (error) {
+      this.logger.error(`Error checking TokenFactory events: ${error}`);
+      throw error;
+    }
   }
 
-  private watchIdentityRegistry() {
+  private async checkIdentityRegistry(fromBlock: bigint, toBlock: bigint) {
+    if (!this.contractLoader.hasContract('IdentityRegistry')) return;
     const address = this.contractLoader.getContractAddress('IdentityRegistry');
     const abi = this.contractLoader.getContractAbi('IdentityRegistry');
 
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'IdentityRegistered',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { wallet } = log.args;
-          await this.eventQueue.add('process-identity-registered', {
-            wallet,
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-            timestamp: Math.floor(Date.now() / 1000),
-          });
-        }
-      },
-    });
+    try {
+      const logs = await this.publicClient.getLogs({
+        address: address as Address,
+        fromBlock,
+        toBlock,
+      });
 
-    this.logger.log(`Watching IdentityRegistry at ${address}`);
+      for (const log of logs) {
+        try {
+          const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics }) as { eventName: string; args: any };
+          if (decoded.eventName === 'IdentityRegistered') {
+            const args = decoded.args;
+            await this.eventQueue.add('process-identity-registered', {
+              wallet: args.wallet,
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+              timestamp: Math.floor(Date.now() / 1000),
+            });
+          }
+        } catch { /* ignore decode errors */ }
+      }
+    } catch (error) {
+      this.logger.error(`Error checking IdentityRegistry events: ${error}`);
+      throw error;
+    }
   }
 
-  private watchPrimaryMarketplace() {
+  private async checkPrimaryMarketplace(fromBlock: bigint, toBlock: bigint) {
+    if (!this.contractLoader.hasContract('PrimaryMarketplace')) return;
     const address = this.contractLoader.getContractAddress('PrimaryMarketplace');
     const abi = this.contractLoader.getContractAbi('PrimaryMarketplace');
 
-    // Watch TokensPurchased (Static Sales)
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'TokensPurchased',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { assetId, buyer, amount, price, totalPayment } = log.args;
-          await this.eventQueue.add('process-token-purchased', {
-            assetId,
-            buyer,
-            amount: amount.toString(),
-            price: price.toString(),
-            totalPayment: totalPayment.toString(),
-            txHash: log.transactionHash,
-          });
-        }
-      },
-    });
+    try {
+      const logs = await this.publicClient.getLogs({
+        address: address as Address,
+        fromBlock,
+        toBlock,
+      });
 
-    // Watch BidSubmitted
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'BidSubmitted',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { assetId, bidder, tokenAmount, price, bidIndex } = log.args;
-          await this.eventQueue.add('process-bid-submitted', {
-            assetId,
-            bidder,
-            tokenAmount: tokenAmount.toString(),
-            price: price.toString(),
-            bidIndex: Number(bidIndex),
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-          });
-        }
-      },
-    });
+      for (const log of logs) {
+        try {
+          const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics }) as { eventName: string; args: any };
+          const args = decoded.args;
+          const eventName = decoded.eventName;
 
-    // Watch AuctionEnded
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'AuctionEnded',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { assetId, clearingPrice, totalTokensSold } = log.args;
-          await this.eventQueue.add('process-auction-ended', {
-            assetId,
-            clearingPrice: clearingPrice.toString(),
-            totalTokensSold: totalTokensSold.toString(),
-            txHash: log.transactionHash,
-          });
-        }
-      },
-    });
-
-    // Watch BidSettled
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'BidSettled',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { assetId, bidder, tokensReceived, cost, refund, bidIndex } = log.args;
-          await this.eventQueue.add('process-bid-settled', {
-            assetId,
-            bidder,
-            bidIndex: Number(bidIndex), // Assuming added to event or derived
-            tokensReceived: tokensReceived.toString(),
-            cost: cost.toString(),
-            refund: refund.toString(),
-            txHash: log.transactionHash,
-          });
-        }
-      },
-    });
-
-    this.logger.log(`Watching PrimaryMarketplace at ${address}`);
+          if (eventName === 'TokensPurchased') {
+            await this.eventQueue.add('process-token-purchased', {
+              assetId: args.assetId,
+              buyer: args.buyer,
+              amount: args.amount.toString(),
+              price: args.price.toString(),
+              totalPayment: args.totalPayment.toString(),
+              txHash: log.transactionHash,
+            });
+          } else if (eventName === 'BidSubmitted') {
+            await this.eventQueue.add('process-bid-submitted', {
+              assetId: args.assetId,
+              bidder: args.bidder,
+              tokenAmount: args.tokenAmount.toString(),
+              price: args.price.toString(),
+              bidIndex: Number(args.bidIndex),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+            });
+          } else if (eventName === 'AuctionEnded') {
+            await this.eventQueue.add('process-auction-ended', {
+              assetId: args.assetId,
+              clearingPrice: args.clearingPrice.toString(),
+              totalTokensSold: args.totalTokensSold.toString(),
+              txHash: log.transactionHash,
+            });
+          } else if (eventName === 'BidSettled') {
+            await this.eventQueue.add('process-bid-settled', {
+              assetId: args.assetId,
+              bidder: args.bidder,
+              bidIndex: Number(args.bidIndex),
+              tokensReceived: args.tokensReceived.toString(),
+              cost: args.cost.toString(),
+              refund: args.refund.toString(),
+              txHash: log.transactionHash,
+            });
+          }
+        } catch { /* ignore decode errors */ }
+      }
+    } catch (error) {
+      this.logger.error(`Error checking PrimaryMarketplace events: ${error}`);
+      throw error;
+    }
   }
 
-  private watchYieldVault() {
+  private async checkYieldVault(fromBlock: bigint, toBlock: bigint) {
+    if (!this.contractLoader.hasContract('YieldVault')) return;
     const address = this.contractLoader.getContractAddress('YieldVault');
     const abi = this.contractLoader.getContractAbi('YieldVault');
 
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'YieldDistributed',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { tokenAddress, totalAmount, holderCount } = log.args;
-          await this.eventQueue.add('process-yield-distributed', {
-            tokenAddress,
-            totalAmount: totalAmount.toString(),
-            holderCount: Number(holderCount),
-            txHash: log.transactionHash,
-          });
-        }
-      },
-    });
+    try {
+      const logs = await this.publicClient.getLogs({
+        address: address as Address,
+        fromBlock,
+        toBlock,
+      });
+
+      for (const log of logs) {
+        try {
+          const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics }) as { eventName: string; args: any };
+          if (decoded.eventName === 'YieldDistributed') {
+            const args = decoded.args;
+            await this.eventQueue.add('process-yield-distributed', {
+              tokenAddress: args.tokenAddress,
+              totalAmount: args.totalAmount.toString(),
+              holderCount: Number(args.holderCount),
+              txHash: log.transactionHash,
+            });
+          }
+        } catch { /* ignore decode errors */ }
+      }
+    } catch (error) {
+      this.logger.error(`Error checking YieldVault events: ${error}`);
+      throw error;
+    }
   }
 
-  private watchTokenTransfers(tokenAddress: Address) {
-    this.logger.log(`Started dynamic monitoring for token: ${tokenAddress}`);
+  private async checkSecondaryMarket(fromBlock: bigint, toBlock: bigint) {
+    if (!this.contractLoader.hasContract('SecondaryMarket')) return;
+    const address = this.contractLoader.getContractAddress('SecondaryMarket');
+    const abi = this.contractLoader.getContractAbi('SecondaryMarket');
 
-    this.publicClient.watchContractEvent({
-      address: tokenAddress,
-      abi: this.contractLoader.getContractAbi('RWAToken'),
-      eventName: 'Transfer',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { from, to, value } = log.args;
-          await this.eventQueue.add('process-transfer', {
-            tokenAddress,
-            from,
-            to,
-            amount: value.toString(),
-            txHash: log.transactionHash,
-          });
-        }
-      },
-    });
+    try {
+      const logs = await this.publicClient.getLogs({
+        address: address as Address,
+        fromBlock,
+        toBlock,
+      });
+
+      for (const log of logs) {
+        try {
+          const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics }) as { eventName: string; args: any };
+          const args = decoded.args;
+          const eventName = decoded.eventName;
+
+          if (eventName === 'OrderCreated') {
+            this.logger.log(`[P2P Event] OrderCreated detected: #${args.orderId} by ${args.maker}`);
+            await this.eventQueue.add('process-p2p-order-created', {
+              orderId: args.orderId.toString(),
+              maker: args.maker,
+              tokenAddress: args.tokenAddress,
+              amount: args.amount.toString(),
+              pricePerToken: args.pricePerToken.toString(),
+              isBuy: args.isBuy,
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+              timestamp: Math.floor(Date.now() / 1000),
+            });
+          } else if (eventName === 'OrderFilled') {
+            this.logger.log(`[P2P Event] OrderFilled detected: #${args.orderId}, amount: ${args.amountFilled.toString()}`);
+            await this.eventQueue.add('process-p2p-order-filled', {
+              orderId: args.orderId.toString(),
+              taker: args.taker,
+              maker: args.maker,
+              tokenAddress: args.tokenAddress,
+              amountFilled: args.amountFilled.toString(),
+              totalCost: args.totalCost.toString(),
+              remainingAmount: args.remainingAmount.toString(),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+              timestamp: Math.floor(Date.now() / 1000),
+            });
+          } else if (eventName === 'OrderCancelled') {
+            this.logger.log(`[P2P Event] OrderCancelled detected: #${args.orderId}`);
+            await this.eventQueue.add('process-p2p-order-cancelled', {
+              orderId: args.orderId.toString(),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+              timestamp: Math.floor(Date.now() / 1000),
+            });
+          }
+        } catch { /* ignore decode errors */ }
+      }
+    } catch (error) {
+      this.logger.error(`Error checking SecondaryMarket events: ${error}`);
+      throw error;
+    }
   }
 
-  private watchSolvencyVault() {
+  private async checkTokenTransfers(fromBlock: bigint, toBlock: bigint) {
+    if (this.watchedTokenAddresses.size === 0) return;
+
+    try {
+      const logs = await this.publicClient.getLogs({
+        address: Array.from(this.watchedTokenAddresses) as Address[],
+        event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)'),
+        fromBlock,
+        toBlock,
+      });
+
+      for (const log of logs) {
+        const args = log.args;
+        await this.eventQueue.add('process-transfer', {
+          tokenAddress: log.address,
+          from: args.from,
+          to: args.to,
+          amount: args.value!.toString(),
+          txHash: log.transactionHash,
+        });
+      }
+    } catch (error) {
+      this.logger.error(`Error checking Token Transfer events: ${error}`);
+      throw error;
+    }
+  }
+
+  private async checkSolvencyVault(fromBlock: bigint, toBlock: bigint) {
+    if (!this.contractLoader.hasContract('SolvencyVault')) return;
     const address = this.contractLoader.getContractAddress('SolvencyVault');
     const abi = this.contractLoader.getContractAbi('SolvencyVault');
 
-    // Watch USDCBorrowed
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'USDCBorrowed',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { positionId, amount, totalDebt } = log.args;
-          await this.eventQueue.add('process-solvency-borrow', {
-            positionId: Number(positionId),
-            amount: amount.toString(),
-            totalDebt: totalDebt.toString(),
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-          });
-        }
-      },
-    });
+    try {
+      const logs = await this.publicClient.getLogs({
+        address: address as Address,
+        fromBlock,
+        toBlock,
+      });
 
-    // Watch LoanRepaid
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'LoanRepaid',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { positionId, amountPaid, principal, interest, remainingDebt } = log.args;
-          await this.eventQueue.add('process-solvency-repayment', {
-            positionId: Number(positionId),
-            amountPaid: amountPaid.toString(),
-            principal: principal.toString(),
-            interest: interest.toString(),
-            remainingDebt: remainingDebt.toString(),
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-          });
-        }
-      },
-    });
+      for (const log of logs) {
+        try {
+          const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics }) as { eventName: string; args: any };
+          const args = decoded.args;
+          const eventName = decoded.eventName;
 
-    // Watch MissedPaymentMarked
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'MissedPaymentMarked',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { positionId, missedPayments } = log.args;
-          await this.eventQueue.add('process-solvency-missed-payment', {
-            positionId: Number(positionId),
-            missedPayments: Number(missedPayments),
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-          });
-        }
-      },
-    });
-
-    // Watch PositionDefaulted
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'PositionDefaulted',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { positionId } = log.args;
-          await this.eventQueue.add('process-solvency-defaulted', {
-            positionId: Number(positionId),
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-          });
-        }
-      },
-    });
-
-    // Watch PositionLiquidated
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'PositionLiquidated',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { positionId, marketplaceListingId } = log.args;
-          await this.eventQueue.add('process-solvency-liquidated', {
-            positionId: Number(positionId),
-            marketplaceListingId: marketplaceListingId,
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-          });
-        }
-      },
-    });
-
-    // Watch LiquidationSettled
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'LiquidationSettled',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { positionId, yieldReceived, debtRepaid, userRefund } = log.args;
-          await this.eventQueue.add('process-solvency-liquidation-settled', {
-            positionId: Number(positionId),
-            yieldReceived: yieldReceived.toString(),
-            debtRepaid: debtRepaid.toString(),
-            userRefund: userRefund.toString(),
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-          });
-        }
-      },
-    });
-
-    // Watch CollateralWithdrawn
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'CollateralWithdrawn',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { positionId, amount, remainingCollateral } = log.args;
-          await this.eventQueue.add('process-solvency-withdrawal', {
-            positionId: Number(positionId),
-            amount: amount.toString(),
-            remainingCollateral: remainingCollateral.toString(),
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-          });
-        }
-      },
-    });
-
-    // Watch RepaymentPlanCreated
-    this.publicClient.watchContractEvent({
-      address: address as Address,
-      abi,
-      eventName: 'RepaymentPlanCreated',
-      onLogs: async (logs) => {
-        for (const log of logs as any[]) {
-          const { positionId, loanDuration, numberOfInstallments, installmentInterval } = log.args;
-          await this.eventQueue.add('process-solvency-repayment-plan', {
-            positionId: Number(positionId),
-            loanDuration: Number(loanDuration),
-            numberOfInstallments: Number(numberOfInstallments),
-            installmentInterval: Number(installmentInterval),
-            txHash: log.transactionHash,
-            blockNumber: Number(log.blockNumber),
-          });
-        }
-      },
-    });
-
-    this.logger.log(`Watching SolvencyVault at ${address}`);
+          if (eventName === 'USDCBorrowed') {
+            await this.eventQueue.add('process-solvency-borrow', {
+              positionId: Number(args.positionId),
+              amount: args.amount.toString(),
+              totalDebt: args.totalDebt.toString(),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+            });
+          } else if (eventName === 'LoanRepaid') {
+            await this.eventQueue.add('process-solvency-repayment', {
+              positionId: Number(args.positionId),
+              amountPaid: args.amountPaid.toString(),
+              principal: args.principal.toString(),
+              interest: args.interest.toString(),
+              remainingDebt: args.remainingDebt.toString(),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+            });
+          } else if (eventName === 'MissedPaymentMarked') {
+            await this.eventQueue.add('process-solvency-missed-payment', {
+              positionId: Number(args.positionId),
+              missedPayments: Number(args.missedPayments),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+            });
+          } else if (eventName === 'PositionDefaulted') {
+            await this.eventQueue.add('process-solvency-defaulted', {
+              positionId: Number(args.positionId),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+            });
+          } else if (eventName === 'PositionLiquidated') {
+            await this.eventQueue.add('process-solvency-liquidated', {
+              positionId: Number(args.positionId),
+              marketplaceListingId: args.marketplaceListingId,
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+            });
+          } else if (eventName === 'LiquidationSettled') {
+            await this.eventQueue.add('process-solvency-liquidation-settled', {
+              positionId: Number(args.positionId),
+              yieldReceived: args.yieldReceived.toString(),
+              debtRepaid: args.debtRepaid.toString(),
+              userRefund: args.userRefund.toString(),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+            });
+          } else if (eventName === 'CollateralWithdrawn') {
+            await this.eventQueue.add('process-solvency-withdrawal', {
+              positionId: Number(args.positionId),
+              amount: args.amount.toString(),
+              remainingCollateral: args.remainingCollateral.toString(),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+            });
+          } else if (eventName === 'RepaymentPlanCreated') {
+            await this.eventQueue.add('process-solvency-repayment-plan', {
+              positionId: Number(args.positionId),
+              loanDuration: Number(args.loanDuration),
+              numberOfInstallments: Number(args.numberOfInstallments),
+              installmentInterval: Number(args.installmentInterval),
+              txHash: log.transactionHash,
+              blockNumber: Number(log.blockNumber),
+            });
+          }
+        } catch { /* ignore decode errors */ }
+      }
+    } catch (error) {
+      this.logger.error(`Error checking SolvencyVault events: ${error}`);
+      throw error;
+    }
   }
 }
