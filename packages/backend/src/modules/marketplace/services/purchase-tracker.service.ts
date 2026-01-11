@@ -358,8 +358,6 @@ export class PurchaseTrackerService {
     })
       .sort({ createdAt: -1 });
 
-    console.log("Purchaswes fetched:", purchases);
-    // Group by asset
     const portfolioMap = new Map<string, any>();
 
     console.log(`[Portfolio] Total purchases found: ${purchases.length}`);
@@ -380,31 +378,29 @@ export class PurchaseTrackerService {
       const amount = BigInt(purchase.amount);
       const totalPayment = BigInt(purchase.totalPayment);
 
-      console.log('STEP START --------------------------------');
-
 
 
       if (purchase.source === 'PRIMARY_MARKET' || purchase.source === 'AUCTION') {
-        console.log(`[Portfolio] Condition: PRIMARY_MARKET/AUCTION`);
+        // console.log(`[Portfolio] Condition: PRIMARY_MARKET/AUCTION`);
         // Initial purchase: money OUT, tokens IN
         investmentDelta = totalPayment.toString();
       } else if (purchase.source === 'SECONDARY_MARKET') {
         if (amount < 0n) {
-          console.log(`[Portfolio] Condition: SECONDARY_MARKET (Sell)`);
+          // console.log(`[Portfolio] Condition: SECONDARY_MARKET (Sell)`);
           // Selling tokens: money IN (capital recovery) - SUBTRACT from investment
           // CRITICAL: Don't subtract from balance - already done in P2P_SELL_ORDER lock
           investmentDelta = (-totalPayment).toString();
         } else {
-          console.log(`[Portfolio] Condition: SECONDARY_MARKET (Buy)`);
+          // console.log(`[Portfolio] Condition: SECONDARY_MARKET (Buy)`);
           // Buying tokens: money OUT - ADD to investment, tokens IN
           investmentDelta = totalPayment.toString();
         }
       } else if (purchase.source === 'P2P_SELL_ORDER') {
-        console.log(`[Portfolio] Condition: P2P_SELL_ORDER`);
+        // console.log(`[Portfolio] Condition: P2P_SELL_ORDER`);
         // Lock in escrow: no investment change, tokens leave wallet
         investmentDelta = '0';
       } else if (purchase.source === 'P2P_ORDER_CANCELLED') {
-        console.log(`[Portfolio] Condition: P2P_ORDER_CANCELLED`);
+        // console.log(`[Portfolio] Condition: P2P_ORDER_CANCELLED`);
         // Unlock from escrow: no investment change, tokens return to wallet
         investmentDelta = (-totalPayment).toString();;
       }
