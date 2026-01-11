@@ -15,8 +15,8 @@ export class DepositCollateralDto {
   tokenValueUSD!: string; // Wei (6 decimals)
 
   @IsEnum(TokenType)
-  @IsNotEmpty()
-  tokenType!: TokenType;
+  @IsOptional()
+  tokenType?: TokenType; // Optional - will be auto-detected if not provided
 
   @IsBoolean()
   @IsOptional()

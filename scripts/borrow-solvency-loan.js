@@ -212,10 +212,10 @@ async function borrowUSDC(solvencyVaultContract, positionId, amount, loanDuratio
   logSection('Step 5: Borrow USDC');
 
   logInfo(`Borrowing $${ethers.formatUnits(amount, 6)} USDC...`);
-  
+
   try {
     const tx = await solvencyVaultContract.borrowUSDC(
-      positionId, 
+      positionId,
       amount,
       loanDurationSeconds,
       numberOfInstallments
@@ -255,6 +255,45 @@ async function borrowUSDC(solvencyVaultContract, positionId, amount, loanDuratio
     };
   } catch (error) {
     logError(`Borrow failed: ${error.message}`);
+    throw error;
+  }
+}
+
+async function notifyBackendOfBorrow(jwt, positionId, borrowResult, loanDurationSeconds, numberOfInstallments) {
+  logSection('Step 6: Sync Loan with Backend');
+  logInfo('Notifying backend of loan borrow...');
+
+  try {
+    const response = await fetch(`${BACKEND_URL}/solvency/loan/borrow-notify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${jwt}`,
+      },
+      body: JSON.stringify({
+        txHash: borrowResult.txHash,
+        positionId: positionId.toString(),
+        borrowAmount: borrowResult.borrowed.toString(),
+        loanDuration: loanDurationSeconds.toString(),
+        numberOfInstallments: numberOfInstallments.toString(),
+        blockNumber: borrowResult.blockNumber.toString(),
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Backend notification failed');
+    }
+
+    const result = await response.json();
+    logSuccess('Backend synced successfully');
+    logInfo(`Position updated in database`);
+
+    return result;
+  } catch (error) {
+    logError(`Failed to notify backend: ${error.message}`);
+    logWarning('Loan exists on-chain but not synced with backend!');
+    logWarning('The backend may not show correct loan details.');
     throw error;
   }
 }
@@ -317,7 +356,7 @@ async function main() {
 
   // Borrow
   const borrowAmountWei = ethers.parseUnits(borrowAmount, 6); // USDC 6 decimals
-  await borrowUSDC(
+  const borrowResult = await borrowUSDC(
     solvencyVaultContract,
     positionId,
     borrowAmountWei,
@@ -325,9 +364,19 @@ async function main() {
     numberOfInstallments
   );
 
+  // Sync with backend
+  await notifyBackendOfBorrow(
+    jwt,
+    positionId,
+    borrowResult,
+    durationSeconds,
+    numberOfInstallments
+  );
+
   logSection('✨ Complete!');
   logSuccess(`Loan initiated for Position #${positionId}`);
   logSuccess(`Maturity Date locked to Asset Due Date: ${dueDate.toLocaleDateString()}`);
+  logSuccess('Loan details synced with backend database');
 }
 
 main()

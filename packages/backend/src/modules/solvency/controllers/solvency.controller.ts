@@ -19,7 +19,9 @@ import { BorrowDto } from '../dto/borrow.dto';
 import { RepayDto } from '../dto/repay.dto';
 import { WithdrawCollateralDto } from '../dto/withdraw-collateral.dto';
 import { UploadPrivateAssetRequestDto } from '../dto/upload-private-asset-request.dto';
-import { TokenType } from 'src/database/schemas/solvency-position.schema';
+import { NotifyLoanBorrowDto } from '../dto/notify-loan-borrow.dto';
+import { NotifyLoanRepaymentDto } from '../dto/notify-loan-repayment.dto';
+import { PartnerLoanService } from '../../partners/services/partner-loan.service';
 
 @Controller('solvency')
 @UseGuards(JwtAuthGuard)
@@ -28,6 +30,7 @@ export class SolvencyController {
     private blockchainService: SolvencyBlockchainService,
     private positionService: SolvencyPositionService,
     private privateAssetService: PrivateAssetService,
+    private partnerLoanService: PartnerLoanService,
   ) {}
 
   /**
@@ -38,13 +41,16 @@ export class SolvencyController {
   async depositCollateral(@Request() req: any, @Body() dto: DepositCollateralDto) {
     const userAddress = req.user.walletAddress;
 
+    // Auto-detect token type if not provided
+    const tokenType = dto.tokenType || await this.positionService.determineTokenType(dto.collateralTokenAddress);
+
     // Deposit collateral on-chain
     const result = await this.blockchainService.depositCollateral(
       userAddress,
       dto.collateralTokenAddress,
       dto.collateralAmount,
       dto.tokenValueUSD,
-      dto.tokenType,
+      tokenType,
       dto.issueOAID || false,
     );
 
@@ -53,7 +59,7 @@ export class SolvencyController {
       result.positionId,
       userAddress,
       dto.collateralTokenAddress,
-      dto.tokenType,
+      tokenType,
       dto.collateralAmount,
       dto.tokenValueUSD,
       result.txHash,
@@ -62,7 +68,7 @@ export class SolvencyController {
     );
 
     // Update private asset collateral tracking if applicable
-    if (dto.tokenType === 'PRIVATE_ASSET') {
+    if (tokenType === 'PRIVATE_ASSET') {
       await this.privateAssetService.updateCollateralTracking(
         dto.collateralTokenAddress,
         dto.collateralAmount,
@@ -238,12 +244,15 @@ export class SolvencyController {
       throw new BadRequestException('Position does not belong to authenticated user');
     }
 
-    // Create database record
-    const position = await this.positionService.createPosition(
+    // Auto-detect token type based on Asset collection
+    const tokenType = await this.positionService.determineTokenType(positionData.collateralToken);
+
+    // Sync database record (update if exists, create if not)
+    const position = await this.positionService.syncPosition(
       positionId,
       positionData.user,
       positionData.collateralToken,
-      positionData.tokenType === 0 ? TokenType.RWA : TokenType.PRIVATE_ASSET,
+      tokenType,
       positionData.collateralAmount.toString(),
       positionData.tokenValueUSD.toString(),
       dto.txHash,
@@ -466,5 +475,90 @@ export class SolvencyController {
       success: true,
       request,
     };
+  }
+
+  /**
+   * Repay partner loan directly from user portfolio
+   * User provides approval for USDC and we execute the repayment
+   */
+  @Post('partner-loan/repay')
+  @HttpCode(HttpStatus.OK)
+  async repayPartnerLoan(
+    @Request() req: any,
+    @Body() dto: { internalLoanId: string; amount: string; approvalTxHash: string }
+  ) {
+    if (!dto.internalLoanId || !dto.amount || !dto.approvalTxHash) {
+      throw new BadRequestException('Missing required fields: internalLoanId, amount, approvalTxHash');
+    }
+
+    // This endpoint allows users to repay loans originated by partners directly from our platform
+    // User must have approved our platform wallet to spend their USDC
+    // We verify the approval and then execute the repayment
+
+    // Note: This is a simplified version. In production, you might want to:
+    // 1. Verify the approval transaction
+    // 2. Execute transfer from user to platform wallet
+    // 3. Then call the partner loan repay logic
+
+    return {
+      success: false,
+      message: 'Direct portfolio repayment coming soon. For now, please repay through the partner platform or contact support.',
+      userAddress: req.user.walletAddress,
+    };
+  }
+
+  /**
+   * Get all partner loans for the user
+   */
+  @Get('partner-loans/my')
+  async getMyPartnerLoans(@Request() req: any) {
+    const userAddress = req.user.walletAddress;
+
+    // Get all partner loans across all partners for this user
+    const loans = await this.partnerLoanService.getAllUserLoans(userAddress);
+
+    return {
+      success: true,
+      count: loans.length,
+      loans,
+    };
+  }
+
+  /**
+   * Notify backend of a loan borrow transaction
+   * Frontend calls this after user borrows directly via contract
+   */
+  @Post('loan/borrow-notify')
+  @HttpCode(HttpStatus.OK)
+  async notifyLoanBorrow(@Request() req: any, @Body() dto: NotifyLoanBorrowDto) {
+    const userAddress = req.user.walletAddress;
+
+    return this.positionService.notifyLoanBorrow(
+      userAddress,
+      parseInt(dto.positionId),
+      dto.txHash,
+      dto.borrowAmount,
+      dto.loanDuration,
+      dto.numberOfInstallments,
+      dto.blockNumber,
+    );
+  }
+
+  /**
+   * Notify backend of a loan repayment transaction
+   * Frontend calls this after user repays directly via contract
+   */
+  @Post('loan/repay-notify')
+  @HttpCode(HttpStatus.OK)
+  async notifyLoanRepayment(@Request() req: any, @Body() dto: NotifyLoanRepaymentDto) {
+    const userAddress = req.user.walletAddress;
+
+    return this.positionService.notifyLoanRepayment(
+      userAddress,
+      parseInt(dto.positionId),
+      dto.txHash,
+      dto.repaymentAmount,
+      dto.blockNumber,
+    );
   }
 }

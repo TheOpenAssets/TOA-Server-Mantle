@@ -10,9 +10,11 @@ import { RepaymentMonitorService } from './services/repayment-monitor.service';
 import { SolvencyPosition, SolvencyPositionSchema } from '../../database/schemas/solvency-position.schema';
 import { PrivateAsset, PrivateAssetSchema } from '../../database/schemas/private-asset.schema';
 import { PrivateAssetRequest, PrivateAssetRequestSchema } from '../../database/schemas/private-asset-request.schema';
+import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { LeverageModule } from '../leverage/leverage.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PartnersModule } from '../partners/partners.module';
 
 @Module({
   imports: [
@@ -20,11 +22,13 @@ import { NotificationsModule } from '../notifications/notifications.module';
       { name: SolvencyPosition.name, schema: SolvencyPositionSchema },
       { name: PrivateAsset.name, schema: PrivateAssetSchema },
       { name: PrivateAssetRequest.name, schema: PrivateAssetRequestSchema },
+      { name: Asset.name, schema: AssetSchema },
     ]),
     ScheduleModule.forRoot(),
     forwardRef(() => BlockchainModule),
     LeverageModule, // For liquidating leverage positions via admin controller
     NotificationsModule,
+    forwardRef(() => PartnersModule), // For accessing PartnerLoanService (circular dependency)
   ],
   controllers: [SolvencyController, SolvencyAdminController],
   providers: [
