@@ -109,6 +109,8 @@ export class PurchaseTrackerService {
         assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
         industry: asset.metadata?.industry,
         riskTier: asset.metadata?.riskTier,
+                          type: 'PURCHASE', // Mark as purchase
+
       },
     });
 

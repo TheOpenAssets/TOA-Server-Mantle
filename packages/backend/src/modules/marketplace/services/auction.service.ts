@@ -22,12 +22,16 @@ export class AuctionService {
       throw new HttpException('Asset or token not found', HttpStatus.NOT_FOUND);
     }
 
+    // Get minimum price from asset's price range (stored during asset creation)
+    const minPrice = asset.listing?.priceRange?.min || dto.reservePrice;
+
     const txHash = await this.blockchainService.listOnMarketplace(
       asset.token.address,
       'AUCTION',
       dto.reservePrice,
       asset.tokenParams.minInvestment,
       dto.duration,
+      minPrice,
     );
 
     // Update asset status in DB

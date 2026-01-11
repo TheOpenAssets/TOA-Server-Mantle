@@ -12,7 +12,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { PartnerLoanService } from '../services/partner-loan.service';
 import { PartnerApiKeyGuard } from '../guards/partner-api-key.guard';
-import { PartnerBorrowDto, PartnerRepayDto } from '../dto/partner-loan.dto';
+import { PartnerBorrowDto, PartnerRepayDto, PartnerRepayWithTransferDto } from '../dto/partner-loan.dto';
 import { PartnerLoanStatus } from '../../../database/schemas/partner-loan.schema';
 import { SolvencyBlockchainService } from '../../solvency/services/solvency-blockchain.service';
 
@@ -67,10 +67,22 @@ export class PartnerController {
   @Post('repay')
   @UseGuards(PartnerApiKeyGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Repay a loan' })
+  @ApiOperation({ summary: 'Repay a loan (platform wallet must have USDC)' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Repayment successfully processed' })
   async repay(@Req() req: any, @Body() repayDto: PartnerRepayDto) {
     return this.partnerLoanService.repay(req.partner, repayDto);
+  }
+
+  @Post('repay-with-transfer')
+  @UseGuards(PartnerApiKeyGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Repay a loan with user USDC transfer',
+    description: 'User sends USDC to platform wallet, partner provides tx hash for verification. This is the recommended method for partner integrations.'
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Repayment successfully processed with transfer verification' })
+  async repayWithTransfer(@Req() req: any, @Body() repayDto: PartnerRepayWithTransferDto) {
+    return this.partnerLoanService.repayWithTransfer(req.partner, repayDto);
   }
 
   @Get('loan/:partnerLoanId')
