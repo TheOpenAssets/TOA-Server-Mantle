@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException, Logger, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { ConfigService } from '@nestjs/config';
+import { createPublicClient, http, Hash, Address, decodeEventLog } from 'viem';
+import { mantleSepolia } from '../../../config/mantle-chain';
+import { WalletService } from '../../blockchain/services/wallet.service';
 import { P2POrder, P2POrderDocument, OrderStatus } from '../../../database/schemas/p2p-order.schema';
 import { P2PTrade, P2PTradeDocument } from '../../../database/schemas/p2p-trade.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
@@ -10,6 +14,7 @@ import { TokenBalanceService } from './token-balance.service';
 @Injectable()
 export class SecondaryMarketService {
   private readonly logger = new Logger(SecondaryMarketService.name);
+  private publicClient;
 
   constructor(
     @InjectModel(P2POrder.name) private orderModel: Model<P2POrderDocument>,
@@ -17,7 +22,14 @@ export class SecondaryMarketService {
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     private contractLoader: ContractLoaderService,
     private tokenBalanceService: TokenBalanceService,
-  ) { }
+    private configService: ConfigService,
+    private walletService: WalletService,
+  ) {
+    this.publicClient = createPublicClient({
+      chain: mantleSepolia,
+      transport: http(this.configService.get('blockchain.rpcUrl')),
+    });
+  }
 
   /**
    * Get Orderbook (Bids and Asks) for an Asset
@@ -570,5 +582,87 @@ export class SecondaryMarketService {
       message: 'Sell order validation passed',
       balance: validation.balance,
     };
+  }
+
+  /**
+   * Settle open orders for an asset during yield distribution
+   */
+  async settleOrdersForYield(assetId: string) {
+    this.logger.log(`[P2P Service] 🔄 Settling orders for asset ${assetId} due to yield distribution...`);
+
+    // Step 1: Fetch all OPEN orders for the asset
+    const orders = await this.orderModel.find({
+      assetId,
+      status: OrderStatus.OPEN,
+    });
+
+    if (orders.length === 0) {
+      this.logger.log(`[P2P Service] No open orders to settle for asset ${assetId}`);
+      return;
+    }
+
+    this.logger.log(`[P2P Service] Found ${orders.length} open orders to settle`);
+
+    // Step 2: Extract order IDs and validate token address
+    const orderIds = orders.map(o => BigInt(o.orderId));
+    if (!orders[0]) {
+      this.logger.log('[P2P Service] Bypassing settlement as order array is unexpectedly empty after check.');
+      return;
+    }
+    const tokenAddress = orders[0].tokenAddress; // Assuming all orders for same asset have same token address
+
+    // Step 3: Call settleYield on contract
+    try {
+      const wallet = this.walletService.getPlatformWallet();
+      const secondaryMarketAddress = this.contractLoader.getContractAddress('SecondaryMarket');
+      const secondaryMarketAbi = this.contractLoader.getContractAbi('SecondaryMarket');
+      const yieldVaultAddress = this.contractLoader.getContractAddress('YieldVault');
+
+      if (!yieldVaultAddress) {
+        throw new Error('YieldVault address not found');
+      }
+
+      this.logger.log(`[P2P Service] 📤 Submitting settleYield transaction for ${orderIds.length} orders...`);
+      
+      const hash = await wallet.writeContract({
+        address: secondaryMarketAddress as Address,
+        abi: secondaryMarketAbi,
+        functionName: 'settleYield',
+        args: [
+          yieldVaultAddress,
+          tokenAddress,
+          orderIds,
+        ],
+      });
+
+      this.logger.log(`[P2P Service] ⏳ Waiting for transaction confirmation: ${hash}`);
+      
+      const receipt = await this.publicClient.waitForTransactionReceipt({ 
+        hash,
+        timeout: 120000, // 2 minutes
+      });
+
+      if (receipt.status !== 'success') {
+        throw new Error('Transaction failed on-chain');
+      }
+
+      this.logger.log(`[P2P Service] ✅ settleYield transaction confirmed: ${hash}`);
+
+      // Step 4: Update database records
+      const result = await this.orderModel.updateMany(
+        { orderId: { $in: orders.map(o => o.orderId) } },
+        { 
+          $set: { 
+            status: OrderStatus.CANCELLED,
+          } 
+        }
+      );
+
+      this.logger.log(`[P2P Service] Updated ${result.modifiedCount} orders to CANCELLED status in DB`);
+
+    } catch (error) {
+      this.logger.error(`[P2P Service] ❌ Failed to settle orders for yield: ${error}`);
+      throw error;
+    }
   }
 }

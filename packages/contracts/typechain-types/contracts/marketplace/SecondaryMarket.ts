@@ -32,11 +32,20 @@ export interface SecondaryMarketInterface extends Interface {
       | "identityRegistry"
       | "nextOrderId"
       | "orders"
+      | "owner"
+      | "renounceOwnership"
+      | "settleYield"
+      | "transferOwnership"
       | "usdc"
   ): FunctionFragment;
 
   getEvent(
-    nameOrSignatureOrTopic: "OrderCancelled" | "OrderCreated" | "OrderFilled"
+    nameOrSignatureOrTopic:
+      | "OrderCancelled"
+      | "OrderCreated"
+      | "OrderFilled"
+      | "OrderSettledForYield"
+      | "OwnershipTransferred"
   ): EventFragment;
 
   encodeFunctionData(
@@ -63,6 +72,19 @@ export interface SecondaryMarketInterface extends Interface {
     functionFragment: "orders",
     values: [BigNumberish]
   ): string;
+  encodeFunctionData(functionFragment: "owner", values?: undefined): string;
+  encodeFunctionData(
+    functionFragment: "renounceOwnership",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "settleYield",
+    values: [AddressLike, AddressLike, BigNumberish[]]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "transferOwnership",
+    values: [AddressLike]
+  ): string;
   encodeFunctionData(functionFragment: "usdc", values?: undefined): string;
 
   decodeFunctionResult(
@@ -83,6 +105,19 @@ export interface SecondaryMarketInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "orders", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "renounceOwnership",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "settleYield",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "transferOwnership",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "usdc", data: BytesLike): Result;
 }
 
@@ -168,6 +203,44 @@ export namespace OrderFilledEvent {
     totalCost: bigint;
     remainingAmount: bigint;
     timestamp: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace OrderSettledForYieldEvent {
+  export type InputTuple = [
+    orderId: BigNumberish,
+    maker: AddressLike,
+    settledAmount: BigNumberish,
+    isYieldClaim: boolean
+  ];
+  export type OutputTuple = [
+    orderId: bigint,
+    maker: string,
+    settledAmount: bigint,
+    isYieldClaim: boolean
+  ];
+  export interface OutputObject {
+    orderId: bigint;
+    maker: string;
+    settledAmount: bigint;
+    isYieldClaim: boolean;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace OwnershipTransferredEvent {
+  export type InputTuple = [previousOwner: AddressLike, newOwner: AddressLike];
+  export type OutputTuple = [previousOwner: string, newOwner: string];
+  export interface OutputObject {
+    previousOwner: string;
+    newOwner: string;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -261,6 +334,26 @@ export interface SecondaryMarket extends BaseContract {
     "view"
   >;
 
+  owner: TypedContractMethod<[], [string], "view">;
+
+  renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
+
+  settleYield: TypedContractMethod<
+    [
+      yieldVault: AddressLike,
+      tokenAddress: AddressLike,
+      orderIds: BigNumberish[]
+    ],
+    [void],
+    "nonpayable"
+  >;
+
+  transferOwnership: TypedContractMethod<
+    [newOwner: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+
   usdc: TypedContractMethod<[], [string], "view">;
 
   getFunction<T extends ContractMethod = ContractMethod>(
@@ -313,6 +406,26 @@ export interface SecondaryMarket extends BaseContract {
     "view"
   >;
   getFunction(
+    nameOrSignature: "owner"
+  ): TypedContractMethod<[], [string], "view">;
+  getFunction(
+    nameOrSignature: "renounceOwnership"
+  ): TypedContractMethod<[], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "settleYield"
+  ): TypedContractMethod<
+    [
+      yieldVault: AddressLike,
+      tokenAddress: AddressLike,
+      orderIds: BigNumberish[]
+    ],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "transferOwnership"
+  ): TypedContractMethod<[newOwner: AddressLike], [void], "nonpayable">;
+  getFunction(
     nameOrSignature: "usdc"
   ): TypedContractMethod<[], [string], "view">;
 
@@ -336,6 +449,20 @@ export interface SecondaryMarket extends BaseContract {
     OrderFilledEvent.InputTuple,
     OrderFilledEvent.OutputTuple,
     OrderFilledEvent.OutputObject
+  >;
+  getEvent(
+    key: "OrderSettledForYield"
+  ): TypedContractEvent<
+    OrderSettledForYieldEvent.InputTuple,
+    OrderSettledForYieldEvent.OutputTuple,
+    OrderSettledForYieldEvent.OutputObject
+  >;
+  getEvent(
+    key: "OwnershipTransferred"
+  ): TypedContractEvent<
+    OwnershipTransferredEvent.InputTuple,
+    OwnershipTransferredEvent.OutputTuple,
+    OwnershipTransferredEvent.OutputObject
   >;
 
   filters: {
@@ -370,6 +497,28 @@ export interface SecondaryMarket extends BaseContract {
       OrderFilledEvent.InputTuple,
       OrderFilledEvent.OutputTuple,
       OrderFilledEvent.OutputObject
+    >;
+
+    "OrderSettledForYield(uint256,address,uint256,bool)": TypedContractEvent<
+      OrderSettledForYieldEvent.InputTuple,
+      OrderSettledForYieldEvent.OutputTuple,
+      OrderSettledForYieldEvent.OutputObject
+    >;
+    OrderSettledForYield: TypedContractEvent<
+      OrderSettledForYieldEvent.InputTuple,
+      OrderSettledForYieldEvent.OutputTuple,
+      OrderSettledForYieldEvent.OutputObject
+    >;
+
+    "OwnershipTransferred(address,address)": TypedContractEvent<
+      OwnershipTransferredEvent.InputTuple,
+      OwnershipTransferredEvent.OutputTuple,
+      OwnershipTransferredEvent.OutputObject
+    >;
+    OwnershipTransferred: TypedContractEvent<
+      OwnershipTransferredEvent.InputTuple,
+      OwnershipTransferredEvent.OutputTuple,
+      OwnershipTransferredEvent.OutputObject
     >;
   };
 }

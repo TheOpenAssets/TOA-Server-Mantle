@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "../core/IdentityRegistry.sol";
 
 /**
@@ -11,7 +12,7 @@ import "../core/IdentityRegistry.sol";
  * @notice Trustless P2P Orderbook Exchange for RWA Tokens
  * @dev Supports Limit Orders (Maker) and Market Fills (Taker) with partial fills.
  */
-contract SecondaryMarket is ReentrancyGuard {
+contract SecondaryMarket is ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
     struct Order {
@@ -58,7 +59,14 @@ contract SecondaryMarket is ReentrancyGuard {
         uint256 timestamp
     );
 
-    constructor(address _usdc, address _identityRegistry) {
+    event OrderSettledForYield(
+        uint256 indexed orderId,
+        address indexed maker,
+        uint256 settledAmount,
+        bool isYieldClaim
+    );
+
+    constructor(address _usdc, address _identityRegistry) Ownable(msg.sender) {
         usdc = IERC20(_usdc);
         identityRegistry = IdentityRegistry(_identityRegistry);
     }
@@ -187,5 +195,65 @@ contract SecondaryMarket is ReentrancyGuard {
         }
 
         emit OrderCancelled(orderId, msg.sender, block.timestamp);
+    }
+
+    /**
+     * @notice Admin function to settle orders during yield distribution
+     * @param yieldVault Address of the YieldVault contract
+     * @param tokenAddress Address of the RWA token
+     * @param orderIds List of order IDs to settle
+     */
+    function settleYield(
+        address yieldVault,
+        address tokenAddress,
+        uint256[] calldata orderIds
+    ) external onlyOwner nonReentrant {
+        require(yieldVault != address(0), "Invalid YieldVault");
+        
+        for (uint256 i = 0; i < orderIds.length; i++) {
+            Order storage order = orders[orderIds[i]];
+            
+            // Skip if not active or token mismatch
+            if (!order.isActive || order.tokenAddress != tokenAddress) {
+                continue;
+            }
+
+            order.isActive = false;
+
+            if (order.isBuy) {
+                // BUY ORDER: Refund locked USDC
+                uint256 refundUsdc = (order.amount * order.pricePerToken) / 1e18;
+                if (refundUsdc > 0) {
+                    usdc.safeTransfer(order.maker, refundUsdc);
+                }
+                
+                emit OrderSettledForYield(order.id, order.maker, refundUsdc, false);
+            } else {
+                // SELL ORDER: Burn RWA for Yield (USDC)
+                if (order.amount > 0) {
+                    // Approve YieldVault
+                    IERC20(tokenAddress).approve(yieldVault, order.amount);
+
+                    // Record USDC balance before
+                    uint256 balanceBefore = usdc.balanceOf(address(this));
+
+                    // Call claimYield
+                    (bool success, ) = yieldVault.call(
+                        abi.encodeWithSignature("claimYield(address,uint256)", tokenAddress, order.amount)
+                    );
+                    require(success, "Yield claim failed");
+
+                    // Calculate yield received
+                    uint256 yieldReceived = usdc.balanceOf(address(this)) - balanceBefore;
+
+                    // Transfer yield to maker
+                    if (yieldReceived > 0) {
+                        usdc.safeTransfer(order.maker, yieldReceived);
+                    }
+                    
+                    emit OrderSettledForYield(order.id, order.maker, yieldReceived, true);
+                }
+            }
+        }
     }
 }

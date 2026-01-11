@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { LeveragePosition, LeveragePositionSchema } from '../../database/schemas/leverage-position.schema';
 import { BlockchainModule } from '../blockchain/blockchain.module';
@@ -13,7 +13,7 @@ import { SecondaryMarketController } from './controllers/secondary-market.contro
     MongooseModule.forFeature([
       { name: LeveragePosition.name, schema: LeveragePositionSchema },
     ]),
-    BlockchainModule,
+    forwardRef(() => BlockchainModule),
     NotificationsModule,
   ],
   controllers: [SecondaryMarketController],

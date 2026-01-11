@@ -19,6 +19,7 @@ import { LeverageBlockchainService } from '../../leverage/services/leverage-bloc
 import { SolvencyPositionService } from '../../solvency/services/solvency-position.service';
 import { SolvencyBlockchainService } from '../../solvency/services/solvency-blockchain.service';
 import { PositionStatus, TokenType } from '../../../database/schemas/solvency-position.schema';
+import { SecondaryMarketService } from '../../secondary-market/services/secondary-market.service';
 
 @Injectable()
 export class YieldDistributionService {
@@ -41,6 +42,8 @@ export class YieldDistributionService {
     private solvencyPositionService: SolvencyPositionService,
     @Inject(forwardRef(() => SolvencyBlockchainService))
     private solvencyBlockchainService: SolvencyBlockchainService,
+    @Inject(forwardRef(() => SecondaryMarketService))
+    private secondaryMarketService: SecondaryMarketService,
   ) { }
 
   private async executeWithRetry<T>(
@@ -218,6 +221,20 @@ export class YieldDistributionService {
         : 'N/A'
       }`,
     );
+
+    // ========================================================================
+    // AUTOMATIC SECONDARY MARKET (P2P) ORDER SETTLEMENT
+    // ========================================================================
+    this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    this.logger.log(`🔍 Checking for open P2P orders for this asset...`);
+    try {
+      await this.secondaryMarketService.settleOrdersForYield(asset.assetId);
+      this.logger.log(`✅ P2P ORDER SETTLEMENT COMPLETE`);
+    } catch (error) {
+      this.logger.error(`❌ Error settling P2P orders: ${error}`);
+      this.logger.error(`   Continuing with other settlement processes...`);
+      // Don't throw - P2P settlement failure shouldn't halt critical settlement
+    }
 
     // ========================================================================
     // AUTOMATIC LEVERAGE POSITION SETTLEMENT
