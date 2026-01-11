@@ -244,15 +244,15 @@ export class SolvencyController {
       throw new BadRequestException('Position does not belong to authenticated user');
     }
 
-    // Auto-detect token type based on Asset collection
-    const tokenType = await this.positionService.determineTokenType(positionData.collateralToken);
+    // Use token type directly from blockchain (0 = RWA, 1 = PRIVATE_ASSET)
+    const tokenType = positionData.tokenType === 0 ? 'RWA' : 'PRIVATE_ASSET';
 
     // Sync database record (update if exists, create if not)
     const position = await this.positionService.syncPosition(
       positionId,
       positionData.user,
       positionData.collateralToken,
-      tokenType,
+      tokenType as any,
       positionData.collateralAmount.toString(),
       positionData.tokenValueUSD.toString(),
       dto.txHash,
