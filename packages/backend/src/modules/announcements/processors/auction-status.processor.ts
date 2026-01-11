@@ -122,11 +122,12 @@ export class AuctionStatusProcessor extends WorkerHost {
       // Extract auction parameters
       const tokenAddress = asset.token.address;
       const reservePrice = asset.listing?.reservePrice || '0';
+      const minPrice = asset.listing?.priceRange?.min || reservePrice;
       const duration = asset.listing?.duration || 3600; // Default 1 hour
       const minInvestment = asset.tokenParams?.minInvestment || '1000000000000000000'; // Default 1 token
 
       this.logger.log(
-        `Creating on-chain auction listing for ${assetId}: token=${tokenAddress}, reserve=${reservePrice}, duration=${duration}s`,
+        `Creating on-chain auction listing for ${assetId}: token=${tokenAddress}, reserve=${reservePrice}, minPrice=${minPrice}, duration=${duration}s`,
       );
 
       // Create the auction listing on-chain
@@ -136,6 +137,7 @@ export class AuctionStatusProcessor extends WorkerHost {
         reservePrice,
         minInvestment,
         duration.toString(),
+        minPrice,
       );
 
       this.logger.log(`Auction listing created on-chain in tx: ${txHash}`);

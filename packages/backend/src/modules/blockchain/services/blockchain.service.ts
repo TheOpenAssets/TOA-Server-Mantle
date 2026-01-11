@@ -287,6 +287,7 @@ export class BlockchainService {
     price: string,
     minInvestment: string,
     duration?: string,
+    minPrice?: string,
   ): Promise<Hash> {
     try {
       const wallet = this.walletService.getAdminWallet();
@@ -294,7 +295,7 @@ export class BlockchainService {
       const abi = this.contractLoader.getContractAbi('PrimaryMarketplace');
 
       this.logger.log(`========== Starting listOnMarketplace ==========`);
-      this.logger.log(`Input params: tokenAddress=${tokenAddress}, type=${type}, price=${price}, minInvestment=${minInvestment}, duration=${duration}`);
+      this.logger.log(`Input params: tokenAddress=${tokenAddress}, type=${type}, price=${price}, minInvestment=${minInvestment}, duration=${duration}, minPrice=${minPrice}`);
       this.logger.log(`Marketplace contract: ${address}`);
       this.logger.log(`Admin wallet: ${wallet.account.address}`);
 
@@ -329,13 +330,14 @@ export class BlockchainService {
       this.logger.log(`  [1] tokenAddress: ${tokenAddress}`);
       this.logger.log(`  [2] listingType: ${listingTypeEnum} (${type})`);
       this.logger.log(`  [3] priceOrReserve: ${price}`);
-      this.logger.log(`  [4] duration: ${duration || '0'}`);
-      this.logger.log(`  [5] totalSupply: ${totalSupplyWei.toString()}`);
-      this.logger.log(`  [6] minInvestment: ${minInvestment}`);
+      this.logger.log(`  [4] minPrice: ${minPrice || '0'}`);
+      this.logger.log(`  [5] duration: ${duration || '0'}`);
+      this.logger.log(`  [6] totalSupply: ${totalSupplyWei.toString()}`);
+      this.logger.log(`  [7] minInvestment: ${minInvestment}`);
       this.logger.log(`==============================================`);
 
       // New createListing signature:
-      // createListing(assetId, tokenAddress, listingType, priceOrReserve, duration, totalSupply, minInvestment)
+      // createListing(assetId, tokenAddress, listingType, priceOrReserve, minPrice, duration, totalSupply, minInvestment)
 
       this.logger.log(`Submitting transaction...`);
       const hash = await this.retryWithBackoff(() => wallet.writeContract({
@@ -347,6 +349,7 @@ export class BlockchainService {
           tokenAddress as Address,
           listingTypeEnum,
           BigInt(price),               // priceOrReserve
+          BigInt(minPrice || '0'),     // minPrice (0 for STATIC, actual min for AUCTION)
           BigInt(duration || '0'),     // duration (0 for STATIC is fine, or ignored)
           totalSupplyWei,              // totalSupply
           BigInt(minInvestment),       // minInvestment

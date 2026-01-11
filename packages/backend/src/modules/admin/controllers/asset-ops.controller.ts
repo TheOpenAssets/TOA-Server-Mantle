@@ -321,7 +321,12 @@ export class AssetOpsController {
         );
       }
 
-      this.logger.log(`Listing asset ${dto.assetId} - Type: ${listingType}, Price: ${price}, MinInv: ${minInvestment}`);
+      // Get minimum price for auctions (from price range), use 0 or price for static
+      const minPrice = listingType === 'AUCTION'
+        ? (asset.listing?.priceRange?.min || price)
+        : '0';
+
+      this.logger.log(`Listing asset ${dto.assetId} - Type: ${listingType}, Price: ${price}, MinPrice: ${minPrice}, MinInv: ${minInvestment}`);
 
       // List on marketplace
       const txHash = await this.blockchainService.listOnMarketplace(
@@ -330,6 +335,7 @@ export class AssetOpsController {
         price,
         minInvestment,
         duration,
+        minPrice,
       );
 
       // Update asset listing status in DB
