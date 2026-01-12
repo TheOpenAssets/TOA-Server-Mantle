@@ -637,12 +637,27 @@ export class SecondaryMarketService {
 
       this.logger.log(`[P2P Service] ⏳ Waiting for transaction confirmation: ${hash}`);
       
-      const receipt = await this.publicClient.waitForTransactionReceipt({ 
-        hash,
-        timeout: 120000, // 2 minutes
-      });
+      // Retry mechanism for transaction receipt
+      let receipt;
+      let retries = 0;
+      const maxRetries = 5;
 
-      if (receipt.status !== 'success') {
+      while (retries < maxRetries) {
+        try {
+          receipt = await this.publicClient.waitForTransactionReceipt({ 
+            hash,
+            timeout: 120000, // 2 minutes
+          });
+          break;
+        } catch (err: any) {
+          retries++;
+          this.logger.warn(`[P2P Service] ⚠️ Error waiting for receipt (attempt ${retries}/${maxRetries}): ${err.message}`);
+          if (retries === maxRetries) throw err;
+          await new Promise(resolve => setTimeout(resolve, 2000 * retries)); // Exponential backoff
+        }
+      }
+
+      if (receipt?.status !== 'success') {
         throw new Error('Transaction failed on-chain');
       }
 

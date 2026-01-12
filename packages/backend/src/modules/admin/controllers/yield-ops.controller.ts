@@ -3,9 +3,6 @@ import { YieldDistributionService } from '../../yield/services/yield-distributio
 import { RecordSettlementDto, ConfirmUSDCDto, DistributeDto } from '../../yield/dto/yield-ops.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
-import { LeverageBlockchainService } from '../../leverage/services/leverage-blockchain.service';
-import { LeveragePositionService } from '../../leverage/services/leverage-position.service';
-import { ClaimYieldFromBurnDto, ProcessSettlementDto } from '../../leverage/dto/leverage.dto';
 
 @Controller('admin/yield')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)

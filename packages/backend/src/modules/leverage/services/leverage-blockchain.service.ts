@@ -388,14 +388,22 @@ export class LeverageBlockchainService {
       const position = await this.getPosition(positionId);
       const rwaToken = position.rwaToken;
 
-      const hash = await this.executeWithRetry(() => wallet.writeContract({
-        address: leverageVaultAddress as Address,
-        abi: leverageVaultAbi,
-        functionName: 'claimYieldFromBurn',
-        args: [BigInt(positionId), yieldVaultAddress, rwaToken, tokenAmount],
-      }), 'claimYieldFromBurn write');
+      const hash = await this.executeWithRetry(async () => {
+        const nonce = await this.publicClient.getTransactionCount({
+          address: wallet.account.address,
+        });
+        return wallet.writeContract({
+          address: leverageVaultAddress as Address,
+          abi: leverageVaultAbi,
+          functionName: 'claimYieldFromBurn',
+          args: [BigInt(positionId), yieldVaultAddress, rwaToken, tokenAmount],
+          nonce,
+        });
+      }, 'claimYieldFromBurn write');
 
       this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
         timeout: 120000, // 2 minutes timeout
@@ -475,12 +483,21 @@ export class LeverageBlockchainService {
       const position = await this.getPosition(positionId);
       const mETHReturned = position.mETHCollateral;
 
-      const hash = await this.executeWithRetry(() => wallet.writeContract({
-        address: address as Address,
-        abi,
-        functionName: 'processSettlement',
-        args: [BigInt(positionId), settlementUSDC],
-      }), 'processSettlement write');
+      const hash = await this.executeWithRetry(async () => {
+        const nonce = await this.publicClient.getTransactionCount({
+          address: wallet.account.address,
+        });
+        return wallet.writeContract({
+          address: address as Address,
+          abi,
+          functionName: 'processSettlement',
+          args: [BigInt(positionId), settlementUSDC],
+          nonce,
+        });
+      }, 'processSettlement write');
+
+      this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
+      await new Promise((resolve) => setTimeout(resolve, 4000));
 
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
@@ -561,12 +578,21 @@ export class LeverageBlockchainService {
     this.logger.log(`🔥 Settling liquidation for position ${positionId}...`);
 
     try {
-      const hash = await this.executeWithRetry(() => wallet.writeContract({
-        address: address as Address,
-        abi,
-        functionName: 'settleLiquidation',
-        args: [BigInt(positionId)],
-      }), 'settleLiquidation write');
+      const hash = await this.executeWithRetry(async () => {
+        const nonce = await this.publicClient.getTransactionCount({
+          address: wallet.account.address,
+        });
+        return wallet.writeContract({
+          address: address as Address,
+          abi,
+          functionName: 'settleLiquidation',
+          args: [BigInt(positionId)],
+          nonce,
+        });
+      }, 'settleLiquidation write');
+
+      this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
