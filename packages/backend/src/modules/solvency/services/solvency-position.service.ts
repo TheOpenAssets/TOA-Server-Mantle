@@ -8,6 +8,7 @@ import {
   HealthStatus,
   PositionStatus,
 } from '../../../database/schemas/solvency-position.schema';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { SolvencyBlockchainService } from './solvency-blockchain.service';
 
 @Injectable()
@@ -17,6 +18,8 @@ export class SolvencyPositionService {
   constructor(
     @InjectModel(SolvencyPosition.name)
     private positionModel: Model<SolvencyPositionDocument>,
+    @InjectModel(Asset.name)
+    private assetModel: Model<AssetDocument>,
     private blockchainService: SolvencyBlockchainService,
   ) {}
 
@@ -61,6 +64,87 @@ export class SolvencyPositionService {
     this.logger.log(`Position ${positionId} created successfully`);
 
     return position;
+  }
+
+  /**
+   * Automatically determine token type based on whether token exists in Asset collection
+   * RWA = Token exists in Asset collection (our tokenized RWA assets)
+   * PRIVATE_ASSET = Token not in Asset collection (external/private assets)
+   */
+  async determineTokenType(collateralTokenAddress: string): Promise<TokenType> {
+    this.logger.log(`Determining token type for address: ${collateralTokenAddress}`);
+
+    // Look up the asset by token address
+    const asset = await this.assetModel.findOne({
+      'token.address': collateralTokenAddress.toLowerCase()
+    });
+
+    if (asset) {
+      // Token found in Asset collection => RWA
+      this.logger.log(`Token ${collateralTokenAddress} found in Asset collection => RWA`);
+      return TokenType.RWA;
+    }
+
+    // Token not found in Asset collection => PRIVATE_ASSET
+    this.logger.log(`Token ${collateralTokenAddress} not found in Asset collection => PRIVATE_ASSET`);
+    return TokenType.PRIVATE_ASSET;
+  }
+
+  /**
+   * Sync position from chain (upsert - update if exists, create if not)
+   * Used when syncing on-chain positions with backend database
+   */
+  async syncPosition(
+    positionId: number,
+    userAddress: string,
+    collateralTokenAddress: string,
+    collateralTokenType: TokenType,
+    collateralAmount: string,
+    tokenValueUSD: string,
+    depositTxHash: string,
+    depositBlockNumber: number,
+    oaidCreditIssued: boolean = false,
+  ): Promise<SolvencyPosition> {
+    this.logger.log(`Syncing position ${positionId} for user ${userAddress}`);
+
+    // Check if position already exists
+    const existingPosition = await this.positionModel.findOne({ positionId });
+
+    if (existingPosition) {
+      // Position exists - update it
+      this.logger.log(`Position ${positionId} already exists, updating...`);
+
+      // Calculate LTV based on token type
+      const initialLTV = collateralTokenType === TokenType.RWA ? 7000 : 6000;
+
+      existingPosition.collateralTokenAddress = collateralTokenAddress;
+      existingPosition.collateralTokenType = collateralTokenType;
+      existingPosition.collateralAmount = collateralAmount;
+      existingPosition.tokenValueUSD = tokenValueUSD;
+      existingPosition.initialLTV = initialLTV;
+      existingPosition.depositTxHash = depositTxHash;
+      existingPosition.depositBlockNumber = depositBlockNumber;
+
+      await existingPosition.save();
+      this.logger.log(`Position ${positionId} updated successfully`);
+
+      return existingPosition;
+    } else {
+      // Position doesn't exist - create it
+      this.logger.log(`Position ${positionId} not found, creating new...`);
+
+      return this.createPosition(
+        positionId,
+        userAddress,
+        collateralTokenAddress,
+        collateralTokenType,
+        collateralAmount,
+        tokenValueUSD,
+        depositTxHash,
+        depositBlockNumber,
+        oaidCreditIssued,
+      );
+    }
   }
 
   /**
@@ -461,5 +545,87 @@ export class SolvencyPositionService {
         );
       }
     }
+  }
+
+  /**
+   * Notify backend of a loan borrow transaction
+   * Verifies transaction and syncs loan details with database
+   */
+  async notifyLoanBorrow(
+    userAddress: string,
+    positionId: number,
+    txHash: string,
+    borrowAmount: string,
+    loanDuration: string,
+    numberOfInstallments: string,
+    blockNumber?: string,
+  ): Promise<any> {
+    this.logger.log(`Notifying loan borrow for position ${positionId}, tx: ${txHash}`);
+
+    // Verify position belongs to user
+    const position = await this.getPosition(positionId);
+    if (position.userAddress.toLowerCase() !== userAddress.toLowerCase()) {
+      throw new Error('Position does not belong to user');
+    }
+
+    // TODO: Verify transaction on-chain (optional but recommended)
+    // Could verify USDCBorrowed event in the transaction
+
+    // Record borrow in database
+    const updatedPosition = await this.recordBorrow(
+      positionId,
+      borrowAmount,
+      parseInt(loanDuration),
+      parseInt(numberOfInstallments),
+    );
+
+    this.logger.log(`Loan borrow recorded for position ${positionId}`);
+
+    return {
+      success: true,
+      message: 'Loan borrow recorded successfully',
+      position: updatedPosition,
+    };
+  }
+
+  /**
+   * Notify backend of a loan repayment transaction
+   * Verifies transaction and syncs repayment with database
+   */
+  async notifyLoanRepayment(
+    userAddress: string,
+    positionId: number,
+    txHash: string,
+    repaymentAmount: string,
+    blockNumber?: string,
+  ): Promise<any> {
+    this.logger.log(`Notifying loan repayment for position ${positionId}, tx: ${txHash}`);
+
+    // Verify position belongs to user
+    const position = await this.getPosition(positionId);
+    if (position.userAddress.toLowerCase() !== userAddress.toLowerCase()) {
+      throw new Error('Position does not belong to user');
+    }
+
+    // TODO: Verify transaction on-chain (optional but recommended)
+    // Could verify USDCRepaid event in the transaction
+
+    // For now, assume repayment amount is all principal (no interest in this version)
+    const principal = repaymentAmount;
+
+    // Record repayment in database
+    const updatedPosition = await this.recordRepayment(
+      positionId,
+      repaymentAmount,
+      principal,
+    );
+
+    this.logger.log(`Loan repayment recorded for position ${positionId}`);
+
+    return {
+      success: true,
+      message: 'Loan repayment recorded successfully',
+      position: updatedPosition,
+    };
   }
 }

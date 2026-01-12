@@ -109,6 +109,8 @@ export class PurchaseTrackerService {
         assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
         industry: asset.metadata?.industry,
         riskTier: asset.metadata?.riskTier,
+        type: 'PURCHASE', // Mark as purchase
+
       },
     });
 
@@ -372,7 +374,8 @@ export class PurchaseTrackerService {
       // - SECONDARY_MARKET with negative amount (seller): Money IN (subtract from investment), tokens ALREADY ACCOUNTED in P2P_SELL_ORDER (skip for balance)
       // - P2P_SELL_ORDER: No effect on investment (escrow lock), tokens OUT (subtract from balance)
       // - P2P_ORDER_CANCELLED: No effect on investment (escrow unlock), tokens IN (add to balance)
-
+      
+      console.log(`[Portfolio] Purchase Source: ${purchase.source}, Amount: ${purchase.amount}, Total Payment: ${purchase.totalPayment}`);
       let investmentDelta = '0';
       let balanceDelta = purchase.amount; // Default: use purchase amount for balance
       const amount = BigInt(purchase.amount);
@@ -380,9 +383,9 @@ export class PurchaseTrackerService {
 
 
 
+
       if (purchase.source === 'PRIMARY_MARKET' || purchase.source === 'AUCTION') {
-        // console.log(`[Portfolio] Condition: PRIMARY_MARKET/AUCTION`);
-        // Initial purchase: money OUT, tokens IN
+        console.log(`[Portfolio] Condition: PRIMARY_MARKET/AUCTION`);
         investmentDelta = totalPayment.toString();
       } else if (purchase.source === 'SECONDARY_MARKET') {
         if (amount < 0n) {
@@ -413,14 +416,14 @@ export class PurchaseTrackerService {
         existing.purchaseCount += 1;
         existing.transactions.push({
           date: purchase.createdAt,
-          type: this.getTransactionType(purchase.source, amount),
+          type: purchase.metadata?.type === 'DEPOSIT' ? 'CREDIT DEPOSIT': this.getTransactionType(purchase.source, amount) ,
           amount: purchase.amount,
           balanceDelta,
           price: purchase.price,
           totalValue: purchase.totalPayment,
           investmentDelta,
           txHash: purchase.txHash,
-          source: purchase.source,
+          source: purchase.metadata?.type === 'DEPOSIT' ? 'DEPOSIT' : purchase.source,
         })
           console.log('TOTAL AMOUNT :', existing.totalAmount);
           ;
@@ -437,14 +440,14 @@ export class PurchaseTrackerService {
           metadata: purchase.metadata,
           transactions: [{
             date: purchase.createdAt,
-            type: this.getTransactionType(purchase.source, amount),
+            type: purchase.metadata?.type === 'DEPOSIT' ? 'CREDIT DEPOSIT': this.getTransactionType(purchase.source, amount),
             amount: purchase.amount,
             balanceDelta: balanceDelta,
             price: purchase.price,
             totalValue: purchase.totalPayment,
             investmentDelta,
             txHash: purchase.txHash,
-            source: purchase.source,
+            source: purchase.metadata?.type === 'DEPOSIT' ? 'DEPOSIT' : purchase.source,
           }],
         });
       }

@@ -24,7 +24,8 @@ contract PrimaryMarket {
         // Static params
         uint256 staticPrice;
         // Auction params
-        uint256 reservePrice;   // Min price for auction
+        uint256 minPrice;       // Minimum bid price (lower bound of range)
+        uint256 reservePrice;   // Reserve price (avg of min/max, used for clearing)
         uint256 endTime;
         uint256 clearingPrice;  // Set when auction ends
         AuctionPhase auctionPhase;
@@ -91,6 +92,7 @@ contract PrimaryMarket {
         address tokenAddress,
         ListingType listingType,
         uint256 priceOrReserve,
+        uint256 minPrice,
         uint256 duration,
         uint256 totalSupply,
         uint256 minInvestment
@@ -108,6 +110,7 @@ contract PrimaryMarket {
         if (listingType == ListingType.STATIC) {
             newListing.staticPrice = priceOrReserve;
         } else {
+            newListing.minPrice = minPrice;
             newListing.reservePrice = priceOrReserve;
             newListing.endTime = block.timestamp + duration;
             newListing.auctionPhase = AuctionPhase.BIDDING;
@@ -148,7 +151,7 @@ contract PrimaryMarket {
         require(listing.listingType == ListingType.AUCTION, "Not an auction");
         require(listing.auctionPhase == AuctionPhase.BIDDING, "Bidding closed");
         require(block.timestamp < listing.endTime, "Auction expired");
-        require(price >= listing.reservePrice, "Below reserve price");
+        require(price >= listing.minPrice, "Below minimum price");
         require(tokenAmount >= listing.minInvestment, "Below min investment");
 
         uint256 deposit = price * tokenAmount / 1e18;

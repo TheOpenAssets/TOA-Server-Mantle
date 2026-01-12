@@ -154,6 +154,8 @@ export class SolvencyBlockchainService {
     usdcBorrowed: bigint;
     tokenValueUSD: bigint;
     createdAt: bigint;
+    liquidatedAt: bigint;
+    creditLineId: bigint;
     active: boolean;
     tokenType: number;
   }> {
@@ -169,6 +171,17 @@ export class SolvencyBlockchainService {
       args: [BigInt(positionId)],
     }) as any;
 
+    this.logger.log(`Position user retrieved for ID ${position[0]}`);
+    this.logger.log(`Position collateral token: ${position[1]}`);
+    this.logger.log(`Position collateral amount: ${position[2]}`);
+    this.logger.log(`Position USDC borrowed: ${position[3]}`);
+    this.logger.log(`Position token value USD: ${position[4]}`);
+    this.logger.log(`Position created at: ${position[5]}`);
+    this.logger.log(`Position liquidated at: ${position[6]}`);
+    this.logger.log(`Position credit line ID: ${position[7]}`);
+    this.logger.log(`Position active: ${position[8]}`);
+    this.logger.log(`Position token type: ${position[9]}`);
+
     return {
       user: position[0],
       collateralToken: position[1],
@@ -176,8 +189,10 @@ export class SolvencyBlockchainService {
       usdcBorrowed: position[3],
       tokenValueUSD: position[4],
       createdAt: position[5],
-      active: position[6],
-      tokenType: position[7],
+      liquidatedAt: position[6],
+      creditLineId: position[7],
+      active: position[8],
+      tokenType: position[9],
     };
   }
 

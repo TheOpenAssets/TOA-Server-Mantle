@@ -257,15 +257,15 @@ export class LeveragePositionService {
     }
 
     // Update RWA token amount
-    const newRWATokenAmount = (
-      BigInt(position.rwaTokenAmount) - BigInt(claim.tokensBurned)
-    ).toString();
+    // const newRWATokenAmount = (
+    //   BigInt(position.rwaTokenAmount) - BigInt(claim.tokensBurned)
+    // ).toString();
 
     await this.leveragePositionModel.updateOne(
       { positionId },
       {
         $set: {
-          rwaTokenAmount: newRWATokenAmount,
+          // rwaTokenAmount: newRWATokenAmount,
           yieldClaimTimestamp: new Date(),
           yieldClaimTxHash: claim.transactionHash,
           yieldClaimedUSDC: claim.usdcReceived,

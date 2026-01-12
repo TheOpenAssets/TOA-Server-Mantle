@@ -83,6 +83,7 @@ export interface PrimaryMarketInterface extends Interface {
       BigNumberish,
       BigNumberish,
       BigNumberish,
+      BigNumberish,
       BigNumberish
     ]
   ): string;
@@ -370,6 +371,7 @@ export interface PrimaryMarket extends BaseContract {
       tokenAddress: AddressLike,
       listingType: BigNumberish,
       priceOrReserve: BigNumberish,
+      minPrice: BigNumberish,
       duration: BigNumberish,
       totalSupply: BigNumberish,
       minInvestment: BigNumberish
@@ -402,6 +404,7 @@ export interface PrimaryMarket extends BaseContract {
         bigint,
         bigint,
         bigint,
+        bigint,
         boolean,
         bigint
       ] & {
@@ -409,6 +412,7 @@ export interface PrimaryMarket extends BaseContract {
         assetId: string;
         listingType: bigint;
         staticPrice: bigint;
+        minPrice: bigint;
         reservePrice: bigint;
         endTime: bigint;
         clearingPrice: bigint;
@@ -488,6 +492,7 @@ export interface PrimaryMarket extends BaseContract {
       tokenAddress: AddressLike,
       listingType: BigNumberish,
       priceOrReserve: BigNumberish,
+      minPrice: BigNumberish,
       duration: BigNumberish,
       totalSupply: BigNumberish,
       minInvestment: BigNumberish
@@ -524,6 +529,7 @@ export interface PrimaryMarket extends BaseContract {
         bigint,
         bigint,
         bigint,
+        bigint,
         boolean,
         bigint
       ] & {
@@ -531,6 +537,7 @@ export interface PrimaryMarket extends BaseContract {
         assetId: string;
         listingType: bigint;
         staticPrice: bigint;
+        minPrice: bigint;
         reservePrice: bigint;
         endTime: bigint;
         clearingPrice: bigint;

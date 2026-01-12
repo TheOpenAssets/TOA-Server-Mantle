@@ -236,39 +236,37 @@ async function repayLoan(wallet, solvencyVaultContract, positionId, amount) {
 
 async function syncRepaymentWithBackend(positionId, repayData, amount, jwt) {
   logSection('Sync Repayment with Backend');
-  logInfo('Syncing repayment with backend database...');
+  logInfo('Notifying backend of loan repayment...');
 
   try {
-    // We use the same repay endpoint which handles both DB update and on-chain check if needed,
-    // but since we did it manually on-chain, usually we'd want a "sync" endpoint.
-    // However, the backend controller's `repayLoan` calls blockchain service.
-    // The `sync-position` endpoint is for creation.
-    // Let's check if there is a sync repayment endpoint. 
-    // Looking at SolvencyController, there isn't a dedicated "sync repayment" endpoint exposed publicly
-    // that takes txHash. The `repayLoan` endpoint executes the tx itself via platform wallet usually.
-    // But since this script simulates user wallet interaction, we might rely on the backend's
-    // event listener (if any) or we might need to add a sync endpoint.
-    
-    // For now, we'll just log that backend might need manual update or event listening.
-    // Wait! The SolvencyController has `repayLoan` which calls `blockchainService.repayLoan`.
-    // That means the backend EXPECTS to do the repayment itself (custodial or platform-mediated).
-    // But here we are doing it directly from investor wallet.
-    
-    // If the backend relies on on-chain events, it should pick it up eventually.
-    // If not, we might be out of sync.
-    // Let's check `SolvencyController` again...
-    // It seems the current design in `SolvencyController.repayLoan` performs the on-chain tx. 
-    
-    logWarning('NOTE: You performed the repayment directly on-chain.');
-    logWarning('The backend database might not reflect this immediately unless it has an event indexer.');
-    logWarning('If you see discrepancies, check the blockchain state.');
+    const response = await fetch(`${BACKEND_URL}/solvency/loan/repay-notify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${jwt}`,
+      },
+      body: JSON.stringify({
+        txHash: repayData.txHash,
+        positionId: positionId.toString(),
+        repaymentAmount: ethers.parseUnits(amount, 6).toString(),
+        blockNumber: repayData.blockNumber.toString(),
+      }),
+    });
 
-    // We can try to force a sync if there was an endpoint, but there isn't one for repayment specifically.
-    // Only `sync-position` for creation.
-    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Backend notification failed');
+    }
+
+    const result = await response.json();
+    logSuccess('Backend synced successfully');
+    logInfo('Position updated in database');
+
     return true;
   } catch (error) {
-    logError(`Failed to sync: ${error.message}`);
+    logError(`Failed to sync with backend: ${error.message}`);
+    logWarning('Loan repayment exists on-chain but not synced with backend!');
+    logWarning('The backend may not show correct loan status.');
     return false;
   }
 }

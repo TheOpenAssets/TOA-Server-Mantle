@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumberString, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumberString, IsOptional, Matches } from 'class-validator';
 
 export class NotifyPurchaseDto {
   @IsString()
@@ -9,9 +9,9 @@ export class NotifyPurchaseDto {
   @IsNotEmpty()
   assetId!: string;
 
-  @IsNumberString()
+  @Matches(/^-?\d+$/, { message: 'amount must be a valid number string (can be negative)' })
   @IsNotEmpty()
-  amount!: string; // Token amount purchased (in wei)
+  amount!: string; // Token amount purchased (in wei) - can be negative
 
   @IsOptional()
   @IsNumberString()
