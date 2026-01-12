@@ -1,13 +1,13 @@
 {
   "network": "mantleTestnet",
-  "timestamp": "2026-01-11T10:38:22.970Z",
+  "timestamp": "2026-01-12T09:45:56.749Z",
   "contracts": {
     "AttestationRegistry": "0x03FE7d3736402D140659e7bD92B64808E31C3f51",
     "TrustedIssuersRegistry": "0xf63B563b6D438122cBC87f4356e60b8BB3Bc53E2",
     "IdentityRegistry": "0x2E310C62A225033055E88B690F8d054ece8bcbC4",
     "YieldVault": "0xa05bDf67483EB6ba5CcA0dc81543DeD5Ed845Da7",
     "TokenFactory": "0x7C75795Cf41ee32fB4FEB89964d7591F0a44BcfE",
-    "PrimaryMarketplace": "0x034Ca27695555CEeB44CB62d59c4E3f95F4Ef504",
+    "PrimaryMarketplace": "0x7D8ac3ff7E7fd1a577ff778922Cc568be669beE0",
     "USDC": "0x9A54Bad93a00Bf1232D4e636f5e53055Dc0b8238",
     "MockMETH": "0x4Ade8aAa0143526393EcadA836224EF21aBC6ac6",
     "METHFaucet": "0xB50d0AC5D59E456C1f3EdB66403fd27eEbd155dB",
@@ -18,5 +18,6 @@
     "Faucet": "0x26Da2F1a2de3295302Fd95eBA1A183dc8Ffd77a3",
     "OAID": "0x4456D1D97d22bcF06a94767C89a8577698589227",
     "SolvencyVault": "0x3b3d70Fe12076f30E9999Fd65feC6C6DeB47B5eF",
-    "SecondaryMarket": "0x23f5c5893333199B3E166aCB8D48479D5E5B32CA"  }
+    "SecondaryMarket": "0x23f5c5893333199B3E166aCB8D48479D5E5B32CA"
+  }
 }

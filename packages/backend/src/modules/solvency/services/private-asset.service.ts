@@ -63,7 +63,7 @@ export class PrivateAssetService {
 
     // Deploy via TokenFactory
     const wallet = this.walletService.getPlatformWallet();
-    
+
     const factoryAddress = this.contractLoader.getContractAddress('TokenFactory');
     const factoryAbi = this.contractLoader.getContractAbi('TokenFactory');
 
@@ -90,7 +90,7 @@ export class PrivateAssetService {
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000,
+      timeout: 180000,
     });
 
     this.logger.log(`Deployment confirmed in block ${receipt.blockNumber}`);
@@ -231,7 +231,7 @@ export class PrivateAssetService {
 
     // Update on-chain
     const wallet = this.walletService.getPlatformWallet();
-    
+
     const tokenAbi = this.contractLoader.getContractAbi('PrivateAssetToken');
 
     const hash = await wallet.writeContract({
@@ -245,7 +245,7 @@ export class PrivateAssetService {
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000,
+      timeout: 180000,
     });
 
     this.logger.log(`Valuation update confirmed in block ${receipt.blockNumber}`);
@@ -275,7 +275,7 @@ export class PrivateAssetService {
 
     // Update on-chain
     const wallet = this.walletService.getPlatformWallet();
-    
+
     const tokenAbi = this.contractLoader.getContractAbi('PrivateAssetToken');
 
     const hash = await wallet.writeContract({
@@ -285,7 +285,7 @@ export class PrivateAssetService {
       args: [isActive],
     });
 
-    await this.publicClient.waitForTransactionReceipt({ hash, timeout: 180_000 });
+    await this.publicClient.waitForTransactionReceipt({ hash, timeout: 180000 });
 
     // Update database
     asset.isActive = isActive;

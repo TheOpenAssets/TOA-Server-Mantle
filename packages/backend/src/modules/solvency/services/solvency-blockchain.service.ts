@@ -35,7 +35,7 @@ export class SolvencyBlockchainService {
         const errorMessage = error?.message || '';
         const errorDetails = error?.details || '';
         const causeMessage = error?.cause?.message || '';
-        
+
         const isNonceError =
           errorMessage.includes('nonce too low') ||
           errorDetails.includes('nonce too low') ||
@@ -111,7 +111,7 @@ export class SolvencyBlockchainService {
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 300_000, // 5 minutes timeout for Mantle Sepolia
+      timeout: 300000, // 5 minutes timeout for Mantle Sepolia
     });
 
     this.logger.log(`Deposit confirmed in block ${receipt.blockNumber}`);
@@ -209,7 +209,7 @@ export class SolvencyBlockchainService {
     blockNumber: number;
   }> {
     const wallet = this.walletService.getPlatformWallet();
-    
+
     const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
     const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
 
@@ -232,7 +232,7 @@ export class SolvencyBlockchainService {
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 300_000, // 5 minutes timeout
+      timeout: 300000, // 5 minutes timeout
     });
 
     this.logger.log(`Borrow confirmed in block ${receipt.blockNumber}`);
@@ -256,7 +256,7 @@ export class SolvencyBlockchainService {
     interest: string;
   }> {
     const wallet = this.walletService.getPlatformWallet();
-    
+
     const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
     const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
 
@@ -288,7 +288,7 @@ export class SolvencyBlockchainService {
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000,
+      timeout: 180000,
     });
 
     this.logger.log(`Repay confirmed in block ${receipt.blockNumber}`);
@@ -333,7 +333,7 @@ export class SolvencyBlockchainService {
     blockNumber: number;
   }> {
     const wallet = this.walletService.getPlatformWallet();
-    
+
     const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
     const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
 
@@ -350,7 +350,7 @@ export class SolvencyBlockchainService {
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000,
+      timeout: 180000,
     });
 
     this.logger.log(`Withdraw confirmed in block ${receipt.blockNumber}`);
@@ -373,7 +373,7 @@ export class SolvencyBlockchainService {
     discountedPrice: string;
   }> {
     const wallet = this.walletService.getPlatformWallet();
-    
+
     const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
     const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
 
@@ -391,7 +391,7 @@ export class SolvencyBlockchainService {
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000,
+      timeout: 180000,
     });
 
     this.logger.log(`Liquidation confirmed in block ${receipt.blockNumber}`);
@@ -446,7 +446,7 @@ export class SolvencyBlockchainService {
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000,
+      timeout: 180000,
     });
 
     this.logger.log(`Liquidation settled: ${hash}`);
@@ -495,7 +495,7 @@ export class SolvencyBlockchainService {
    * Get health factor for position
    */
   async getHealthFactor(positionId: number): Promise<number> {
-    
+
     const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
     const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
 
@@ -513,7 +513,7 @@ export class SolvencyBlockchainService {
    * Get outstanding debt from SeniorPool
    */
   async getOutstandingDebt(positionId: number): Promise<string> {
-    
+
     const seniorPoolAddress = this.contractLoader.getContractAddress('SeniorPool');
     const seniorPoolAbi = this.contractLoader.getContractAbi('SeniorPool');
 
@@ -540,7 +540,7 @@ export class SolvencyBlockchainService {
     active: boolean;
     tokenType: number;
   }> {
-    
+
     const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
     const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
 
@@ -567,7 +567,7 @@ export class SolvencyBlockchainService {
    * Get max borrowable amount for position
    */
   async getMaxBorrow(positionId: number): Promise<string> {
-    
+
     const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
     const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
 
@@ -667,7 +667,7 @@ export class SolvencyBlockchainService {
   }> {
     const wallet = this.walletService.getPlatformWallet();
     const oaidAddress = this.contractLoader.getContractAddress('OAID');
-    
+
     if (!oaidAddress) {
       throw new Error('OAID contract address not found in deployed_contracts.json');
     }
@@ -688,7 +688,7 @@ export class SolvencyBlockchainService {
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000,
+      timeout: 180000,
     });
 
     this.logger.log(`User registered in OAID at block ${receipt.blockNumber}`);
@@ -698,7 +698,7 @@ export class SolvencyBlockchainService {
     };
   }
 
-  
+
   /**
    * Get all OAID credit lines for a user
    */
@@ -834,7 +834,7 @@ export class SolvencyBlockchainService {
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 300_000,
+      timeout: 300000,
     });
 
     this.logger.log(

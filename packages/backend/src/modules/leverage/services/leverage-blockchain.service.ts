@@ -113,8 +113,8 @@ export class LeverageBlockchainService {
       this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 120_000, // 2 minutes timeout
-        pollingInterval: 2_000, // Check every 2 seconds
+        timeout: 120000, // 2 minutes timeout
+        pollingInterval: 2000, // Check every 2 seconds
       }), 'createPosition receipt');
 
       // Parse PositionCreated event to get positionId
@@ -180,8 +180,8 @@ export class LeverageBlockchainService {
 
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 120_000, // 2 minutes timeout
-        pollingInterval: 2_000, // Check every 2 seconds
+        timeout: 120000, // 2 minutes timeout
+        pollingInterval: 2000, // Check every 2 seconds
       }), 'harvestYield receipt');
       this.logger.log(`✅ Yield harvested: ${hash}`);
 
@@ -392,8 +392,8 @@ export class LeverageBlockchainService {
       this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 120_000, // 2 minutes timeout
-        pollingInterval: 2_000, // Check every 2 seconds
+        timeout: 120000, // 2 minutes timeout
+        pollingInterval: 2000, // Check every 2 seconds
       }), 'claimYieldFromBurn receipt');
       this.logger.log(`✅ Yield claimed via burn: ${hash}`);
 
@@ -564,7 +564,7 @@ export class LeverageBlockchainService {
 
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 60_000,
+        timeout: 60000,
       }), 'settleLiquidation receipt');
       this.logger.log(`✅ Liquidation settled: ${hash}`);
 
@@ -750,8 +750,8 @@ export class LeverageBlockchainService {
 
       await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 120_000, // 2 minutes timeout
-        pollingInterval: 2_000, // Check every 2 seconds
+        timeout: 120000, // 2 minutes timeout
+        pollingInterval: 2000, // Check every 2 seconds
       }), 'addCollateral receipt');
       this.logger.log(`✅ Collateral added: ${hash}`);
       return hash;
