@@ -30,4 +30,4 @@ import { NotificationsModule } from '../notifications/notifications.module';
   providers: [PurchaseTrackerService, BidTrackerService, AuctionService],
   exports: [AuctionService],
 })
-export class MarketplaceModule {}
+export class MarketplaceModule { }

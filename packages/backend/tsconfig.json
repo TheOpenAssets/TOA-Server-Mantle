@@ -5,11 +5,25 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "paths": {
-      "@mantle/types/*": ["../types/src/*"],
-      "@mantle/contracts/*": ["../contracts/generated/*"]
+      "@mantle/types/*": [
+        "../types/src/*"
+      ],
+      "@mantle/contracts/*": [
+        "../contracts/generated/*"
+      ]
     },
-    "types": ["jest", "node", "multer"]
+    "types": [
+      "jest",
+      "node",
+      "multer"
+    ]
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*",
+    "src/modules/marketplace/services/purchase-tracker.service.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

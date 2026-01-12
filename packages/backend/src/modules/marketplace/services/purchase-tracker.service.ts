@@ -374,7 +374,7 @@ export class PurchaseTrackerService {
       // - SECONDARY_MARKET with negative amount (seller): Money IN (subtract from investment), tokens ALREADY ACCOUNTED in P2P_SELL_ORDER (skip for balance)
       // - P2P_SELL_ORDER: No effect on investment (escrow lock), tokens OUT (subtract from balance)
       // - P2P_ORDER_CANCELLED: No effect on investment (escrow unlock), tokens IN (add to balance)
-      
+
       console.log(`[Portfolio] Purchase Source: ${purchase.source}, Amount: ${purchase.amount}, Total Payment: ${purchase.totalPayment}`);
       let investmentDelta = '0';
       let balanceDelta = purchase.amount; // Default: use purchase amount for balance
@@ -416,7 +416,7 @@ export class PurchaseTrackerService {
         existing.purchaseCount += 1;
         existing.transactions.push({
           date: purchase.createdAt,
-          type: purchase.metadata?.type === 'DEPOSIT' ? 'CREDIT DEPOSIT': this.getTransactionType(purchase.source, amount) ,
+          type: purchase.metadata?.type === 'DEPOSIT' ? 'CREDIT DEPOSIT' : this.getTransactionType(purchase.source, amount),
           amount: purchase.amount,
           balanceDelta,
           price: purchase.price,
@@ -425,8 +425,8 @@ export class PurchaseTrackerService {
           txHash: purchase.txHash,
           source: purchase.metadata?.type === 'DEPOSIT' ? 'DEPOSIT' : purchase.source,
         })
-          console.log('TOTAL AMOUNT :', existing.totalAmount);
-          ;
+        console.log('TOTAL AMOUNT :', existing.totalAmount);
+        ;
       } else {
         portfolioMap.set(purchase.assetId, {
           assetId: purchase.assetId,
@@ -440,7 +440,7 @@ export class PurchaseTrackerService {
           metadata: purchase.metadata,
           transactions: [{
             date: purchase.createdAt,
-            type: purchase.metadata?.type === 'DEPOSIT' ? 'CREDIT DEPOSIT': this.getTransactionType(purchase.source, amount),
+            type: purchase.metadata?.type === 'DEPOSIT' ? 'CREDIT DEPOSIT' : this.getTransactionType(purchase.source, amount),
             amount: purchase.amount,
             balanceDelta: balanceDelta,
             price: purchase.price,
@@ -517,7 +517,7 @@ export class PurchaseTrackerService {
               const claimableYieldRaw = totalSupply > 0n
                 ? (userTokenBalance * settlementUSDC) / totalSupply
                 : 0n;
-              
+
               console.log('CLAIMABLE YIELD RAW:', claimableYieldRaw.toString());
 
               const yieldInfo: any = {

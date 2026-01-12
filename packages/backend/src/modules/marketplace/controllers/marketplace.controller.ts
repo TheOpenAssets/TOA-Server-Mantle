@@ -24,7 +24,7 @@ export class MarketplaceController {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private purchaseTracker: PurchaseTrackerService,
     private bidTracker: BidTrackerService,
-  ) {}
+  ) { }
 
   @Get('listings')
   @UseGuards(JwtAuthGuard) // Investors must be authenticated
