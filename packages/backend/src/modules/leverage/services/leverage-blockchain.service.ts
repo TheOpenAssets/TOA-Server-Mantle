@@ -92,6 +92,12 @@ export class LeverageBlockchainService {
     this.logger.log(`mETH Price: $${Number(params.mETHPriceUSD) / 1e6} (18 decimals: ${mETHPriceUSD18})`);
     this.logger.log(`Asset ID bytes32: ${assetIdBytes}`);
 
+    setTimeout(() => {
+      this.logger.warn(
+        `⚠️ Ensure that the operation has sufficient mETH and USDC allowance set for LeverageVault contract at ${address}`,
+      );
+    }, 3000);
+
     try {
       const hash = await this.executeWithRetry(() => wallet.writeContract({
         address: address as Address,

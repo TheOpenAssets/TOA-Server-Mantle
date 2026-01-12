@@ -346,7 +346,7 @@ export class BlockchainService {
           BigInt(minInvestment),       // minInvestment
         ],
       }), 'createListing write');
-
+      
       this.logger.log(`✓ Transaction submitted: ${hash}`);
       this.logger.log(`Waiting for transaction receipt...`);
 

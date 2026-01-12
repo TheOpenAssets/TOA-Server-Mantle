@@ -75,6 +75,59 @@ export class PurchaseTrackerService {
       throw new ConflictException('Purchase already recorded');
     }
 
+    // Get asset details
+    const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+    if (!asset) {
+      throw new BadRequestException('Asset not found');
+    }
+
+    // Check if this is a deposit (negative amount) or a purchase (positive amount)
+    const isDeposit = dto.amount.startsWith('-');
+
+    if (isDeposit) {
+      // Handle token deposit to contract (balance decrease)
+      this.logger.log(`Processing token deposit (balance decrease): ${dto.amount}`);
+
+      // Convert amount to wei (if not already in wei)
+      const amountWithoutSign = dto.amount.substring(1); // Remove negative sign
+      const depositAmountInWei = (BigInt(amountWithoutSign) * BigInt(10 ** 18)).toString();
+      const blockNumber = dto.blockNumber ? parseInt(dto.blockNumber) : 0;
+
+      // Record as a negative purchase to track balance decrease
+      const purchase = await this.purchaseModel.create({
+        txHash: dto.txHash,
+        assetId: dto.assetId,
+        investorWallet: investorWallet.toLowerCase(), // Store as negative in wei
+        tokenAddress: asset.token?.address || '',
+        amount: '-' + depositAmountInWei,
+        price: '0', // No price for deposits
+        totalPayment: '0', // No payment for deposits
+        blockNumber: blockNumber,
+        blockTimestamp: new Date(),
+        status: 'CONFIRMED',
+        metadata: {
+          assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
+          industry: asset.metadata?.industry,
+          riskTier: asset.metadata?.riskTier,
+          type: 'DEPOSIT', // Mark as deposit
+        },
+      });
+
+      this.logger.log(`Token deposit recorded: ${purchase._id}, amount in wei: -${depositAmountInWei}`);
+
+      return {
+        success: true,
+        purchaseId: purchase._id,
+        assetId: dto.assetId,
+        amount: '-' + depositAmountInWei,
+        totalPayment: '0',
+        tokenAddress: asset.token?.address,
+        type: 'DEPOSIT',
+      };
+    }
+
+    // Handle normal purchase (positive amount) - validate on-chain
+
     // Validate transaction on-chain
     const purchaseData = await this.validatePurchaseTransaction(
       dto.txHash as Hash,
@@ -84,12 +137,6 @@ export class PurchaseTrackerService {
 
     if (!purchaseData) {
       throw new BadRequestException('Invalid purchase transaction');
-    }
-
-    // Get asset details
-    const asset = await this.assetModel.findOne({ assetId: dto.assetId });
-    if (!asset) {
-      throw new BadRequestException('Asset not found');
     }
 
     // Record purchase in database
@@ -110,7 +157,6 @@ export class PurchaseTrackerService {
         industry: asset.metadata?.industry,
         riskTier: asset.metadata?.riskTier,
         type: 'PURCHASE', // Mark as purchase
-
       },
     });
 
@@ -510,8 +556,12 @@ export class PurchaseTrackerService {
               console.log('USER TOKEN BALANCE:', userTokenBalance.toString());
               const settlementUSDC = BigInt(settlement.usdcAmount);
               console.log('SETTLEMENT USDC AMOUNT:', settlementUSDC.toString());
-              const totalSupply = BigInt(asset.token?.supply || '0');
+              const totalSupply = BigInt(asset.listing?.sold || '0');
               console.log('TOTAL SUPPLY AFTER BURNING UNSOLD TOKENS:', totalSupply.toString());
+
+              console.log('total tolen balance:', userTokenBalance.toString());
+              console.log('settlement usdc amount:', settlementUSDC.toString());
+              console.log('total supply:', totalSupply.toString());
 
               // Calculate claimable yield: (userTokens * settlementUSDC) / totalSupply
               const claimableYieldRaw = totalSupply > 0n

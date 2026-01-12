@@ -214,10 +214,10 @@ export class EventProcessor extends WorkerHost {
       { assetId },
       {
         $set: {
+          status: AssetStatus.REGISTERED,
           'registry.transactionHash': txHash,
           'registry.blockNumber': blockNumber,
           'registry.registeredAt': new Date(timestamp * 1000),
-          status: AssetStatus.REGISTERED,
           'checkpoints.registered': true,
         },
       },
