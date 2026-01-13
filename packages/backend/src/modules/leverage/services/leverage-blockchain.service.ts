@@ -240,7 +240,16 @@ export class LeverageBlockchainService {
    * @param overridePrice Optional price override (18 decimals) for testing
    * @returns Transaction hash
    */
-  async liquidatePosition(positionId: number, overridePrice?: bigint): Promise<Hash> {
+  async liquidatePosition(positionId: number, overridePrice?: bigint): Promise<{
+    hash: Hash;
+    usdcRecovered: string;
+    shortfall: string;
+    liquidationFee: string;
+    excessReturned: string;
+    mETHSold: string;
+    baseMETHReturned: string;
+    debtRepaid: string;
+  }> {
     const wallet = this.walletService.getPlatformWallet();
     const address = this.contractLoader.getContractAddress('LeverageVault');
     const abi = this.contractLoader.getContractAbi('LeverageVault');
@@ -277,6 +286,9 @@ export class LeverageBlockchainService {
       let shortfall = '0';
       let liquidationFee = '0';
       let excessReturned = '0';
+      let mETHSold = '0';
+      let baseMETHReturned = '0';
+      let debtRepaid = '0';
 
       try {
         // Decode PositionLiquidated event
@@ -300,7 +312,10 @@ export class LeverageBlockchainService {
             topics: liquidationEvent.topics,
           }) as any;
 
+          mETHSold = decoded.args.bufferMETHSold?.toString() || '0';
           usdcRecovered = decoded.args.usdcRecovered?.toString() || '0';
+          baseMETHReturned = decoded.args.baseMETHReturned?.toString() || '0';
+          debtRepaid = decoded.args.debtRepaid?.toString() || '0';
           shortfall = decoded.args.shortfall?.toString() || '0';
           liquidationFee = decoded.args.liquidationFee?.toString() || '0';
           excessReturned = decoded.args.excessReturned?.toString() || '0';

@@ -33,7 +33,7 @@ export class MarketplaceController {
     @Query('industry') industry?: string,
   ) {
     const query: any = {
-      status: { $in: [AssetStatus.LISTED, AssetStatus.TOKENIZED] },
+      status: { $in: [AssetStatus.LISTED, AssetStatus.TOKENIZED, ] },
       'listing.active': true,
       'token.address': { $exists: true }, // Must have token deployed
     };

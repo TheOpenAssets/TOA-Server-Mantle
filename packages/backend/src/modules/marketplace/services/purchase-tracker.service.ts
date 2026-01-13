@@ -666,7 +666,7 @@ export class PurchaseTrackerService {
       // Fetch all positions for this user (ACTIVE or SETTLED)
       const positions = await LeveragePositionModel.find({
         userAddress: investorWallet.toLowerCase(),
-        status: { $in: ['ACTIVE', 'SETTLED'] },
+        status: { $in: ['ACTIVE', 'SETTLED', "LIQUIDATED"] },
       }).sort({ createdAt: -1 });
 
       // Fetch asset details for all positions in parallel
@@ -761,6 +761,31 @@ export class PurchaseTrackerService {
               settlementDate: position.settlementTimestamp,
               claimableYield: position.userYieldDistributed || '0',
               claimableYieldFormatted: `${(Number(position.userYieldDistributed || '0') / 1e6).toFixed(2)} USDC`,
+              totalHarvests: harvestHistory.length,
+            },
+          };
+        } else if (position.status === 'LIQUIDATED') {
+          return {
+            ...baseItem,
+            mETHCollateral: position.mETHCollateral,
+            usdcBorrowed: position.usdcBorrowed,
+            totalInterestPaid: position.totalInterestPaid,
+            liquidationTxHash: position.liquidationTxHash,
+            liquidatedAt: position.liquidatedAt,
+            harvestHistory,
+            leverageInfo: {
+              type: 'LIQUIDATED',
+              mETHCollateralFormatted: `${(Number(position.mETHCollateral) / 1e18).toFixed(4)} mETH`,
+              usdcBorrowedFormatted: `${(Number(position.usdcBorrowed) / 1e6).toFixed(2)} USDC`,
+              totalInterestPaidFormatted: `${(Number(position.totalInterestPaid) / 1e6).toFixed(2)} USDC`,
+              healthFactorAtLiquidation: position.currentHealthFactor,
+              healthFactorAtLiquidationFormatted: `${(position.currentHealthFactor / 10000).toFixed(2)}%`,
+              liquidationDate: position.liquidatedAt,
+              liquidationTxHash: position.liquidationTxHash,
+              debtRecovered: position.debtRecovered || '0',
+              debtRecoveredFormatted: `${(Number(position.debtRecovered || '0') / 1e6).toFixed(2)} USDC`,
+              userRefund: position.userRefund || '0',
+              userRefundFormatted: `${(Number(position.userRefund || '0') / 1e6).toFixed(2)} USDC`,
               totalHarvests: harvestHistory.length,
             },
           };

@@ -212,15 +212,14 @@ export class SolvencyAdminController {
     }
 
     // Standard SolvencyVault Liquidation
-    // Generate unique marketplace asset ID for liquidation
-    const marketplaceAssetId = ethers.id(
-      `liquidation-${positionId}-${Date.now()}`,
-    );
-
     // Liquidate on-chain
     const result = await this.blockchainService.liquidatePosition(
       positionId,
-      marketplaceAssetId,
+    );
+
+    // Generate unique marketplace asset ID for database tracking
+    const marketplaceAssetId = ethers.id(
+      `liquidation-${positionId}-${Date.now()}`,
     );
 
     // Update database

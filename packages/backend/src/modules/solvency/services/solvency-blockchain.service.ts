@@ -366,7 +366,6 @@ export class SolvencyBlockchainService {
    */
   async liquidatePosition(
     positionId: number,
-    marketplaceAssetId: string,
   ): Promise<{
     txHash: string;
     blockNumber: number;
@@ -378,13 +377,12 @@ export class SolvencyBlockchainService {
     const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
 
     this.logger.log(`Liquidating position ${positionId}`);
-    this.logger.log(`Marketplace asset ID: ${marketplaceAssetId}`);
 
     const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: vaultAddress as Address,
       abi: vaultAbi,
       functionName: 'liquidatePosition',
-      args: [BigInt(positionId), marketplaceAssetId as `0x${string}`],
+      args: [BigInt(positionId)],
     }));
 
     this.logger.log(`Liquidation transaction submitted: ${hash}`);
