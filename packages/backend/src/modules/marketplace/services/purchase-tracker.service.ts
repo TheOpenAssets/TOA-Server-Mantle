@@ -86,10 +86,10 @@ export class PurchaseTrackerService {
 
     if (isDeposit || type === 'WITHDRAWAL') {
       // Handle token deposit to contract (balance decrease)
-      this.logger.log(`Processing token deposit (balance decrease): ${dto.amount}`);
+      this.logger.log(`Processing token ${ isDeposit ? "DEPOSIT" : "WITHDRAWAL"} (balance): ${dto.amount}`);
 
       // Convert amount to wei (if not already in wei)
-      const amountWithoutSign = dto.amount.substring(1); // Remove negative sign
+      const amountWithoutSign = isDeposit ? dto.amount.substring(1) : (BigInt(dto.amount) / BigInt(1e18)).toString(); // Remove negative sign if present
       const depositAmountInWei = (BigInt(amountWithoutSign) * BigInt(10 ** 18)).toString();
       const blockNumber = dto.blockNumber ? parseInt(dto.blockNumber) : 0;
       const depositAmount = type === 'WITHDRAWAL' ? depositAmountInWei : '-' + depositAmountInWei;

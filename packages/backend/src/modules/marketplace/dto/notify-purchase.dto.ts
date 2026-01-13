@@ -16,4 +16,8 @@ export class NotifyPurchaseDto {
   @IsOptional()
   @IsNumberString()
   blockNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  type?: string;
 }

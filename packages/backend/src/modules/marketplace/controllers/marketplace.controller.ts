@@ -346,7 +346,7 @@ export class MarketplaceController {
   @UseGuards(JwtAuthGuard)
   async notifyPurchase(@Request() req: any, @Body() dto: NotifyPurchaseDto) {
     const investorWallet = req.user.walletAddress;
-    return this.purchaseTracker.notifyPurchase(dto, investorWallet);
+    return this.purchaseTracker.notifyPurchase(dto, investorWallet, dto.type);
   }
 
   @Get('portfolio')
