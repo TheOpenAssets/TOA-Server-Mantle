@@ -208,6 +208,7 @@ export class SolvencyPositionService {
       position.installmentsPaid = 0;
       position.missedPayments = 0;
       position.isDefaulted = false;
+      position.oaidCreditIssued = true;
 
       // Generate full schedule
       const schedule = [];
