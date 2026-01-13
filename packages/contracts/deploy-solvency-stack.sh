@@ -20,10 +20,10 @@ echo "⏳ Waiting 10 seconds..."
 sleep 10
 
 # # Deploy SeniorPool
-# echo ""
-# echo "💰 Step 2/3: Deploying SeniorPool..."
-# CONTRACT_NAME=SeniorPool npx hardhat run scripts/deploy/deploy_single.ts --network mantleTestnet
-# echo "✅ SeniorPool deployed"
+echo ""
+echo "💰 Step 2/3: Deploying SeniorPool..."
+CONTRACT_NAME=SeniorPool npx hardhat run scripts/deploy/deploy_single.ts --network mantleTestnet
+echo "✅ SeniorPool deployed"
 
 # # Wait 10 seconds
 # echo ""

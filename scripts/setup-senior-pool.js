@@ -15,7 +15,7 @@ import { join } from 'path';
 
 // Configuration
 const RPC_URL = process.env.RPC_URL || 'https://rpc.sepolia.mantle.xyz';
-const DEPLOYER_KEY = process.env.DEPLOYER_KEY;
+const DEPLOYER_KEY = "0x1d12932a5c3a7aa8d4f50662caa679bb2e53321e11bc5df2af9298e2ace59305";
 
 // Colors
 const colors = {

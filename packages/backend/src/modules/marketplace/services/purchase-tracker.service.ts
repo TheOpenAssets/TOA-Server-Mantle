@@ -410,11 +410,11 @@ export class PurchaseTrackerService {
 
     const portfolioMap = new Map<string, any>();
 
-    console.log(`[Portfolio] Total purchases found: ${purchases.length}`);
+    // console.log(`[Portfolio] Total purchases found: ${purchases.length}`);
 
     for (const purchase of purchases) {
       const existing = portfolioMap.get(purchase.assetId);
-      console.log(`[Portfolio] Processing purchase ${purchase._id} for asset ${purchase.assetId}`);
+      // console.log(`[Portfolio] Processing purchase ${purchase._id} for asset ${purchase.assetId}`);
 
       // CRITICAL: Calculate net investment and balance correctly
       // - PRIMARY_MARKET/AUCTION: Money OUT (add to investment), tokens IN (add to balance)
@@ -423,7 +423,7 @@ export class PurchaseTrackerService {
       // - P2P_SELL_ORDER: No effect on investment (escrow lock), tokens OUT (subtract from balance)
       // - P2P_ORDER_CANCELLED: No effect on investment (escrow unlock), tokens IN (add to balance)
       
-      console.log(`[Portfolio] Purchase Source: ${purchase.source}, Amount: ${purchase.amount}, Total Payment: ${purchase.totalPayment}`);
+      // console.log(`[Portfolio] Purchase Source: ${purchase.source}, Amount: ${purchase.amount}, Total Payment: ${purchase.totalPayment}`);
       let investmentDelta = '0';
       let balanceDelta = purchase.amount; // Default: use purchase amount for balance
       const amount = BigInt(purchase.amount);
@@ -433,7 +433,7 @@ export class PurchaseTrackerService {
 
 
       if (purchase.source === 'PRIMARY_MARKET' || purchase.source === 'AUCTION') {
-        console.log(`[Portfolio] Condition: PRIMARY_MARKET/AUCTION`);
+        // console.log(`[Portfolio] Condition: PRIMARY_MARKET/AUCTION`);
         investmentDelta = totalPayment.toString();
       } else if (purchase.source === 'SECONDARY_MARKET') {
         if (amount < 0n) {
@@ -456,7 +456,7 @@ export class PurchaseTrackerService {
         investmentDelta = (-totalPayment).toString();;
       }
 
-      console.log(`[Portfolio] Deltas - Investment: ${investmentDelta}, BalanceDelta: ${balanceDelta}`);
+      // console.log(`[Portfolio] Deltas - Investment: ${investmentDelta}, BalanceDelta: ${balanceDelta}`);
 
       if (existing) {
         existing.totalAmount = (BigInt(existing.totalAmount) + BigInt(balanceDelta)).toString();

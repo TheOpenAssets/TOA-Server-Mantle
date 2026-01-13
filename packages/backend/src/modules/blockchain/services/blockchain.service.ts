@@ -77,7 +77,10 @@ export class BlockchainService {
   async registerIdentity(walletAddress: string): Promise<Hash> {
     const wallet = this.walletService.getAdminWallet(); // Admin is trusted issuer
     const address = this.contractLoader.getContractAddress('IdentityRegistry');
+    const oaidAddress = this.contractLoader.getContractAddress('OAID');
     const abi = this.contractLoader.getContractAbi('IdentityRegistry');
+    const oaidAbi = this.contractLoader.getContractAbi('OAID');
+
 
     this.logger.log(`Registering identity for ${walletAddress}...`);
 
@@ -94,6 +97,23 @@ export class BlockchainService {
       timeout: 300000, // 5 minutes timeout
     }), 'registerIdentity receipt');
     this.logger.log(`Identity registration confirmed for ${walletAddress}`);
+
+    this.logger.log(`Registering OAID for ${walletAddress}...`);
+
+    // const oidHash = await this.executeWithRetry(() => wallet.writeContract({
+    //   address: oaidAddress as Address,
+    //   abi: oaidAbi,
+    //   functionName: 'registerUser',
+    //   args: [walletAddress],
+    // }), 'registerUser write');
+
+    // this.logger.log(`Transaction submitted: ${oidHash}, waiting for confirmation...`);
+    // await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
+    //   hash: oidHash,
+    //   timeout: 300000, // 5 minutes timeout
+    // }), 'registerUser receipt');
+    // this.logger.log(`Identity registration confirmed for ${walletAddress}`);
+
     return hash;
   }
 

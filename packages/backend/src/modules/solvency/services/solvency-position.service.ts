@@ -276,6 +276,7 @@ export class SolvencyPositionService {
         if (position.nextPaymentDueDate && position.installmentInterval) {
           position.nextPaymentDueDate = new Date(position.nextPaymentDueDate.getTime() + (position.installmentInterval * 1000));
         }
+        position.markModified('repaymentSchedule');
       }
     }
 
@@ -290,6 +291,7 @@ export class SolvencyPositionService {
     }
 
     await position.save();
+    this.logger.log("Position Afeter Repayment:", await this.positionModel.findOne({ positionId }));
     this.logger.log(`Position ${positionId} repaid ${amountRepaid}, remaining debt: ${newBorrowed}`);
 
     return position;
