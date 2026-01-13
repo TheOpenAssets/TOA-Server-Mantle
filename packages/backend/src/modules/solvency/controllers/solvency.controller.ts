@@ -561,4 +561,19 @@ export class SolvencyController {
       dto.blockNumber,
     );
   }
+
+  /**
+   * Notify backend of a loan repayment transaction
+   * Frontend calls this after user repays directly via contract
+   */
+  @Post('loan/withdrawal-notify')
+  @HttpCode(HttpStatus.OK)
+  async notifyCollateralWithdrawal(@Request() req: any, @Body() dto: WithdrawCollateralDto) {
+  console.log(`Received collateral withdrawal notification for position ${dto.positionId}, amount ${dto.amount}`);
+
+    return this.positionService.recordWithdrawal(
+      parseInt(dto.positionId),
+      dto.amount,
+    );
+  }
 }

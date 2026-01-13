@@ -65,7 +65,7 @@ export class PurchaseTrackerService {
   /**
    * Validate and record a purchase transaction
    */
-  async notifyPurchase(dto: NotifyPurchaseDto, investorWallet: string) {
+  async notifyPurchase(dto: NotifyPurchaseDto, investorWallet: string, type?: string) {
     this.logger.log(`Processing purchase notification: ${dto.txHash}`);
 
     // Check if already processed
@@ -84,7 +84,7 @@ export class PurchaseTrackerService {
     // Check if this is a deposit (negative amount) or a purchase (positive amount)
     const isDeposit = dto.amount.startsWith('-');
 
-    if (isDeposit) {
+    if (isDeposit || type === 'WITHDRAWAL') {
       // Handle token deposit to contract (balance decrease)
       this.logger.log(`Processing token deposit (balance decrease): ${dto.amount}`);
 
@@ -92,6 +92,8 @@ export class PurchaseTrackerService {
       const amountWithoutSign = dto.amount.substring(1); // Remove negative sign
       const depositAmountInWei = (BigInt(amountWithoutSign) * BigInt(10 ** 18)).toString();
       const blockNumber = dto.blockNumber ? parseInt(dto.blockNumber) : 0;
+      const depositAmount = type === 'WITHDRAWAL' ? depositAmountInWei : '-' + depositAmountInWei;
+      const derivedType = type === 'WITHDRAWAL' ? 'PURCHASE' : 'DEPOSIT';
 
       // Record as a negative purchase to track balance decrease
       const purchase = await this.purchaseModel.create({
@@ -99,7 +101,7 @@ export class PurchaseTrackerService {
         assetId: dto.assetId,
         investorWallet: investorWallet.toLowerCase(), // Store as negative in wei
         tokenAddress: asset.token?.address || '',
-        amount: '-' + depositAmountInWei,
+        amount: depositAmount,
         price: '0', // No price for deposits
         totalPayment: '0', // No payment for deposits
         blockNumber: blockNumber,
@@ -109,7 +111,7 @@ export class PurchaseTrackerService {
           assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
           industry: asset.metadata?.industry,
           riskTier: asset.metadata?.riskTier,
-          type: 'DEPOSIT', // Mark as deposit
+          type: derivedType,
         },
       });
 

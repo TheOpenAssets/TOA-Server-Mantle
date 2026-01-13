@@ -485,14 +485,29 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         uint256 outstandingDebt = ISeniorPool(seniorPool).getOutstandingDebt(positionId);
         require(outstandingDebt == 0, "Outstanding debt must be repaid");
 
+        // Update token valuation proportionally
+        uint256 oldCollateral = position.collateralAmount;
+        uint256 newCollateral = oldCollateral - amount;
+        
+        if (newCollateral == 0) {
+            position.tokenValueUSD = 0;
+        } else {
+            position.tokenValueUSD = (position.tokenValueUSD * newCollateral) / oldCollateral;
+        }
+
         // Update position
-        position.collateralAmount -= amount;
+        position.collateralAmount = newCollateral;
 
         // Close position if fully withdrawn
         if (position.collateralAmount == 0) {
             position.active = false;
             if (repaymentPlans[positionId].isActive) {
                 repaymentPlans[positionId].isActive = false;
+            }
+
+            // Revoke OAID credit line
+            if (oaid != address(0) && position.creditLineId > 0) {
+                IOAID(oaid).revokeCreditLine(position.creditLineId, "Collateral withdrawn");
             }
         }
 

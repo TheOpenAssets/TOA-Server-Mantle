@@ -19,16 +19,16 @@ echo ""
 echo "⏳ Waiting 10 seconds..."
 sleep 10
 
-# Deploy SeniorPool
-echo ""
-echo "💰 Step 2/3: Deploying SeniorPool..."
-CONTRACT_NAME=SeniorPool npx hardhat run scripts/deploy/deploy_single.ts --network mantleTestnet
-echo "✅ SeniorPool deployed"
+# # Deploy SeniorPool
+# echo ""
+# echo "💰 Step 2/3: Deploying SeniorPool..."
+# CONTRACT_NAME=SeniorPool npx hardhat run scripts/deploy/deploy_single.ts --network mantleTestnet
+# echo "✅ SeniorPool deployed"
 
-# Wait 10 seconds
-echo ""
-echo "⏳ Waiting 10 seconds..."
-sleep 10
+# # Wait 10 seconds
+# echo ""
+# echo "⏳ Waiting 10 seconds..."
+# sleep 10
 
 # Deploy SolvencyVault
 echo ""
@@ -42,7 +42,6 @@ echo "✅ Solvency Stack Deployment Complete!"
 echo ""
 echo "Deployed contracts:"
 echo "  - OAID"
-echo "  - SeniorPool"
 echo "  - SolvencyVault"
 echo ""
 echo "Check deployed_contracts.json for addresses"
