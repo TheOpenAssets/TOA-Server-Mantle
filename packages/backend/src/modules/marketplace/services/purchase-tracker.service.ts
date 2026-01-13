@@ -86,7 +86,7 @@ export class PurchaseTrackerService {
 
     if (isDeposit || type === 'WITHDRAWAL') {
       // Handle token deposit to contract (balance decrease)
-      this.logger.log(`Processing token ${ isDeposit ? "DEPOSIT" : "WITHDRAWAL"} (balance): ${dto.amount}`);
+      this.logger.log(`Processing token ${isDeposit ? "DEPOSIT" : "WITHDRAWAL"} (balance): ${dto.amount}`);
 
       // Convert amount to wei (if not already in wei)
       const amountWithoutSign = isDeposit ? dto.amount.substring(1) : (BigInt(dto.amount) / BigInt(1e18)).toString(); // Remove negative sign if present
@@ -422,7 +422,7 @@ export class PurchaseTrackerService {
       // - SECONDARY_MARKET with negative amount (seller): Money IN (subtract from investment), tokens ALREADY ACCOUNTED in P2P_SELL_ORDER (skip for balance)
       // - P2P_SELL_ORDER: No effect on investment (escrow lock), tokens OUT (subtract from balance)
       // - P2P_ORDER_CANCELLED: No effect on investment (escrow unlock), tokens IN (add to balance)
-      
+
       // console.log(`[Portfolio] Purchase Source: ${purchase.source}, Amount: ${purchase.amount}, Total Payment: ${purchase.totalPayment}`);
       let investmentDelta = '0';
       let balanceDelta = purchase.amount; // Default: use purchase amount for balance
@@ -464,17 +464,17 @@ export class PurchaseTrackerService {
         existing.purchaseCount += 1;
         existing.transactions.push({
           date: purchase.createdAt,
-          type: purchase.metadata?.type === 'DEPOSIT' ? 'CREDIT DEPOSIT': this.getTransactionType(purchase.source, amount) ,
+          type: String(purchase.metadata?.type) === 'DEPOSIT' ? 'CREDIT DEPOSIT' : (String(purchase.metadata?.type) === 'WITHDRAWAL' ? 'CREDIT WITHDRAWAL' : this.getTransactionType(purchase.source, amount)),
           amount: purchase.amount,
           balanceDelta,
           price: purchase.price,
           totalValue: purchase.totalPayment,
           investmentDelta,
           txHash: purchase.txHash,
-          source: purchase.metadata?.type === 'DEPOSIT' ? 'DEPOSIT' : purchase.source,
+          source: String(purchase.metadata?.type) === 'DEPOSIT' ? 'DEPOSIT' : purchase.source,
         })
-          console.log('TOTAL AMOUNT :', existing.totalAmount);
-          ;
+        console.log('TOTAL AMOUNT :', existing.totalAmount);
+        ;
       } else {
         portfolioMap.set(purchase.assetId, {
           assetId: purchase.assetId,
@@ -488,7 +488,7 @@ export class PurchaseTrackerService {
           metadata: purchase.metadata,
           transactions: [{
             date: purchase.createdAt,
-            type: purchase.metadata?.type === 'DEPOSIT' ? 'CREDIT DEPOSIT': this.getTransactionType(purchase.source, amount),
+            type: purchase.metadata?.type === 'DEPOSIT' ? 'CREDIT DEPOSIT' : this.getTransactionType(purchase.source, amount),
             amount: purchase.amount,
             balanceDelta: balanceDelta,
             price: purchase.price,
@@ -569,7 +569,7 @@ export class PurchaseTrackerService {
               const claimableYieldRaw = totalSupply > 0n
                 ? (userTokenBalance * settlementUSDC) / totalSupply
                 : 0n;
-              
+
               console.log('CLAIMABLE YIELD RAW:', claimableYieldRaw.toString());
 
               const yieldInfo: any = {
