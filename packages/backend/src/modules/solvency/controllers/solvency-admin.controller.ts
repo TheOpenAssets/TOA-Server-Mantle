@@ -190,7 +190,7 @@ export class SolvencyAdminController {
         mETHSold: position.mETHCollateral,
         usdcRecovered: position.usdcBorrowed, // Approximate
         shortfall: '0', // Will be calculated from events
-        txHash,
+        txHash :txHash.toString(),
       });
 
       this.logger.log(`✅ Position ${positionId} marked as LIQUIDATED in database`);

@@ -140,7 +140,7 @@ export class HealthMonitorService implements OnModuleInit {
         mETHSold: position.mETHCollateral,
         usdcRecovered: outstandingDebt.toString(), // Approximation
         shortfall: '0', // Calculate actual shortfall
-        txHash,
+        txHash: txHash.toString(),
       });
 
       // Send liquidation notification
@@ -154,7 +154,7 @@ export class HealthMonitorService implements OnModuleInit {
         action: NotificationAction.VIEW_PORTFOLIO,
         actionMetadata: {
           positionId,
-          txHash,
+          txHash: txHash.toString(),
           mETHSold: position.mETHCollateral,
         },
       });

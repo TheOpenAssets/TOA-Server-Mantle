@@ -363,7 +363,17 @@ export class LeverageBlockchainService {
         this.logger.log(`   💰 Excess Returned to User: $${Number(excessReturned) / 1e6}`);
       }
 
-      return hash;
+      return {
+        hash,
+        usdcRecovered,
+        shortfall,
+        liquidationFee,
+        excessReturned,
+        mETHSold,
+        baseMETHReturned,
+        debtRepaid,
+      };
+
     } catch (error: any) {
       this.logger.error(`❌ Failed to liquidate position ${positionId}`);
       this.logger.error(`   Error: ${error?.message || 'Unknown error'}`);
@@ -420,7 +430,7 @@ export class LeverageBlockchainService {
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
-        hash,
+        hash: hash,
         timeout: 120000, // 2 minutes timeout
         pollingInterval: 2000, // Check every 2 seconds
       }), 'claimYieldFromBurn receipt');

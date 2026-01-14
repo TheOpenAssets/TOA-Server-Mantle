@@ -678,6 +678,7 @@ export class PurchaseTrackerService {
       return positions.map((position: any) => {
         const isActive = position.status === 'ACTIVE';
         const isSettled = position.status === 'SETTLED';
+        const isLiquidated = position.status === 'LIQUIDATED';
 
         // Get asset metadata
         const asset = assetMap.get(position.assetId);
@@ -764,7 +765,7 @@ export class PurchaseTrackerService {
               totalHarvests: harvestHistory.length,
             },
           };
-        } else if (position.status === 'LIQUIDATED') {
+        } else if (isLiquidated) {
           return {
             ...baseItem,
             mETHCollateral: position.mETHCollateral,
