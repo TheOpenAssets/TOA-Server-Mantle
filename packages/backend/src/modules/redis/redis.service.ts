@@ -11,10 +11,32 @@ export class RedisService {
     @Inject(redisConfig.KEY)
     private config: ConfigType<typeof redisConfig>,
   ) {
-    this.client = new Redis({
-      host: this.config.host,
-      port: this.config.port,
-      password: this.config.password,
+    // Check if URL-based config is provided (production/cloud)
+    if ('url' in this.config && this.config.url) {
+      this.client = new Redis(this.config.url, {
+        tls: this.config.tls,
+        maxRetriesPerRequest: 3,
+        retryStrategy: (times) => {
+          if (times > 3) return null;
+          return Math.min(times * 200, 2000);
+        },
+      });
+    } else {
+      // Fallback to host/port config (local development)
+      this.client = new Redis({
+        host: this.config.host,
+        port: this.config.port,
+        password: this.config.password,
+        maxRetriesPerRequest: 3,
+        retryStrategy: (times) => {
+          if (times > 3) return null;
+          return Math.min(times * 200, 2000);
+        },
+      });
+    }
+
+    this.client.on('error', (err) => {
+      console.error('[RedisService] Connection error:', err.message);
     });
   }
 
