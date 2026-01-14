@@ -1,524 +1,274 @@
+/**
+ * Stack-Oriented Deployment Orchestrator
+ * =====================================
+ *
+ * This script deploys and wires OpenAssets by economic stack instead of
+ * unsafe per-contract deployment.
+ *
+ * Each stack is an atomic unit. Redeploying any contract inside a stack
+ * automatically redeploys and re-links all its dependency closure.
+ *
+ * Supported Stacks:
+ *
+ * 1) STACK=identity
+ *    - AttestationRegistry
+ *    - TrustedIssuersRegistry
+ *    - IdentityRegistry
+ *
+ * 2) STACK=issuance
+ *    - YieldVault
+ *    - TokenFactory
+ *    - PrimaryMarket
+ *
+ * 3) STACK=credit
+ *    - SeniorPool
+ *    - SolvencyVault
+ *    - OAID
+ *
+ * 4) STACK=leverage
+ *    - FluxionIntegration
+ *    - LeverageVault
+ *
+ * 5) STACK=mocks
+ *    - MockUSDC
+ *    - MockMETH
+ *    - MockFluxionDEX
+ *
+ * Usage:
+ * ------
+ * STACK=<stackName> npx hardhat run scripts/deploy/deploy_stack.ts --network <network>
+ *
+ * Examples:
+ * ---------
+ * STACK=identity  npx hardhat run scripts/deploy/deploy_stack.ts --network mantleSepolia
+ * STACK=credit    npx hardhat run scripts/deploy/deploy_stack.ts --network mantleSepolia
+ * STACK=leverage  npx hardhat run scripts/deploy/deploy_stack.ts --network mantleSepolia
+ *
+ * Safety:
+ * -------
+ * - Single-contract deployment is intentionally disabled.
+ * - All dependency graphs are enforced.
+ * - SeniorPool, SolvencyVault, OAID are always redeployed together.
+ * - LeverageVault is always redeployed with FluxionIntegration.
+ */
+
 import { ethers, network } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
 
-async function main() {
-  const contractName = process.env.CONTRACT_NAME;
-  if (!contractName) {
-    console.error("Usage: CONTRACT_NAME=<contractName> npx hardhat --network <network> run scripts/deploy/deploy_single.ts");
-    process.exit(1);
-  }
+const STACK = process.env.STACK;
 
-  console.log(`Deploying ${contractName} on network: ${network.name}`);
-
-  const [deployer] = await ethers.getSigners();
-  console.log("Deploying with account:", deployer.address);
-
-  // Load existing deployed contracts
-  const deployPath = path.join(__dirname, "../../deployed_contracts.json");
-  let deployedData: any = {};
-  if (fs.existsSync(deployPath)) {
-    deployedData = JSON.parse(fs.readFileSync(deployPath, "utf8"));
-  }
-
-  // Ensure we have data for the current network
-  if (!deployedData.contracts) {
-    deployedData.contracts = {};
-  }
-
-  const platformCustody = process.env.PLATFORM_CUSTODY || deployer.address;
-
-  // Get USDC address
-  let usdcAddress = process.env.USDC_ADDRESS || deployedData.contracts.USDC;
-  if (!usdcAddress && (contractName === "YieldVault" || contractName === "PrimaryMarketplace" || contractName === "Faucet" || contractName === "FAUCET_USDC")) {
-    console.log("Deploying MockUSDC as dependency...");
-    const MockUSDC = await ethers.getContractFactory("MockUSDC");
-    const mockUSDC = await MockUSDC.deploy();
-    await mockUSDC.waitForDeployment();
-    usdcAddress = await mockUSDC.getAddress();
-    deployedData.contracts.USDC = usdcAddress;
-    console.log("✅ MockUSDC deployed to:", usdcAddress);
-  }
-
-  let contractAddress: string;
-
-  switch (contractName) {
-    case "AttestationRegistry":
-      const AttestationRegistry = await ethers.getContractFactory("AttestationRegistry");
-      const attestationRegistry = await AttestationRegistry.deploy();
-      await attestationRegistry.waitForDeployment();
-      contractAddress = await attestationRegistry.getAddress();
-      break;
-
-    case "TrustedIssuersRegistry":
-      const TrustedIssuersRegistry = await ethers.getContractFactory("TrustedIssuersRegistry");
-      const trustedIssuersRegistry = await TrustedIssuersRegistry.deploy();
-      await trustedIssuersRegistry.waitForDeployment();
-      contractAddress = await trustedIssuersRegistry.getAddress();
-      break;
-
-    case "IdentityRegistry":
-      const trustedIssuersAddr = deployedData.contracts.TrustedIssuersRegistry;
-      if (!trustedIssuersAddr) throw new Error("TrustedIssuersRegistry not deployed");
-      const IdentityRegistry = await ethers.getContractFactory("IdentityRegistry");
-      const identityRegistry = await IdentityRegistry.deploy(trustedIssuersAddr);
-      await identityRegistry.waitForDeployment();
-      contractAddress = await identityRegistry.getAddress();
-      break;
-
-    case "YieldVault":
-      if (!usdcAddress) throw new Error("USDC address not available");
-      const YieldVault = await ethers.getContractFactory("YieldVault");
-      const yieldVault = await YieldVault.deploy(usdcAddress, platformCustody);
-      await yieldVault.waitForDeployment();
-      contractAddress = await yieldVault.getAddress();
-      break;
-
-    case "TokenFactory":
-      const attestationAddr = deployedData.contracts.AttestationRegistry;
-      const identityAddr = deployedData.contracts.IdentityRegistry;
-      const trustedAddr = deployedData.contracts.TrustedIssuersRegistry;
-      const yieldVaultAddr = deployedData.contracts.YieldVault;
-      if (!attestationAddr || !identityAddr || !trustedAddr || !yieldVaultAddr) {
-        throw new Error("Required contracts not deployed");
-      }
-      const TokenFactory = await ethers.getContractFactory("TokenFactory");
-      const tokenFactory = await TokenFactory.deploy(
-        attestationAddr,
-        identityAddr,
-        trustedAddr,
-        platformCustody,
-        yieldVaultAddr
-      );
-      await tokenFactory.waitForDeployment();
-      contractAddress = await tokenFactory.getAddress();
-      // Link to YieldVault
-      const yieldVaultContract = await ethers.getContractAt("YieldVault", yieldVaultAddr);
-      await yieldVaultContract.setFactory(contractAddress);
-      break;
-
-    case "PrimaryMarketplace":
-      const tokenFactoryAddr = deployedData.contracts.TokenFactory;
-      if (!tokenFactoryAddr || !usdcAddress) throw new Error("Dependencies not deployed");
-      const PrimaryMarketplace = await ethers.getContractFactory("PrimaryMarket");
-      const primaryMarketplace = await PrimaryMarketplace.deploy(
-        tokenFactoryAddr,
-        platformCustody,
-        usdcAddress
-      );
-      await primaryMarketplace.waitForDeployment();
-      contractAddress = await primaryMarketplace.getAddress();
-      break;
-
-    case "MockUSDC":
-      const MockUSDC = await ethers.getContractFactory("MockUSDC");
-      const mockUSDC = await MockUSDC.deploy();
-      await mockUSDC.waitForDeployment();
-      contractAddress = await mockUSDC.getAddress();
-      break;
-
-    case "Faucet":
-      if (!usdcAddress) throw new Error("USDC not available");
-      const Faucet = await ethers.getContractFactory("Faucet");
-      const faucet = await Faucet.deploy(usdcAddress);
-      await faucet.waitForDeployment();
-      contractAddress = await faucet.getAddress();
-      break;
-
-    case "FAUCET_USDC": {
-      if (!usdcAddress) throw new Error("USDC not available");
-      const FaucetUSDC = await ethers.getContractFactory("Faucet");
-      const faucetUSDC = await FaucetUSDC.deploy(usdcAddress);
-      await faucetUSDC.waitForDeployment();
-      contractAddress = await faucetUSDC.getAddress();
-      console.log("✅ USDC Faucet deployed with USDC at:", usdcAddress);
-      break;
-    }
-
-    case "SeniorPool": {
-      if (!usdcAddress) throw new Error("USDC not available");
-      const SeniorPool = await ethers.getContractFactory("SeniorPool");
-      const seniorPool = await SeniorPool.deploy(usdcAddress);
-      await seniorPool.waitForDeployment();
-      contractAddress = await seniorPool.getAddress();
-      console.log(`✅ SeniorPool deployed to: ${contractAddress}`);
-
-      // Fund SeniorPool
-      try {
-        console.log("💰 Funding SeniorPool with 500,000 USDC...");
-        const usdc = await ethers.getContractAt("MockUSDC", usdcAddress); // Assuming MockUSDC
-        const amount = ethers.parseUnits("500000", 6);
-        
-        // Mint to deployer if possible (for MockUSDC)
-        try {
-            await usdc.mint(deployer.address, amount);
-            console.log("   Minted 500k USDC to deployer");
-        } catch (e) {
-            console.log("   Could not mint USDC (might not be MockUSDC), hoping for existing balance...");
-        }
-
-        await usdc.approve(contractAddress, amount);
-        await seniorPool.depositLiquidity(amount);
-        console.log("✅ SeniorPool funded with 500,000 USDC");
-      } catch (e) {
-        console.error("⚠️ Failed to fund SeniorPool:", e.message);
-      }
-      break;
-    }
-
-    case "FluxionIntegration": {
-      const mockMETHAddr = deployedData.contracts.MockMETH;
-      const mockDEXAddr = deployedData.contracts.MockFluxionDEX;
-      if (!mockMETHAddr || !usdcAddress || !mockDEXAddr) {
-        throw new Error("Required contracts not deployed (MockMETH, USDC, MockFluxionDEX)");
-      }
-      const FluxionIntegration = await ethers.getContractFactory("FluxionIntegration");
-      // Backend passes mETH price as parameter, oracle is placeholder
-      const fluxionIntegration = await FluxionIntegration.deploy(
-        mockMETHAddr,
-        usdcAddress,
-        mockDEXAddr,
-        mockMETHAddr // Placeholder oracle
-      );
-      await fluxionIntegration.waitForDeployment();
-      contractAddress = await fluxionIntegration.getAddress();
-      console.log(`✅ FluxionIntegration deployed to: ${contractAddress}`);
-
-      // POST-DEPLOYMENT STEPS
-      console.log('\n🔧 Running post-deployment configuration...\n');
-
-      // 1. Update LeverageVault to use new FluxionIntegration
-      const leverageVaultAddr = deployedData.contracts.LeverageVault;
-      if (leverageVaultAddr) {
-        try {
-          console.log(`🔗 Updating LeverageVault (${leverageVaultAddr}) to use new FluxionIntegration...`);
-          const leverageVault = await ethers.getContractAt("LeverageVault", leverageVaultAddr);
-
-          // Check if LeverageVault has a method to update FluxionIntegration
-          // For now, we'll just log a warning since the contract might need manual update
-          const currentFluxion = await leverageVault.fluxionIntegration();
-          if (currentFluxion !== contractAddress) {
-            console.log(`⚠️  Current FluxionIntegration: ${currentFluxion}`);
-            console.log(`⚠️  New FluxionIntegration: ${contractAddress}`);
-            console.log(`⚠️  MANUAL ACTION REQUIRED: LeverageVault was deployed with old FluxionIntegration.`);
-            console.log(`⚠️  You may need to redeploy LeverageVault or update its reference if possible.\n`);
-          } else {
-            console.log('✅ LeverageVault already using this FluxionIntegration\n');
-          }
-        } catch (e) {
-          console.error("⚠️ Failed to check LeverageVault:", e.message);
-        }
-      } else {
-        console.warn("⚠️ LeverageVault not found. Deploy LeverageVault after this.\n");
-      }
-
-      // 2. Check/Fund SeniorPool (if exists and needed)
-      const seniorPoolAddr = deployedData.contracts.SeniorPool;
-      if (seniorPoolAddr) {
-        try {
-          console.log('💰 Checking SeniorPool funding...');
-          const seniorPool = await ethers.getContractAt("SeniorPool", seniorPoolAddr);
-          const totalLiquidity = await seniorPool.totalLiquidity();
-          console.log(`   Current SeniorPool liquidity: ${ethers.formatUnits(totalLiquidity, 6)} USDC`);
-
-          if (totalLiquidity === 0n) {
-            console.log('   SeniorPool has no liquidity. Funding with 500,000 USDC...');
-            const usdc = await ethers.getContractAt("MockUSDC", usdcAddress);
-            const amount = ethers.parseUnits("500000", 6);
-
-            try {
-              await usdc.mint(deployer.address, amount);
-              console.log('   Minted 500k USDC to deployer');
-            } catch (e) {
-              console.log('   Could not mint USDC (might not be MockUSDC)');
-            }
-
-            await usdc.approve(seniorPoolAddr, amount);
-            await seniorPool.depositLiquidity(amount);
-            console.log('✅ SeniorPool funded with 500,000 USDC\n');
-          } else {
-            console.log('✅ SeniorPool already funded\n');
-          }
-        } catch (e) {
-          console.error("⚠️ Failed to check/fund SeniorPool:", e.message);
-        }
-      }
-
-      // 3. Check/Fund MockFluxionDEX (if exists and needed)
-      if (mockDEXAddr) {
-        try {
-          console.log('💰 Checking DEX liquidity...');
-          const mockMETH = await ethers.getContractAt("contracts/test/MockMETH.sol:MockMETH", mockMETHAddr);
-          const usdc = await ethers.getContractAt("MockUSDC", usdcAddress);
-
-          const dexMETHBalance = await mockMETH.balanceOf(mockDEXAddr);
-          const dexUSDCBalance = await usdc.balanceOf(mockDEXAddr);
-
-          console.log(`   DEX mETH balance: ${ethers.formatEther(dexMETHBalance)} mETH`);
-          console.log(`   DEX USDC balance: ${ethers.formatUnits(dexUSDCBalance, 6)} USDC`);
-
-          if (dexMETHBalance === 0n || dexUSDCBalance === 0n) {
-            console.log('   DEX needs liquidity. Funding...');
-
-            if (dexUSDCBalance === 0n) {
-              await usdc.mint(mockDEXAddr, ethers.parseUnits("1000000", 6)); // 1M USDC
-              console.log('   Added 1,000,000 USDC to DEX');
-            }
-
-            if (dexMETHBalance === 0n) {
-              await mockMETH.mint(mockDEXAddr, ethers.parseEther("500")); // 500 mETH
-              console.log('   Added 500 mETH to DEX');
-            }
-
-            console.log('✅ DEX funded\n');
-          } else {
-            console.log('✅ DEX already has liquidity\n');
-          }
-        } catch (e: any) {
-          console.error("⚠️ Failed to check/fund DEX:", e.message);
-        }
-      }
-
-      console.log('═══════════════════════════════════════════');
-      console.log('📋 FluxionIntegration Deployment Summary');
-      console.log('═══════════════════════════════════════════');
-      console.log(`FluxionIntegration: ${contractAddress}`);
-      console.log(`MockMETH:           ${mockMETHAddr}`);
-      console.log(`USDC:               ${usdcAddress}`);
-      console.log(`MockFluxionDEX:     ${mockDEXAddr}`);
-      if (leverageVaultAddr) {
-        console.log(`LeverageVault:      ${leverageVaultAddr}`);
-      }
-      console.log('═══════════════════════════════════════════\n');
-
-      break;
-    }
-
-    case "OAID": {
-      console.log("Deploying OAID...");
-      const OAID = await ethers.getContractFactory("OAID");
-      const oaid = await OAID.deploy();
-      await oaid.waitForDeployment();
-      contractAddress = await oaid.getAddress();
-      console.log(`✅ OAID deployed to: ${contractAddress}`);
-      break;
-    }
-
-    case "SolvencyVault": {
-      if (!usdcAddress) throw new Error("USDC not available");
-      const seniorPoolAddr = deployedData.contracts.SeniorPool;
-      if (!seniorPoolAddr) throw new Error("SeniorPool not deployed");
-
-      console.log("Deploying SolvencyVault...");
-      const SolvencyVault = await ethers.getContractFactory("SolvencyVault");
-      const solvencyVault = await SolvencyVault.deploy(
-        usdcAddress,
-        seniorPoolAddr
-      );
-      await solvencyVault.waitForDeployment();
-      contractAddress = await solvencyVault.getAddress();
-      console.log(`✅ SolvencyVault deployed to: ${contractAddress}`);
-
-      // Post-deployment configuration
-      console.log("\n🔧 Configuring SolvencyVault...\n");
-
-      // 1. Link to SeniorPool
-      try {
-        console.log("🔗 Linking SeniorPool to SolvencyVault...");
-        const seniorPool = await ethers.getContractAt("SeniorPool", seniorPoolAddr);
-        const currentVault = await seniorPool.solvencyVault();
-        if (currentVault === ethers.ZeroAddress) {
-          await seniorPool.setSolvencyVault(contractAddress);
-          console.log("✅ SeniorPool linked");
-        } else if (currentVault !== contractAddress) {
-          console.warn(`⚠️  SeniorPool already linked to ${currentVault}`);
-        } else {
-          console.log("✅ SeniorPool already linked");
-        }
-      } catch (e: any) {
-        console.error("⚠️ Failed to link SeniorPool:", e.message);
-      }
-
-      // 2. Set YieldVault
-      const yieldVaultAddr = deployedData.contracts.YieldVault;
-      if (yieldVaultAddr) {
-        try {
-          console.log(`🔗 Setting YieldVault: ${yieldVaultAddr}`);
-          await solvencyVault.setYieldVault(yieldVaultAddr);
-          console.log("✅ YieldVault set");
-        } catch (e: any) {
-          console.error("⚠️ Failed to set YieldVault:", e.message);
-        }
-      } else {
-        console.warn("⚠️ YieldVault not found in deployed contracts");
-      }
-
-      // 3. Set PrimaryMarket
-      const primaryMarketAddr = deployedData.contracts.PrimaryMarketplace;
-      if (primaryMarketAddr) {
-        try {
-          console.log(`🔗 Setting PrimaryMarket: ${primaryMarketAddr}`);
-          await solvencyVault.setPrimaryMarket(primaryMarketAddr);
-          console.log("✅ PrimaryMarket set");
-        } catch (e: any) {
-          console.error("⚠️ Failed to set PrimaryMarket:", e.message);
-        }
-      } else {
-        console.warn("⚠️ PrimaryMarketplace not found in deployed contracts");
-      }
-
-      // 4. Set OAID
-      const oaidAddr = deployedData.contracts.OAID;
-      if (oaidAddr) {
-        try {
-          console.log(`🔗 Setting OAID: ${oaidAddr}`);
-          await solvencyVault.setOAID(oaidAddr);
-          console.log("✅ OAID set in SolvencyVault");
-
-          // Link SolvencyVault in OAID
-          console.log(`🔗 Linking SolvencyVault in OAID...`);
-          const oaid = await ethers.getContractAt("OAID", oaidAddr);
-          const currentSolvencyVault = await oaid.solvencyVault();
-          if (currentSolvencyVault === ethers.ZeroAddress) {
-            await oaid.setSolvencyVault(contractAddress);
-            console.log("✅ SolvencyVault linked in OAID");
-          } else if (currentSolvencyVault !== contractAddress) {
-            console.warn(`⚠️  OAID already linked to ${currentSolvencyVault}`);
-          } else {
-            console.log("✅ OAID already linked");
-          }
-        } catch (e: any) {
-          console.error("⚠️ Failed to link OAID:", e.message);
-        }
-      } else {
-        console.warn("⚠️ OAID not found (deploy OAID first if needed)");
-      }
-
-      console.log("\n✅ SolvencyVault configuration complete!\n");
-      break;
-    }
-
-    case "LeverageVault": {
-      const mockMETHAddr = deployedData.contracts.MockMETH;
-      const seniorPoolAddr = deployedData.contracts.SeniorPool;
-      const fluxionIntegrationAddr = deployedData.contracts.FluxionIntegration;
-      if (!mockMETHAddr || !usdcAddress || !seniorPoolAddr || !fluxionIntegrationAddr) {
-        throw new Error("Required contracts not deployed (MockMETH, USDC, SeniorPool, FluxionIntegration)");
-      }
-      const LeverageVault = await ethers.getContractFactory("LeverageVault");
-      // No price oracle needed - backend passes mETH price as parameter
-      const leverageVault = await LeverageVault.deploy(
-        mockMETHAddr,
-        usdcAddress,
-        seniorPoolAddr,
-        fluxionIntegrationAddr
-      );
-      await leverageVault.waitForDeployment();
-      contractAddress = await leverageVault.getAddress();
-      console.log(`✅ LeverageVault deployed to: ${contractAddress}`);
-
-      // Post-deployment configuration
-      console.log("\n🔧 Configuring LeverageVault...\n");
-
-      // 1. Set YieldVault (auto-link like link-yield-vault.js)
-      const yieldVaultAddr = deployedData.contracts.YieldVault;
-      if (yieldVaultAddr) {
-        try {
-          console.log(`🔗 Linking YieldVault: ${yieldVaultAddr}`);
-          const currentYieldVault = await leverageVault.yieldVault();
-          if (currentYieldVault === ethers.ZeroAddress) {
-            await leverageVault.setYieldVault(yieldVaultAddr);
-            console.log("✅ YieldVault linked");
-            
-            // Verify link
-            const newYieldVault = await leverageVault.yieldVault();
-            if (newYieldVault.toLowerCase() === yieldVaultAddr.toLowerCase()) {
-              console.log("✅ YieldVault link verified!");
-            } else {
-              console.warn("⚠️  YieldVault link verification failed");
-            }
-          } else if (currentYieldVault.toLowerCase() === yieldVaultAddr.toLowerCase()) {
-            console.log("✅ YieldVault already linked correctly");
-          } else {
-            console.warn(`⚠️  LeverageVault linked to different YieldVault: ${currentYieldVault}`);
-          }
-        } catch (e: any) {
-          console.error("⚠️ Failed to link YieldVault:", e.message);
-        }
-      } else {
-        console.warn("⚠️ YieldVault not found (deploy YieldVault first)");
-      }
-
-      // 2. Set PrimaryMarket
-      const primaryMarketAddr = deployedData.contracts.PrimaryMarketplace;
-      if (primaryMarketAddr) {
-        try {
-            console.log(`🔗 Setting PrimaryMarket: ${primaryMarketAddr}`);
-            await leverageVault.setPrimaryMarket(primaryMarketAddr);
-            console.log("✅ PrimaryMarket set");
-        } catch (e: any) {
-            console.error("⚠️ Failed to set PrimaryMarket:", e.message);
-        }
-      } else {
-          console.warn("⚠️ PrimaryMarketplace not found in deployed contracts");
-      }
-
-      // 3. Link to SeniorPool
-      try {
-        const seniorPool = await ethers.getContractAt("SeniorPool", seniorPoolAddr);
-        const currentVault = await seniorPool.leverageVault();
-        if (currentVault === ethers.ZeroAddress) {
-            console.log(`🔗 Linking SeniorPool to LeverageVault...`);
-            await seniorPool.setLeverageVault(contractAddress);
-            console.log("✅ SeniorPool linked");
-        } else if (currentVault !== contractAddress) {
-            console.warn(`⚠️ SeniorPool already linked to ${currentVault}. Cannot link to new LeverageVault.`);
-        } else {
-            console.log("✅ SeniorPool already linked");
-        }
-      } catch (e: any) {
-          console.error("⚠️ Failed to link SeniorPool:", e.message);
-      }
-
-      // 4. Register in IdentityRegistry
-      const identityRegistryAddr = deployedData.contracts.IdentityRegistry;
-      if (identityRegistryAddr) {
-          try {
-            const identityRegistry = await ethers.getContractAt("IdentityRegistry", identityRegistryAddr);
-            if (!(await identityRegistry.isVerified(contractAddress))) {
-                console.log(`🔐 Registering LeverageVault in IdentityRegistry...`);
-                await identityRegistry.registerIdentity(contractAddress);
-                console.log("✅ LeverageVault registered");
-            } else {
-                console.log("✅ LeverageVault already registered");
-            }
-          } catch (e: any) {
-              console.error("⚠️ Failed to register identity:", e.message);
-          }
-      } else {
-          console.warn("⚠️ IdentityRegistry not found in deployed contracts");
-      }
-
-      console.log("\n✅ LeverageVault configuration complete!\n");
-      break;
-    }
-
-    default:
-      throw new Error(`Unknown contract: ${contractName}`);
-  }
-
-  console.log(`✅ ${contractName} deployed to: ${contractAddress}`);
-
-  // Update deployed_contracts.json
-  deployedData.network = network.name;
-  deployedData.timestamp = new Date().toISOString();
-  deployedData.contracts[contractName] = contractAddress;
-
-  fs.writeFileSync(deployPath, JSON.stringify(deployedData, null, 2));
-  console.log(`📝 Address saved to ${deployPath}`);
+if (!STACK) {
+  throw new Error("STACK is required. Example: STACK=credit");
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
+const deployPath = path.join(__dirname, "../../deployed_contracts.json");
+
+function load() {
+  return fs.existsSync(deployPath)
+    ? JSON.parse(fs.readFileSync(deployPath, "utf8"))
+    : { contracts: {} };
+}
+
+function save(state: any) {
+  fs.writeFileSync(deployPath, JSON.stringify(state, null, 2));
+}
+
+function wipe(state: any, keys: string[]) {
+  for (const k of keys) delete state.contracts[k];
+}
+
+async function main() {
+  console.log("\n═══════════════════════════════════════════════");
+  console.log(`🚀 STACK DEPLOYMENT: ${STACK?.toUpperCase()}`);
+  console.log(`🌐 Network: ${network.name}`);
+  console.log("═══════════════════════════════════════════════\n");
+
+  const [deployer] = await ethers.getSigners();
+  console.log(`Deployer: ${deployer.address}\n`);
+
+  const state = load();
+
+  // ------------------------------------------------------------------
+  // IDENTITY STACK
+  // ------------------------------------------------------------------
+  if (STACK === "identity") {
+    console.log("[IDENTITY STACK] Redeploying compliance layer");
+
+    wipe(state, ["AttestationRegistry", "TrustedIssuersRegistry", "IdentityRegistry"]);
+
+    const Att = await (await ethers.getContractFactory("AttestationRegistry")).deploy();
+    await Att.waitForDeployment();
+    state.contracts.AttestationRegistry = Att.target;
+    console.log("AttestationRegistry:", Att.target);
+
+    const Trust = await (await ethers.getContractFactory("TrustedIssuersRegistry")).deploy();
+    await Trust.waitForDeployment();
+    state.contracts.TrustedIssuersRegistry = Trust.target;
+    console.log("TrustedIssuersRegistry:", Trust.target);
+
+    const ID = await (await ethers.getContractFactory("IdentityRegistry")).deploy(Trust.target);
+    await ID.waitForDeployment();
+    state.contracts.IdentityRegistry = ID.target;
+    console.log("IdentityRegistry:", ID.target);
+  }
+
+  // ------------------------------------------------------------------
+  // ISSUANCE STACK
+  // ------------------------------------------------------------------
+  if (STACK === "issuance") {
+    console.log("[ISSUANCE STACK] Redeploying Yield + Factory + PrimaryMarket");
+
+    wipe(state, ["YieldVault", "TokenFactory", "PrimaryMarketplace"]);
+
+    const usdc = state.contracts.USDC;
+    const identity = state.contracts.IdentityRegistry;
+    const att = state.contracts.AttestationRegistry;
+    const trusted = state.contracts.TrustedIssuersRegistry;
+
+    const Yield = await (await ethers.getContractFactory("YieldVault")).deploy(usdc, deployer.address);
+    await Yield.waitForDeployment();
+    state.contracts.YieldVault = Yield.target;
+    console.log("YieldVault:", Yield.target);
+
+    const Factory = await (await ethers.getContractFactory("TokenFactory")).deploy(
+      att, identity, trusted, deployer.address, Yield.target
+    );
+    await Factory.waitForDeployment();
+    state.contracts.TokenFactory = Factory.target;
+    console.log("TokenFactory:", Factory.target);
+
+    await Yield.setFactory(Factory.target);
+    console.log("YieldVault.setFactory -> OK");
+
+    const PM = await (await ethers.getContractFactory("PrimaryMarket")).deploy(
+      Factory.target, deployer.address, usdc
+    );
+    await PM.waitForDeployment();
+    state.contracts.PrimaryMarketplace = PM.target;
+    console.log("PrimaryMarket:", PM.target);
+  }
+
+  // ------------------------------------------------------------------
+  // CREDIT STACK (ATOMIC)
+  // ------------------------------------------------------------------
+  if (STACK === "credit") {
+    console.log("[CREDIT STACK] Redeploying SeniorPool + SolvencyVault + OAID (atomic)");
+
+    wipe(state, ["SeniorPool", "SolvencyVault", "OAID"]);
+
+    const usdc = state.contracts.USDC;
+
+    const Pool = await (await ethers.getContractFactory("SeniorPool")).deploy(usdc);
+    await Pool.waitForDeployment();
+    state.contracts.SeniorPool = Pool.target;
+    console.log("SeniorPool:", Pool.target);
+
+    const Solvency = await (await ethers.getContractFactory("SolvencyVault")).deploy(usdc, Pool.target);
+    await Solvency.waitForDeployment();
+    state.contracts.SolvencyVault = Solvency.target;
+    console.log("SolvencyVault:", Solvency.target);
+
+    const OAID = await (await ethers.getContractFactory("OAID")).deploy();
+    await OAID.waitForDeployment();
+    state.contracts.OAID = OAID.target;
+    console.log("OAID:", OAID.target);
+
+    await Pool.setSolvencyVault(Solvency.target);
+    await Solvency.setOAID(OAID.target);
+    await OAID.setSolvencyVault(Solvency.target);
+
+    console.log("SeniorPool ↔ SolvencyVault ↔ OAID fully linked");
+
+    const usdcToken = await ethers.getContractAt("MockUSDC", usdc);
+    const amt = ethers.parseUnits("500000", 6);
+    await usdcToken.mint(deployer.address, amt);
+    await usdcToken.approve(Pool.target, amt);
+    await Pool.depositLiquidity(amt);
+
+    console.log("SeniorPool seeded with 500,000 USDC");
+  }
+
+  // ------------------------------------------------------------------
+  // LEVERAGE STACK
+  // ------------------------------------------------------------------
+  if (STACK === "leverage") {
+    console.log("[LEVERAGE STACK] Redeploying FluxionIntegration + LeverageVault");
+
+    wipe(state, ["FluxionIntegration", "LeverageVault"]);
+
+    const usdc = state.contracts.USDC;
+    const meth = state.contracts.MockMETH;
+    const dex = state.contracts.MockFluxionDEX;
+    const pool = state.contracts.SeniorPool;
+    const yieldVault = state.contracts.YieldVault;
+    const market = state.contracts.PrimaryMarketplace;
+    const identity = state.contracts.IdentityRegistry;
+
+    const Flux = await (await ethers.getContractFactory("FluxionIntegration")).deploy(
+      meth, usdc, dex, meth
+    );
+    await Flux.waitForDeployment();
+    state.contracts.FluxionIntegration = Flux.target;
+    console.log("FluxionIntegration:", Flux.target);
+
+    const Lev = await (await ethers.getContractFactory("LeverageVault")).deploy(
+      meth, usdc, pool, Flux.target
+    );
+    await Lev.waitForDeployment();
+    state.contracts.LeverageVault = Lev.target;
+    console.log("LeverageVault:", Lev.target);
+
+    await Lev.setYieldVault(yieldVault);
+    await Lev.setPrimaryMarket(market);
+
+    const Pool = await ethers.getContractAt("SeniorPool", pool);
+    await Pool.setLeverageVault(Lev.target);
+
+    const ID = await ethers.getContractAt("IdentityRegistry", identity);
+    await ID.registerIdentity(Lev.target);
+
+    console.log("LeverageVault fully wired and registered");
+  }
+
+  // ------------------------------------------------------------------
+  // MOCK STACK
+  // ------------------------------------------------------------------
+  if (STACK === "mocks") {
+    console.log("[MOCK STACK] Redeploying MockUSDC, MockMETH, MockFluxionDEX");
+
+    wipe(state, ["USDC", "MockMETH", "MockFluxionDEX"]);
+
+    const USDC = await (await ethers.getContractFactory("MockUSDC")).deploy();
+    await USDC.waitForDeployment();
+    state.contracts.USDC = USDC.target;
+    console.log("MockUSDC:", USDC.target);
+
+    const METH = await (await ethers.getContractFactory("contracts/test/MockMETH.sol:MockMETH")).deploy();
+    await METH.waitForDeployment();
+    state.contracts.MockMETH = METH.target;
+    console.log("MockMETH:", METH.target);
+
+    const DEX = await (await ethers.getContractFactory("MockFluxionDEX")).deploy(
+      METH.target, USDC.target, ethers.parseUnits("3000", 6)
+    );
+    await DEX.waitForDeployment();
+    state.contracts.MockFluxionDEX = DEX.target;
+    console.log("MockFluxionDEX:", DEX.target);
+  }
+
+  state.network = network.name;
+  state.timestamp = new Date().toISOString();
+  save(state);
+
+  console.log("\n═══════════════════════════════════════════════");
+  console.log("🎯 STACK DEPLOYMENT COMPLETE");
+  console.log("═══════════════════════════════════════════════");
+  console.table(state.contracts);
+}
+
+main().catch(err => {
+  console.error("\n❌ STACK DEPLOYMENT FAILED");
+  console.error(err);
+  process.exit(1);
 });
