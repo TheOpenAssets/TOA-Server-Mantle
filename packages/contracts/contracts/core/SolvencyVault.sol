@@ -446,7 +446,7 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
             plan.installmentsPaid++;
 
             // If fully repaid (based on debt, not installments count, as installments are estimated)
-            if (remainingDebt == 0) {
+            if (remainingDebt == 0 || (plan.installmentsPaid >= plan.numberOfInstallments)) {
                 plan.isActive = false;
             }
         }
@@ -476,7 +476,7 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
      */
     function withdrawCollateral(uint256 positionId, uint256 amount) external nonReentrant {
         Position storage position = positions[positionId];
-        require(position.active, "Position not active");
+        // require(position.active, "Position not active");
         require(msg.sender == position.user, "Not position owner");
         require(amount > 0, "Amount must be > 0");
         require(amount <= position.collateralAmount, "Insufficient collateral");
