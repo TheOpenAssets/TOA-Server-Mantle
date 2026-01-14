@@ -284,7 +284,7 @@ export class SolvencyPositionService {
     await this.updateHealthFactor(position);
 
     // If fully repaid, mark as REPAID
-    if (newBorrowed === 0n) {
+    if (newBorrowed <= 0n) {
       position.status = PositionStatus.REPAID;
       position.oaidCreditIssued = false;
       this.logger.log(`Position ${positionId} fully repaid`);
