@@ -65,6 +65,10 @@ import { SecondaryMarketModule } from './modules/secondary-market/secondary-mark
             const delay = Math.min(times * 100, 3000);
             return delay;
           },
+          // Limit connections to avoid "max number of clients reached" error
+          // This is crucial for Redis Cloud free tier (30 connection limit)
+          enableOfflineQueue: false,
+          connectTimeout: 10000,
         };
 
         // Redis Cloud / Railway / Production (URL based)
