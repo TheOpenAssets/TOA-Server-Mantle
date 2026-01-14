@@ -43,6 +43,8 @@ import { SecondaryMarketModule } from './modules/secondary-market/secondary-mark
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         uri: configService.get<string>('database.uri'),
+        // Automatically try to create indexes defined in schemas
+        autoIndex: true,
       }),
     }),
 
@@ -52,22 +54,36 @@ import { SecondaryMarketModule } from './modules/secondary-market/secondary-mark
       useFactory: (configService: ConfigService) => {
         const redis = configService.get<any>('redis');
 
-        // Redis Cloud / Railway (TLS)
+        // Centralized connection options to avoid NOAUTH and connection issues
+        const commonOptions = {
+          // Ensure password is null/undefined if not explicitly set to avoid NOAUTH on open connections
+          password: redis.password || undefined,
+          // Prevent the app from hanging/crashing if Redis is down at boot
+          maxRetriesPerRequest: null,
+          enableReadyCheck: false,
+          retryStrategy: (times: number) => {
+            const delay = Math.min(times * 100, 3000);
+            return delay;
+          },
+        };
+
+        // Redis Cloud / Railway / Production (URL based)
         if (redis?.url) {
           return {
             connection: {
+              ...commonOptions,
               url: redis.url,
               tls: redis.tls,
             },
           };
         }
 
-        // Local development (no TLS)
+        // Local development / Docker (Host/Port based)
         return {
           connection: {
+            ...commonOptions,
             host: redis.host,
             port: redis.port,
-            password: redis.password,
           },
         };
       },
@@ -95,4 +111,4 @@ import { SecondaryMarketModule } from './modules/secondary-market/secondary-mark
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }
