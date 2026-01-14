@@ -418,89 +418,89 @@ export class EventListenerService implements OnModuleInit {
     const address = this.contractLoader.getContractAddress('SolvencyVault');
     const abi = this.contractLoader.getContractAbi('SolvencyVault');
 
-    try {
-      const logs = await this.publicClient.getLogs({
-        address: address as Address,
-        fromBlock,
-        toBlock,
-      });
+    // try {
+    //   const logs = await this.publicClient.getLogs({
+    //     address: address as Address,
+    //     fromBlock,
+    //     toBlock,
+    //   });
 
-      for (const log of logs) {
-        try {
-          const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics }) as { eventName: string; args: any };
-          const args = decoded.args;
-          const eventName = decoded.eventName;
+    //   for (const log of logs) {
+    //     try {
+    //       const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics }) as { eventName: string; args: any };
+    //       const args = decoded.args;
+    //       const eventName = decoded.eventName;
 
-          if (eventName === 'USDCBorrowed') {
-            await this.eventQueue.add('process-solvency-borrow', {
-              positionId: Number(args.positionId),
-              amount: args.amount.toString(),
-              totalDebt: args.totalDebt.toString(),
-              txHash: log.transactionHash,
-              blockNumber: Number(log.blockNumber),
-            });
-          } else if (eventName === 'LoanRepaid') {
-            await this.eventQueue.add('process-solvency-repayment', {
-              positionId: Number(args.positionId),
-              amountPaid: args.amountPaid.toString(),
-              principal: args.principal.toString(),
-              interest: args.interest.toString(),
-              remainingDebt: args.remainingDebt.toString(),
-              txHash: log.transactionHash,
-              blockNumber: Number(log.blockNumber),
-            });
-          } else if (eventName === 'MissedPaymentMarked') {
-            await this.eventQueue.add('process-solvency-missed-payment', {
-              positionId: Number(args.positionId),
-              missedPayments: Number(args.missedPayments),
-              txHash: log.transactionHash,
-              blockNumber: Number(log.blockNumber),
-            });
-          } else if (eventName === 'PositionDefaulted') {
-            await this.eventQueue.add('process-solvency-defaulted', {
-              positionId: Number(args.positionId),
-              txHash: log.transactionHash,
-              blockNumber: Number(log.blockNumber),
-            });
-          } else if (eventName === 'PositionLiquidated') {
-            await this.eventQueue.add('process-solvency-liquidated', {
-              positionId: Number(args.positionId),
-              marketplaceListingId: args.marketplaceListingId,
-              txHash: log.transactionHash,
-              blockNumber: Number(log.blockNumber),
-            });
-          } else if (eventName === 'LiquidationSettled') {
-            await this.eventQueue.add('process-solvency-liquidation-settled', {
-              positionId: Number(args.positionId),
-              yieldReceived: args.yieldReceived.toString(),
-              debtRepaid: args.debtRepaid.toString(),
-              userRefund: args.userRefund.toString(),
-              txHash: log.transactionHash,
-              blockNumber: Number(log.blockNumber),
-            });
-          } else if (eventName === 'CollateralWithdrawn') {
-            await this.eventQueue.add('process-solvency-withdrawal', {
-              positionId: Number(args.positionId),
-              amount: args.amount.toString(),
-              remainingCollateral: args.remainingCollateral.toString(),
-              txHash: log.transactionHash,
-              blockNumber: Number(log.blockNumber),
-            });
-          } else if (eventName === 'RepaymentPlanCreated') {
-            await this.eventQueue.add('process-solvency-repayment-plan', {
-              positionId: Number(args.positionId),
-              loanDuration: Number(args.loanDuration),
-              numberOfInstallments: Number(args.numberOfInstallments),
-              installmentInterval: Number(args.installmentInterval),
-              txHash: log.transactionHash,
-              blockNumber: Number(log.blockNumber),
-            });
-          }
-        } catch { /* ignore decode errors */ }
-      }
-    } catch (error) {
-      this.logger.error(`Error checking SolvencyVault events: ${error}`);
-      throw error;
-    }
+    //       if (eventName === 'USDCBorrowed') {
+    //         await this.eventQueue.add('process-solvency-borrow', {
+    //           positionId: Number(args.positionId),
+    //           amount: args.amount.toString(),
+    //           totalDebt: args.totalDebt.toString(),
+    //           txHash: log.transactionHash,
+    //           blockNumber: Number(log.blockNumber),
+    //         });
+    //       } else if (eventName === 'LoanRepaid') {
+    //         await this.eventQueue.add('process-solvency-repayment', {
+    //           positionId: Number(args.positionId),
+    //           amountPaid: args.amountPaid.toString(),
+    //           principal: args.principal.toString(),
+    //           interest: args.interest.toString(),
+    //           remainingDebt: args.remainingDebt.toString(),
+    //           txHash: log.transactionHash,
+    //           blockNumber: Number(log.blockNumber),
+    //         });
+    //       } else if (eventName === 'MissedPaymentMarked') {
+    //         await this.eventQueue.add('process-solvency-missed-payment', {
+    //           positionId: Number(args.positionId),
+    //           missedPayments: Number(args.missedPayments),
+    //           txHash: log.transactionHash,
+    //           blockNumber: Number(log.blockNumber),
+    //         });
+    //       } else if (eventName === 'PositionDefaulted') {
+    //         await this.eventQueue.add('process-solvency-defaulted', {
+    //           positionId: Number(args.positionId),
+    //           txHash: log.transactionHash,
+    //           blockNumber: Number(log.blockNumber),
+    //         });
+    //       } else if (eventName === 'PositionLiquidated') {
+    //         await this.eventQueue.add('process-solvency-liquidated', {
+    //           positionId: Number(args.positionId),
+    //           marketplaceListingId: args.marketplaceListingId,
+    //           txHash: log.transactionHash,
+    //           blockNumber: Number(log.blockNumber),
+    //         });
+    //       } else if (eventName === 'LiquidationSettled') {
+    //         await this.eventQueue.add('process-solvency-liquidation-settled', {
+    //           positionId: Number(args.positionId),
+    //           yieldReceived: args.yieldReceived.toString(),
+    //           debtRepaid: args.debtRepaid.toString(),
+    //           userRefund: args.userRefund.toString(),
+    //           txHash: log.transactionHash,
+    //           blockNumber: Number(log.blockNumber),
+    //         });
+    //       } else if (eventName === 'CollateralWithdrawn') {
+    //         await this.eventQueue.add('process-solvency-withdrawal', {
+    //           positionId: Number(args.positionId),
+    //           amount: args.amount.toString(),
+    //           remainingCollateral: args.remainingCollateral.toString(),
+    //           txHash: log.transactionHash,
+    //           blockNumber: Number(log.blockNumber),
+    //         });
+    //       } else if (eventName === 'RepaymentPlanCreated') {
+    //         await this.eventQueue.add('process-solvency-repayment-plan', {
+    //           positionId: Number(args.positionId),
+    //           loanDuration: Number(args.loanDuration),
+    //           numberOfInstallments: Number(args.numberOfInstallments),
+    //           installmentInterval: Number(args.installmentInterval),
+    //           txHash: log.transactionHash,
+    //           blockNumber: Number(log.blockNumber),
+    //         });
+    //       }
+    //     } catch { /* ignore decode errors */ }
+    //   }
+    // } catch (error) {
+    //   this.logger.error(`Error checking SolvencyVault events: ${error}`);
+    //   throw error;
+    // }
   }
 }

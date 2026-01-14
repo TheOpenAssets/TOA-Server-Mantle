@@ -56,6 +56,7 @@ export class RepaymentMonitorService {
       const currentDue = position.repaymentSchedule.find((i: any) => i.status === 'PENDING');
       if (currentDue) {
         currentDue.status = 'MISSED';
+        position.markModified('repaymentSchedule');
       }
     }
 

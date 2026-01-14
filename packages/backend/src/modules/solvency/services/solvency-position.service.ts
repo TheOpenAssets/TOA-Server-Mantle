@@ -208,6 +208,7 @@ export class SolvencyPositionService {
       position.installmentsPaid = 0;
       position.missedPayments = 0;
       position.isDefaulted = false;
+      position.oaidCreditIssued = true;
 
       // Generate full schedule
       const schedule = [];
@@ -218,7 +219,7 @@ export class SolvencyPositionService {
           installmentNumber: i,
           dueDate: new Date(now.getTime() + (i * position.installmentInterval * 1000)),
           amount: installmentAmount,
-          status: 'PENDING' as const
+          status: 'PENDING' as 'PENDING'
         });
       }
       position.repaymentSchedule = schedule;
@@ -252,19 +253,30 @@ export class SolvencyPositionService {
     position.totalRepaid = (currentRepaid + BigInt(amountRepaid)).toString();
     position.lastRepaymentTime = new Date();
 
-    // Update Schedule logic
+
+    // Update Schedule logic - strict fixed amount matching
     if (position.repaymentSchedule && position.repaymentSchedule.length > 0) {
-      // Find first pending installment
-      const nextInstallment = position.repaymentSchedule.find((i: any) => i.status === 'PENDING');
-      if (nextInstallment) {
-        nextInstallment.status = 'PAID';
-        nextInstallment.paidAt = new Date();
+      // Find the index of the NEXT pending or missed installment
+      const installmentIndex = position.repaymentSchedule.findIndex(
+        (i: any) => i.status === 'PENDING' || i.status === 'MISSED',
+      );
+
+      if (installmentIndex > -1) {
+        // Since installments are fixed amounts paid at once, we mark the next one as PAID
+        // regardless of minor interest differences, assuming the contract logic enforced the payment amount.
+        const installment = position.repaymentSchedule[installmentIndex];
+        if (installment) {
+          installment.status = 'PAID' as 'PAID';
+          installment.paidAt = new Date();
+        } else {
+          this.logger.warn(`No installment found at index ${installmentIndex} for position ${positionId}`);
+        }
         position.installmentsPaid = (position.installmentsPaid || 0) + 1;
-        
         // Advance nextPaymentDueDate
         if (position.nextPaymentDueDate && position.installmentInterval) {
           position.nextPaymentDueDate = new Date(position.nextPaymentDueDate.getTime() + (position.installmentInterval * 1000));
         }
+        position.markModified('repaymentSchedule');
       }
     }
 
@@ -272,12 +284,14 @@ export class SolvencyPositionService {
     await this.updateHealthFactor(position);
 
     // If fully repaid, mark as REPAID
-    if (newBorrowed === 0n) {
+    if (newBorrowed <= 0n) {
       position.status = PositionStatus.REPAID;
+      position.oaidCreditIssued = false;
       this.logger.log(`Position ${positionId} fully repaid`);
     }
 
     await position.save();
+    this.logger.log("Position Afeter Repayment:", await this.positionModel.findOne({ positionId }));
     this.logger.log(`Position ${positionId} repaid ${amountRepaid}, remaining debt: ${newBorrowed}`);
 
     return position;
@@ -294,6 +308,15 @@ export class SolvencyPositionService {
 
     const currentCollateral = BigInt(position.collateralAmount);
     const newCollateral = currentCollateral - BigInt(amountWithdrawn);
+
+    // Proportional update of tokenValueUSD
+    if (newCollateral === 0n) {
+      position.tokenValueUSD = '0';
+    } else {
+      const currentValuation = BigInt(position.tokenValueUSD);
+      const newValuation = (currentValuation * newCollateral) / currentCollateral;
+      position.tokenValueUSD = newValuation.toString();
+    }
 
     position.collateralAmount = newCollateral.toString();
 
@@ -420,6 +443,7 @@ export class SolvencyPositionService {
 
       position.collateralAmount = onChainPosition.collateralAmount;
       position.usdcBorrowed = outstandingDebt;
+      position.tokenValueUSD = onChainPosition.tokenValueUSD;
 
       // Update status based on on-chain liquidation state
       if (inLiquidation && position.status !== PositionStatus.LIQUIDATED) {

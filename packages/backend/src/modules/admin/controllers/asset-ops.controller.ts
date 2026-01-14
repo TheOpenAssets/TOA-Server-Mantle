@@ -284,6 +284,18 @@ export class AssetOpsController {
       const minInvestment = asset.tokenParams?.minInvestment;
       const duration = dto.duration; // Only used for AUCTION
 
+      if (listingType === 'AUCTION' && !duration) {
+        throw new HttpException(
+          {
+            success: false,
+            error: 'Duration Required',
+            message: 'Duration is required for AUCTION listings',
+            assetId: dto.assetId,
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
       // Validate required values exist in database
       if (!listingType) {
         throw new HttpException(
@@ -337,6 +349,8 @@ export class AssetOpsController {
         duration,
         minPrice,
       );
+
+      
 
       // Update asset listing status in DB
       await this.assetModel.updateOne(

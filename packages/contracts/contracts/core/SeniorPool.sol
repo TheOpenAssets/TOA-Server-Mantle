@@ -177,11 +177,10 @@ contract SeniorPool is Ownable, ReentrancyGuard {
         require(loans[positionId].active, "Loan not active");
 
         // Update interest before repayment
-        _accrueInterest(positionId);
-
         Loan storage loan = loans[positionId];
         uint256 totalOwed = loan.principal + loan.interestAccrued;
         require(amount <= totalOwed, "Amount exceeds debt");
+
 
         // Calculate principal and interest portions
         if (amount <= loan.interestAccrued) {
@@ -212,6 +211,8 @@ contract SeniorPool is Ownable, ReentrancyGuard {
         if (loan.principal == 0) {
             loan.active = false;
         }
+        
+        _accrueInterest(positionId);
 
         emit LoanRepaid(positionId, principal, interest);
     }

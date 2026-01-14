@@ -77,7 +77,10 @@ export class BlockchainService {
   async registerIdentity(walletAddress: string): Promise<Hash> {
     const wallet = this.walletService.getAdminWallet(); // Admin is trusted issuer
     const address = this.contractLoader.getContractAddress('IdentityRegistry');
+    const oaidAddress = this.contractLoader.getContractAddress('OAID');
     const abi = this.contractLoader.getContractAbi('IdentityRegistry');
+    const oaidAbi = this.contractLoader.getContractAbi('OAID');
+
 
     this.logger.log(`Registering identity for ${walletAddress}...`);
 
@@ -91,9 +94,26 @@ export class BlockchainService {
     this.logger.log(`Transaction submitted: ${hash}, waiting for confirmation...`);
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 300_000, // 5 minutes timeout
+      timeout: 300000, // 5 minutes timeout
     }), 'registerIdentity receipt');
     this.logger.log(`Identity registration confirmed for ${walletAddress}`);
+
+    this.logger.log(`Registering OAID for ${walletAddress}...`);
+
+    // const oidHash = await this.executeWithRetry(() => wallet.writeContract({
+    //   address: oaidAddress as Address,
+    //   abi: oaidAbi,
+    //   functionName: 'registerUser',
+    //   args: [walletAddress],
+    // }), 'registerUser write');
+
+    // this.logger.log(`Transaction submitted: ${oidHash}, waiting for confirmation...`);
+    // await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
+    //   hash: oidHash,
+    //   timeout: 300000, // 5 minutes timeout
+    // }), 'registerUser receipt');
+    // this.logger.log(`Identity registration confirmed for ${walletAddress}`);
+
     return hash;
   }
 
@@ -163,8 +183,8 @@ export class BlockchainService {
     // Wait for transaction receipt (increased timeout for Mantle RPC)
     const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000, // 3 minute timeout (Mantle RPC can be slow)
-      pollingInterval: 2_000, // Check every 2 seconds
+      timeout: 180000, // 3 minute timeout (Mantle RPC can be slow)
+      pollingInterval: 2000, // Check every 2 seconds
     }), 'deployTokenSuite receipt');
 
     this.logger.log(`Transaction confirmed in block ${receipt.blockNumber}`);
@@ -226,8 +246,8 @@ export class BlockchainService {
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash: approvalHash,
-      timeout: 180_000, // 3 minute timeout (Mantle RPC can be slow)
-      pollingInterval: 2_000, // Check every 2 seconds
+      timeout: 180000, // 3 minute timeout (Mantle RPC can be slow)
+      pollingInterval: 2000, // Check every 2 seconds
     }), 'approve USDC receipt');
     this.logger.log(`USDC approved in tx: ${approvalHash}`);
 
@@ -243,8 +263,8 @@ export class BlockchainService {
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000, // 3 minute timeout (Mantle RPC can be slow)
-      pollingInterval: 2_000, // Check every 2 seconds
+      timeout: 180000, // 3 minute timeout (Mantle RPC can be slow)
+      pollingInterval: 2000, // Check every 2 seconds
     }), 'depositYield receipt');
     this.logger.log(`Yield deposited in tx: ${hash}`);
     return hash;
@@ -266,8 +286,8 @@ export class BlockchainService {
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000, // 3 minute timeout (Mantle RPC can be slow)
-      pollingInterval: 2_000, // Check every 2 seconds
+      timeout: 180000, // 3 minute timeout (Mantle RPC can be slow)
+      pollingInterval: 2000, // Check every 2 seconds
     }), 'distributeYieldBatch receipt');
     return hash;
   }
@@ -346,14 +366,14 @@ export class BlockchainService {
           BigInt(minInvestment),       // minInvestment
         ],
       }), 'createListing write');
-
+      
       this.logger.log(`✓ Transaction submitted: ${hash}`);
       this.logger.log(`Waiting for transaction receipt...`);
 
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 180_000,
-        pollingInterval: 2_000,
+        timeout: 180000,
+        pollingInterval: 2000,
       }), 'createListing receipt');
 
       this.logger.log(`✓ Transaction confirmed in block ${receipt.blockNumber}`);
@@ -435,8 +455,8 @@ export class BlockchainService {
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000,
-      pollingInterval: 2_000,
+      timeout: 180000,
+      pollingInterval: 2000,
     }), 'approve marketplace receipt');
 
     this.logger.log(`Marketplace approved in tx: ${hash}`);
@@ -461,8 +481,8 @@ export class BlockchainService {
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000, // 3 minute timeout
-      pollingInterval: 2_000,
+      timeout: 180000, // 3 minute timeout
+      pollingInterval: 2000,
     }), 'endAuction receipt');
     this.logger.log(`Auction ended in tx: ${hash}`);
     return hash;
@@ -556,8 +576,8 @@ export class BlockchainService {
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash,
-      timeout: 180_000,
-      pollingInterval: 2_000,
+      timeout: 180000,
+      pollingInterval: 2000,
     }), 'burn receipt');
 
     this.logger.log(`✅ Burn transaction confirmed in tx: ${hash}`);

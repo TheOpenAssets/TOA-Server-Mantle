@@ -33,7 +33,7 @@ export class MarketplaceController {
     @Query('industry') industry?: string,
   ) {
     const query: any = {
-      status: { $in: [AssetStatus.LISTED, AssetStatus.TOKENIZED] },
+      status: { $in: [AssetStatus.LISTED, AssetStatus.TOKENIZED, ] },
       'listing.active': true,
       'token.address': { $exists: true }, // Must have token deployed
     };
@@ -346,7 +346,7 @@ export class MarketplaceController {
   @UseGuards(JwtAuthGuard)
   async notifyPurchase(@Request() req: any, @Body() dto: NotifyPurchaseDto) {
     const investorWallet = req.user.walletAddress;
-    return this.purchaseTracker.notifyPurchase(dto, investorWallet);
+    return this.purchaseTracker.notifyPurchase(dto, investorWallet, dto.type);
   }
 
   @Get('portfolio')

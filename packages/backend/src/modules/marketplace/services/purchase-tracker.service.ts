@@ -65,7 +65,7 @@ export class PurchaseTrackerService {
   /**
    * Validate and record a purchase transaction
    */
-  async notifyPurchase(dto: NotifyPurchaseDto, investorWallet: string) {
+  async notifyPurchase(dto: NotifyPurchaseDto, investorWallet: string, type?: string) {
     this.logger.log(`Processing purchase notification: ${dto.txHash}`);
 
     // Check if already processed
@@ -74,6 +74,61 @@ export class PurchaseTrackerService {
       this.logger.warn(`Purchase ${dto.txHash} already processed`);
       throw new ConflictException('Purchase already recorded');
     }
+
+    // Get asset details
+    const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+    if (!asset) {
+      throw new BadRequestException('Asset not found');
+    }
+
+    // Check if this is a deposit (negative amount) or a purchase (positive amount)
+    const isDeposit = dto.amount.startsWith('-');
+
+    if (isDeposit || type === 'WITHDRAWAL') {
+      // Handle token deposit to contract (balance decrease)
+      this.logger.log(`Processing token ${isDeposit ? "DEPOSIT" : "WITHDRAWAL"} (balance): ${dto.amount}`);
+
+      // Convert amount to wei (if not already in wei)
+      const amountWithoutSign = isDeposit ? dto.amount.substring(1) : (BigInt(dto.amount) / BigInt(1e18)).toString(); // Remove negative sign if present
+      const depositAmountInWei = (BigInt(amountWithoutSign) * BigInt(10 ** 18)).toString();
+      const blockNumber = dto.blockNumber ? parseInt(dto.blockNumber) : 0;
+      const depositAmount = type === 'WITHDRAWAL' ? depositAmountInWei : '-' + depositAmountInWei;
+      const derivedType = type === 'WITHDRAWAL' ? 'PURCHASE' : 'DEPOSIT';
+
+      // Record as a negative purchase to track balance decrease
+      const purchase = await this.purchaseModel.create({
+        txHash: dto.txHash,
+        assetId: dto.assetId,
+        investorWallet: investorWallet.toLowerCase(), // Store as negative in wei
+        tokenAddress: asset.token?.address || '',
+        amount: depositAmount,
+        price: '0', // No price for deposits
+        totalPayment: '0', // No payment for deposits
+        blockNumber: blockNumber,
+        blockTimestamp: new Date(),
+        status: 'CONFIRMED',
+        metadata: {
+          assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
+          industry: asset.metadata?.industry,
+          riskTier: asset.metadata?.riskTier,
+          type: derivedType,
+        },
+      });
+
+      this.logger.log(`Token deposit recorded: ${purchase._id}, amount in wei: -${depositAmountInWei}`);
+
+      return {
+        success: true,
+        purchaseId: purchase._id,
+        assetId: dto.assetId,
+        amount: '-' + depositAmountInWei,
+        totalPayment: '0',
+        tokenAddress: asset.token?.address,
+        type: 'DEPOSIT',
+      };
+    }
+
+    // Handle normal purchase (positive amount) - validate on-chain
 
     // Validate transaction on-chain
     const purchaseData = await this.validatePurchaseTransaction(
@@ -84,12 +139,6 @@ export class PurchaseTrackerService {
 
     if (!purchaseData) {
       throw new BadRequestException('Invalid purchase transaction');
-    }
-
-    // Get asset details
-    const asset = await this.assetModel.findOne({ assetId: dto.assetId });
-    if (!asset) {
-      throw new BadRequestException('Asset not found');
     }
 
     // Record purchase in database
@@ -110,7 +159,6 @@ export class PurchaseTrackerService {
         industry: asset.metadata?.industry,
         riskTier: asset.metadata?.riskTier,
         type: 'PURCHASE', // Mark as purchase
-
       },
     });
 
@@ -362,11 +410,11 @@ export class PurchaseTrackerService {
 
     const portfolioMap = new Map<string, any>();
 
-    console.log(`[Portfolio] Total purchases found: ${purchases.length}`);
+    // console.log(`[Portfolio] Total purchases found: ${purchases.length}`);
 
     for (const purchase of purchases) {
       const existing = portfolioMap.get(purchase.assetId);
-      console.log(`[Portfolio] Processing purchase ${purchase._id} for asset ${purchase.assetId}`);
+      // console.log(`[Portfolio] Processing purchase ${purchase._id} for asset ${purchase.assetId}`);
 
       // CRITICAL: Calculate net investment and balance correctly
       // - PRIMARY_MARKET/AUCTION: Money OUT (add to investment), tokens IN (add to balance)
@@ -375,7 +423,7 @@ export class PurchaseTrackerService {
       // - P2P_SELL_ORDER: No effect on investment (escrow lock), tokens OUT (subtract from balance)
       // - P2P_ORDER_CANCELLED: No effect on investment (escrow unlock), tokens IN (add to balance)
 
-      console.log(`[Portfolio] Purchase Source: ${purchase.source}, Amount: ${purchase.amount}, Total Payment: ${purchase.totalPayment}`);
+      // console.log(`[Portfolio] Purchase Source: ${purchase.source}, Amount: ${purchase.amount}, Total Payment: ${purchase.totalPayment}`);
       let investmentDelta = '0';
       let balanceDelta = purchase.amount; // Default: use purchase amount for balance
       const amount = BigInt(purchase.amount);
@@ -385,7 +433,7 @@ export class PurchaseTrackerService {
 
 
       if (purchase.source === 'PRIMARY_MARKET' || purchase.source === 'AUCTION') {
-        console.log(`[Portfolio] Condition: PRIMARY_MARKET/AUCTION`);
+        // console.log(`[Portfolio] Condition: PRIMARY_MARKET/AUCTION`);
         investmentDelta = totalPayment.toString();
       } else if (purchase.source === 'SECONDARY_MARKET') {
         if (amount < 0n) {
@@ -408,7 +456,7 @@ export class PurchaseTrackerService {
         investmentDelta = (-totalPayment).toString();;
       }
 
-      console.log(`[Portfolio] Deltas - Investment: ${investmentDelta}, BalanceDelta: ${balanceDelta}`);
+      // console.log(`[Portfolio] Deltas - Investment: ${investmentDelta}, BalanceDelta: ${balanceDelta}`);
 
       if (existing) {
         existing.totalAmount = (BigInt(existing.totalAmount) + BigInt(balanceDelta)).toString();
@@ -416,14 +464,14 @@ export class PurchaseTrackerService {
         existing.purchaseCount += 1;
         existing.transactions.push({
           date: purchase.createdAt,
-          type: purchase.metadata?.type === 'DEPOSIT' ? 'CREDIT DEPOSIT' : this.getTransactionType(purchase.source, amount),
+          type: String(purchase.metadata?.type) === 'DEPOSIT' ? 'CREDIT DEPOSIT' : (String(purchase.metadata?.type) === 'WITHDRAWAL' ? 'CREDIT WITHDRAWAL' : this.getTransactionType(purchase.source, amount)),
           amount: purchase.amount,
           balanceDelta,
           price: purchase.price,
           totalValue: purchase.totalPayment,
           investmentDelta,
           txHash: purchase.txHash,
-          source: purchase.metadata?.type === 'DEPOSIT' ? 'DEPOSIT' : purchase.source,
+          source: String(purchase.metadata?.type) === 'DEPOSIT' ? 'DEPOSIT' : purchase.source,
         })
         console.log('TOTAL AMOUNT :', existing.totalAmount);
         ;
@@ -510,8 +558,12 @@ export class PurchaseTrackerService {
               console.log('USER TOKEN BALANCE:', userTokenBalance.toString());
               const settlementUSDC = BigInt(settlement.usdcAmount);
               console.log('SETTLEMENT USDC AMOUNT:', settlementUSDC.toString());
-              const totalSupply = BigInt(asset.token?.supply || '0');
+              const totalSupply = BigInt(asset.listing?.sold || '0');
               console.log('TOTAL SUPPLY AFTER BURNING UNSOLD TOKENS:', totalSupply.toString());
+
+              console.log('total tolen balance:', userTokenBalance.toString());
+              console.log('settlement usdc amount:', settlementUSDC.toString());
+              console.log('total supply:', totalSupply.toString());
 
               // Calculate claimable yield: (userTokens * settlementUSDC) / totalSupply
               const claimableYieldRaw = totalSupply > 0n
@@ -614,7 +666,7 @@ export class PurchaseTrackerService {
       // Fetch all positions for this user (ACTIVE or SETTLED)
       const positions = await LeveragePositionModel.find({
         userAddress: investorWallet.toLowerCase(),
-        status: { $in: ['ACTIVE', 'SETTLED'] },
+        status: { $in: ['ACTIVE', 'SETTLED', "LIQUIDATED"] },
       }).sort({ createdAt: -1 });
 
       // Fetch asset details for all positions in parallel
@@ -626,6 +678,7 @@ export class PurchaseTrackerService {
       return positions.map((position: any) => {
         const isActive = position.status === 'ACTIVE';
         const isSettled = position.status === 'SETTLED';
+        const isLiquidated = position.status === 'LIQUIDATED';
 
         // Get asset metadata
         const asset = assetMap.get(position.assetId);
@@ -709,6 +762,31 @@ export class PurchaseTrackerService {
               settlementDate: position.settlementTimestamp,
               claimableYield: position.userYieldDistributed || '0',
               claimableYieldFormatted: `${(Number(position.userYieldDistributed || '0') / 1e6).toFixed(2)} USDC`,
+              totalHarvests: harvestHistory.length,
+            },
+          };
+        } else if (isLiquidated) {
+          return {
+            ...baseItem,
+            mETHCollateral: position.mETHCollateral,
+            usdcBorrowed: position.usdcBorrowed,
+            totalInterestPaid: position.totalInterestPaid,
+            liquidationTxHash: position.liquidationTxHash,
+            liquidatedAt: position.liquidatedAt,
+            harvestHistory,
+            leverageInfo: {
+              type: 'LIQUIDATED',
+              mETHCollateralFormatted: `${(Number(position.mETHCollateral) / 1e18).toFixed(4)} mETH`,
+              usdcBorrowedFormatted: `${(Number(position.usdcBorrowed) / 1e6).toFixed(2)} USDC`,
+              totalInterestPaidFormatted: `${(Number(position.totalInterestPaid) / 1e6).toFixed(2)} USDC`,
+              healthFactorAtLiquidation: position.currentHealthFactor,
+              healthFactorAtLiquidationFormatted: `${(position.currentHealthFactor / 10000).toFixed(2)}%`,
+              liquidationDate: position.liquidatedAt,
+              liquidationTxHash: position.liquidationTxHash,
+              debtRecovered: position.debtRecovered || '0',
+              debtRecoveredFormatted: `${(Number(position.debtRecovered || '0') / 1e6).toFixed(2)} USDC`,
+              userRefund: position.userRefund || '0',
+              userRefundFormatted: `${(Number(position.userRefund || '0') / 1e6).toFixed(2)} USDC`,
               totalHarvests: harvestHistory.length,
             },
           };

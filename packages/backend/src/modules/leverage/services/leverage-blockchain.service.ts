@@ -92,6 +92,12 @@ export class LeverageBlockchainService {
     this.logger.log(`mETH Price: $${Number(params.mETHPriceUSD) / 1e6} (18 decimals: ${mETHPriceUSD18})`);
     this.logger.log(`Asset ID bytes32: ${assetIdBytes}`);
 
+    setTimeout(() => {
+      this.logger.warn(
+        `⚠️ Ensure that the operation has sufficient mETH and USDC allowance set for LeverageVault contract at ${address}`,
+      );
+    }, 3000);
+
     try {
       const hash = await this.executeWithRetry(() => wallet.writeContract({
         address: address as Address,
@@ -113,8 +119,8 @@ export class LeverageBlockchainService {
       this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 120_000, // 2 minutes timeout
-        pollingInterval: 2_000, // Check every 2 seconds
+        timeout: 120000, // 2 minutes timeout
+        pollingInterval: 2000, // Check every 2 seconds
       }), 'createPosition receipt');
 
       // Parse PositionCreated event to get positionId
@@ -180,8 +186,8 @@ export class LeverageBlockchainService {
 
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 120_000, // 2 minutes timeout
-        pollingInterval: 2_000, // Check every 2 seconds
+        timeout: 120000, // 2 minutes timeout
+        pollingInterval: 2000, // Check every 2 seconds
       }), 'harvestYield receipt');
       this.logger.log(`✅ Yield harvested: ${hash}`);
 
@@ -234,7 +240,16 @@ export class LeverageBlockchainService {
    * @param overridePrice Optional price override (18 decimals) for testing
    * @returns Transaction hash
    */
-  async liquidatePosition(positionId: number, overridePrice?: bigint): Promise<Hash> {
+  async liquidatePosition(positionId: number, overridePrice?: bigint): Promise<{
+    hash: Hash;
+    usdcRecovered: string;
+    shortfall: string;
+    liquidationFee: string;
+    excessReturned: string;
+    mETHSold: string;
+    baseMETHReturned: string;
+    debtRepaid: string;
+  }> {
     const wallet = this.walletService.getPlatformWallet();
     const address = this.contractLoader.getContractAddress('LeverageVault');
     const abi = this.contractLoader.getContractAbi('LeverageVault');
@@ -271,6 +286,9 @@ export class LeverageBlockchainService {
       let shortfall = '0';
       let liquidationFee = '0';
       let excessReturned = '0';
+      let mETHSold = '0';
+      let baseMETHReturned = '0';
+      let debtRepaid = '0';
 
       try {
         // Decode PositionLiquidated event
@@ -294,7 +312,10 @@ export class LeverageBlockchainService {
             topics: liquidationEvent.topics,
           }) as any;
 
+          mETHSold = decoded.args.bufferMETHSold?.toString() || '0';
           usdcRecovered = decoded.args.usdcRecovered?.toString() || '0';
+          baseMETHReturned = decoded.args.baseMETHReturned?.toString() || '0';
+          debtRepaid = decoded.args.debtRepaid?.toString() || '0';
           shortfall = decoded.args.shortfall?.toString() || '0';
           liquidationFee = decoded.args.liquidationFee?.toString() || '0';
           excessReturned = decoded.args.excessReturned?.toString() || '0';
@@ -342,7 +363,17 @@ export class LeverageBlockchainService {
         this.logger.log(`   💰 Excess Returned to User: $${Number(excessReturned) / 1e6}`);
       }
 
-      return hash;
+      return {
+        hash,
+        usdcRecovered,
+        shortfall,
+        liquidationFee,
+        excessReturned,
+        mETHSold,
+        baseMETHReturned,
+        debtRepaid,
+      };
+
     } catch (error: any) {
       this.logger.error(`❌ Failed to liquidate position ${positionId}`);
       this.logger.error(`   Error: ${error?.message || 'Unknown error'}`);
@@ -382,18 +413,26 @@ export class LeverageBlockchainService {
       const position = await this.getPosition(positionId);
       const rwaToken = position.rwaToken;
 
-      const hash = await this.executeWithRetry(() => wallet.writeContract({
-        address: leverageVaultAddress as Address,
-        abi: leverageVaultAbi,
-        functionName: 'claimYieldFromBurn',
-        args: [BigInt(positionId), yieldVaultAddress, rwaToken, tokenAmount],
-      }), 'claimYieldFromBurn write');
+      const hash = await this.executeWithRetry(async () => {
+        const nonce = await this.publicClient.getTransactionCount({
+          address: wallet.account.address,
+        });
+        return wallet.writeContract({
+          address: leverageVaultAddress as Address,
+          abi: leverageVaultAbi,
+          functionName: 'claimYieldFromBurn',
+          args: [BigInt(positionId), yieldVaultAddress, rwaToken, tokenAmount],
+          nonce,
+        });
+      }, 'claimYieldFromBurn write');
 
       this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
-        hash,
-        timeout: 120_000, // 2 minutes timeout
-        pollingInterval: 2_000, // Check every 2 seconds
+        hash: hash,
+        timeout: 120000, // 2 minutes timeout
+        pollingInterval: 2000, // Check every 2 seconds
       }), 'claimYieldFromBurn receipt');
       this.logger.log(`✅ Yield claimed via burn: ${hash}`);
 
@@ -469,12 +508,21 @@ export class LeverageBlockchainService {
       const position = await this.getPosition(positionId);
       const mETHReturned = position.mETHCollateral;
 
-      const hash = await this.executeWithRetry(() => wallet.writeContract({
-        address: address as Address,
-        abi,
-        functionName: 'processSettlement',
-        args: [BigInt(positionId), settlementUSDC],
-      }), 'processSettlement write');
+      const hash = await this.executeWithRetry(async () => {
+        const nonce = await this.publicClient.getTransactionCount({
+          address: wallet.account.address,
+        });
+        return wallet.writeContract({
+          address: address as Address,
+          abi,
+          functionName: 'processSettlement',
+          args: [BigInt(positionId), settlementUSDC],
+          nonce,
+        });
+      }, 'processSettlement write');
+
+      this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
+      await new Promise((resolve) => setTimeout(resolve, 4000));
 
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
@@ -555,16 +603,25 @@ export class LeverageBlockchainService {
     this.logger.log(`🔥 Settling liquidation for position ${positionId}...`);
 
     try {
-      const hash = await this.executeWithRetry(() => wallet.writeContract({
-        address: address as Address,
-        abi,
-        functionName: 'settleLiquidation',
-        args: [BigInt(positionId)],
-      }), 'settleLiquidation write');
+      const hash = await this.executeWithRetry(async () => {
+        const nonce = await this.publicClient.getTransactionCount({
+          address: wallet.account.address,
+        });
+        return wallet.writeContract({
+          address: address as Address,
+          abi,
+          functionName: 'settleLiquidation',
+          args: [BigInt(positionId)],
+          nonce,
+        });
+      }, 'settleLiquidation write');
+
+      this.logger.log(`⏳ Waiting for transaction receipt: ${hash}`);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 60_000,
+        timeout: 60000,
       }), 'settleLiquidation receipt');
       this.logger.log(`✅ Liquidation settled: ${hash}`);
 
@@ -750,8 +807,8 @@ export class LeverageBlockchainService {
 
       await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
         hash,
-        timeout: 120_000, // 2 minutes timeout
-        pollingInterval: 2_000, // Check every 2 seconds
+        timeout: 120000, // 2 minutes timeout
+        pollingInterval: 2000, // Check every 2 seconds
       }), 'addCollateral receipt');
       this.logger.log(`✅ Collateral added: ${hash}`);
       return hash;

@@ -446,7 +446,7 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
             plan.installmentsPaid++;
 
             // If fully repaid (based on debt, not installments count, as installments are estimated)
-            if (remainingDebt == 0) {
+            if (remainingDebt == 0 || (plan.installmentsPaid >= plan.numberOfInstallments)) {
                 plan.isActive = false;
             }
         }
@@ -476,7 +476,7 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
      */
     function withdrawCollateral(uint256 positionId, uint256 amount) external nonReentrant {
         Position storage position = positions[positionId];
-        require(position.active, "Position not active");
+        // require(position.active, "Position not active");
         require(msg.sender == position.user, "Not position owner");
         require(amount > 0, "Amount must be > 0");
         require(amount <= position.collateralAmount, "Insufficient collateral");
@@ -485,14 +485,29 @@ contract SolvencyVault is Ownable, ReentrancyGuard {
         uint256 outstandingDebt = ISeniorPool(seniorPool).getOutstandingDebt(positionId);
         require(outstandingDebt == 0, "Outstanding debt must be repaid");
 
+        // Update token valuation proportionally
+        uint256 oldCollateral = position.collateralAmount;
+        uint256 newCollateral = oldCollateral - amount;
+        
+        if (newCollateral == 0) {
+            position.tokenValueUSD = 0;
+        } else {
+            position.tokenValueUSD = (position.tokenValueUSD * newCollateral) / oldCollateral;
+        }
+
         // Update position
-        position.collateralAmount -= amount;
+        position.collateralAmount = newCollateral;
 
         // Close position if fully withdrawn
         if (position.collateralAmount == 0) {
             position.active = false;
             if (repaymentPlans[positionId].isActive) {
                 repaymentPlans[positionId].isActive = false;
+            }
+
+            // Revoke OAID credit line
+            if (oaid != address(0) && position.creditLineId > 0) {
+                IOAID(oaid).revokeCreditLine(position.creditLineId, "Collateral withdrawn");
             }
         }
 

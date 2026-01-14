@@ -28,9 +28,9 @@ export class ChangelogService implements OnModuleInit {
         }
     }
 
-    @Cron('*/45 * * * *')
+    @Cron('0 */2 * * *')
     async scheduledSync() {
-        this.logger.log('Starting scheduled sync (every 45 minutes)...');
+        this.logger.log('Starting scheduled sync (every 2 hours)');
         await this.fullSync();
     }
 

@@ -67,8 +67,8 @@ export class FaucetService {
       this.logger.log(`Faucet transaction submitted: ${requestHash}`);
       await this.publicClient.waitForTransactionReceipt({
         hash: requestHash,
-        timeout: 180_000,
-        pollingInterval: 2_000,
+        timeout: 180000,
+        pollingInterval: 2000,
       });
 
       this.logger.log(`USDC minted directly to receiver`);
@@ -130,8 +130,8 @@ export class FaucetService {
       this.logger.log(`Faucet transaction submitted: ${requestHash}`);
       await this.publicClient.waitForTransactionReceipt({
         hash: requestHash,
-        timeout: 180_000,
-        pollingInterval: 2_000,
+        timeout: 180000,
+        pollingInterval: 2000,
       });
 
       this.logger.log(`mETH minted directly to receiver`);

@@ -190,7 +190,7 @@ export class SolvencyAdminController {
         mETHSold: position.mETHCollateral,
         usdcRecovered: position.usdcBorrowed, // Approximate
         shortfall: '0', // Will be calculated from events
-        txHash,
+        txHash :txHash.toString(),
       });
 
       this.logger.log(`✅ Position ${positionId} marked as LIQUIDATED in database`);
@@ -212,15 +212,14 @@ export class SolvencyAdminController {
     }
 
     // Standard SolvencyVault Liquidation
-    // Generate unique marketplace asset ID for liquidation
-    const marketplaceAssetId = ethers.id(
-      `liquidation-${positionId}-${Date.now()}`,
-    );
-
     // Liquidate on-chain
     const result = await this.blockchainService.liquidatePosition(
       positionId,
-      marketplaceAssetId,
+    );
+
+    // Generate unique marketplace asset ID for database tracking
+    const marketplaceAssetId = ethers.id(
+      `liquidation-${positionId}-${Date.now()}`,
     );
 
     // Update database
