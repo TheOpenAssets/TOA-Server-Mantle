@@ -13,8 +13,6 @@ import { ConfigService } from '@nestjs/config';
 import {
   PartnerLoan,
   PartnerLoanDocument,
-  PartnerLoanStatus,
-  RepaymentSource,
 } from '../../../database/schemas/partner-loan.schema';
 import { Partner, PartnerDocument } from '../../../database/schemas/partner.schema';
 import { PartnerApiLog, PartnerApiLogDocument } from '../../../database/schemas/partner-api-log.schema';
@@ -26,6 +24,7 @@ import { WalletService } from '../../blockchain/services/wallet.service';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { Address, createPublicClient, http, PublicClient } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
+import { PartnerLoanStatus, RepaymentSource, WalletAddress } from '@mantle/types';
 
 @Injectable()
 export class PartnerLoanService {

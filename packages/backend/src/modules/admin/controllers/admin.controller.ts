@@ -2,7 +2,7 @@ import { Controller, Post, Body, UseGuards, Param } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../guards/admin.guard';
 import { AdminService } from '../services/admin.service';
-import { UserRole } from '../../../database/schemas/user.schema';
+import { UserRole } from '@mantle/types';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminGuard)

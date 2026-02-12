@@ -64,6 +64,9 @@ async function main() {
   console.log("═══════════════════════════════════════════════\n");
 
   const [deployer] = await ethers.getSigners();
+  if (!deployer) {
+    throw new Error("Deployer not found. Check your hardhat configuration and environment variables.");
+  }
   console.log(`👤 Deployer: ${deployer.address}`);
   console.log(`💰 Balance: ${ethers.formatEther(await ethers.provider.getBalance(deployer.address))} ETH\n`);
 

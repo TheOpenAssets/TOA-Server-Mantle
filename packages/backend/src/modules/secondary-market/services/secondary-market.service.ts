@@ -5,11 +5,12 @@ import { ConfigService } from '@nestjs/config';
 import { createPublicClient, http, Hash, Address, decodeEventLog } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
 import { WalletService } from '../../blockchain/services/wallet.service';
-import { P2POrder, P2POrderDocument, OrderStatus } from '../../../database/schemas/p2p-order.schema';
+import { P2POrder, P2POrderDocument } from '../../../database/schemas/p2p-order.schema';
 import { P2PTrade, P2PTradeDocument } from '../../../database/schemas/p2p-trade.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { TokenBalanceService } from './token-balance.service';
+import { OrderStatus, WalletAddress } from '@mantle/types';
 
 @Injectable()
 export class SecondaryMarketService {

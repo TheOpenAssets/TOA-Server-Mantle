@@ -3,10 +3,12 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
   LeveragePosition,
-  PositionStatus,
-  PositionHealth,
   HarvestRecord,
 } from '../../../database/schemas/leverage-position.schema';
+import { 
+  LeveragePositionStatus as PositionStatus, 
+  LeveragePositionHealth as PositionHealth 
+} from '@mantle/types';
 
 @Injectable()
 export class LeveragePositionService {

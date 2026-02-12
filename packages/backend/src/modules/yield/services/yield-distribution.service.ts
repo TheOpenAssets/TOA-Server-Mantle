@@ -4,21 +4,28 @@ import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
 import { createPublicClient, http, type Address } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
-import { Settlement, SettlementDocument, SettlementStatus } from '../../../database/schemas/settlement.schema';
+import { Settlement, SettlementDocument } from '../../../database/schemas/settlement.schema';
 import { DistributionHistory, DistributionHistoryDocument } from '../../../database/schemas/distribution-history.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { TokenHolderTrackingService } from './token-holder-tracking.service';
 import { TransferEventBackfillService } from './transfer-event-backfill.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
-import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { 
+  SettlementStatus, 
+  TokenType, 
+  SolvencyPositionStatus as PositionStatus, 
+  AssetStatus,
+  NotificationType,
+  NotificationSeverity,
+  NotificationAction,
+  WalletAddress
+} from '@mantle/types';
 import { RecordSettlementDto } from '../dto/yield-ops.dto';
 import { LeveragePositionService } from '../../leverage/services/leverage-position.service';
 import { LeverageBlockchainService } from '../../leverage/services/leverage-blockchain.service';
 import { SolvencyPositionService } from '../../solvency/services/solvency-position.service';
 import { SolvencyBlockchainService } from '../../solvency/services/solvency-blockchain.service';
-import { PositionStatus, TokenType } from '../../../database/schemas/solvency-position.schema';
 import { SecondaryMarketService } from '../../secondary-market/services/secondary-market.service';
 
 @Injectable()

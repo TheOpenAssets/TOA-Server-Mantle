@@ -5,22 +5,27 @@ import { InjectConnection } from '@nestjs/mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
-import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { Payout, PayoutDocument } from '../../../database/schemas/payout.schema';
-import { User, UserDocument, UserRole } from '../../../database/schemas/user.schema';
+import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { LeveragePosition, LeveragePositionDocument } from '../../../database/schemas/leverage-position.schema';
 import { CreateAssetDto } from '../dto/create-asset.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { ethers } from 'ethers';
+import { 
+  AssetStatus, 
+  UserRole, 
+  NotificationType, 
+  NotificationSeverity, 
+  NotificationAction 
+} from '@mantle/types';
 
 import { RegisterAssetDto } from '../../blockchain/dto/register-asset.dto';
 import { AttestationService } from '../../compliance-engine/services/attestation.service';
 import { AnnouncementService } from '../../announcements/services/announcement.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
-import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 
 @Injectable()

@@ -5,14 +5,19 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
-import { User, UserDocument, UserRole } from '../../../database/schemas/user.schema';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { User, UserDocument } from '../../../database/schemas/user.schema';
 import * as fs from 'fs';
 import { keccak256, toHex } from 'viem';
 import { EigenDAService } from '../services/eigenda.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
-import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { 
+  AssetStatus, 
+  UserRole, 
+  NotificationType, 
+  NotificationSeverity, 
+  NotificationAction 
+} from '@mantle/types';
 
 @Processor('asset-processing')
 export class AssetProcessor extends WorkerHost {

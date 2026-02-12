@@ -1,20 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { PartnerLoanStatus, RepaymentSource, WalletAddress } from '@mantle/types';
 
 export type PartnerLoanDocument = PartnerLoan & Document;
-
-export enum PartnerLoanStatus {
-  ACTIVE = 'ACTIVE',
-  REPAID = 'REPAID',
-  DEFAULTED = 'DEFAULTED',
-  LIQUIDATED = 'LIQUIDATED',
-}
-
-export enum RepaymentSource {
-  USER = 'USER',
-  PARTNER = 'PARTNER',
-  LIQUIDATION = 'LIQUIDATION',
-}
 
 @Schema({ timestamps: true })
 export class PartnerLoan {
@@ -33,7 +21,7 @@ export class PartnerLoan {
 
   // User & Position
   @Prop({ required: true, index: true })
-  userWallet!: string;                // Borrower's wallet
+  userWallet!: WalletAddress;                // Borrower's wallet
 
   @Prop({ required: true, index: true })
   oaidTokenId!: number;               // OAID used for credit line

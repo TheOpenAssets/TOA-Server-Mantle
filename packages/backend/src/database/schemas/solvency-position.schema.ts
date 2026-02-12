@@ -1,27 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 import { Settlement } from './settlement.schema';
+import { TokenType, SolvencyHealthStatus, SolvencyPositionStatus, WalletAddress } from '@mantle/types';
 
 export type SolvencyPositionDocument = SolvencyPosition & Document;
-
-export enum TokenType {
-  RWA = 'RWA',
-  PRIVATE_ASSET = 'PRIVATE_ASSET',
-}
-
-export enum HealthStatus {
-  HEALTHY = 'HEALTHY',           // Health factor > 125%
-  WARNING = 'WARNING',           // Health factor 110% - 125%
-  LIQUIDATABLE = 'LIQUIDATABLE', // Health factor < 110%
-}
-
-export enum PositionStatus {
-  ACTIVE = 'ACTIVE',         // Position open with collateral
-  LIQUIDATED = 'LIQUIDATED', // Liquidation executed
-  REPAID = 'REPAID',         // Loan fully repaid
-  CLOSED = 'CLOSED',         // Position closed, collateral withdrawn
-  SETTLED = 'SETTLED',     // Liquidation settled and finalized
-}
 
 @Schema({ timestamps: true })
 export class SolvencyPosition {
@@ -29,7 +11,7 @@ export class SolvencyPosition {
   positionId!: number; // On-chain position ID
 
   @Prop({ required: true, index: true })
-  userAddress!: string; // Wallet address
+  userAddress!: WalletAddress; // Wallet address
 
   @Prop({ required: true })
   collateralTokenAddress!: string; // RWA or PrivateAsset token address
@@ -52,11 +34,11 @@ export class SolvencyPosition {
   @Prop({ type: Number })
   currentHealthFactor?: number; // Basis points (15000 = 150%)
 
-  @Prop({ required: true, enum: HealthStatus, default: HealthStatus.HEALTHY })
-  healthStatus!: HealthStatus;
+  @Prop({ required: true, enum: SolvencyHealthStatus, default: SolvencyHealthStatus.HEALTHY })
+  healthStatus!: SolvencyHealthStatus;
 
-  @Prop({ required: true, enum: PositionStatus, default: PositionStatus.ACTIVE })
-  status!: PositionStatus;
+  @Prop({ required: true, enum: SolvencyPositionStatus, default: SolvencyPositionStatus.ACTIVE })
+  status!: SolvencyPositionStatus;
 
   // Repayment tracking
   @Prop({ default: '0' })

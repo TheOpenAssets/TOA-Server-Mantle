@@ -9,12 +9,16 @@ import { CreateAuctionDto } from '../../marketplace/dto/create-auction.dto';
 import { EndAuctionDto } from '../../marketplace/dto/end-auction.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { 
+  AssetStatus, 
+  NotificationType, 
+  NotificationSeverity, 
+  NotificationAction 
+} from '@mantle/types';
 
 import { AuctionService } from '../../marketplace/services/auction.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
-import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 
 @Controller('admin/assets')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)

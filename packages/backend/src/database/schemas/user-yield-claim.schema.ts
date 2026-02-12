@@ -1,16 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-
-export enum YieldClaimStatus {
-  PENDING = 'PENDING',       // Event detected but not processed
-  CONFIRMED = 'CONFIRMED',   // Claim confirmed on-chain
-  FAILED = 'FAILED',         // Claim failed
-}
+import { YieldClaimStatus, WalletAddress } from '@mantle/types';
 
 @Schema({ timestamps: true })
 export class UserYieldClaim extends Document {
   @Prop({ required: true, index: true })
-  userAddress!: string; // Investor who claimed
+  userAddress!: WalletAddress; // Investor who claimed
 
   @Prop({ required: true, index: true })
   tokenAddress!: string; // RWA token address

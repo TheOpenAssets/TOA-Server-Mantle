@@ -20,8 +20,8 @@ import { CreateAssetDto } from '../dto/create-asset.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { OriginatorGuard } from '../guards/originator.guard';
 import { AdminGuard } from '../../admin/guards/admin.guard';
-import { AssetStatus } from '../../../database/schemas/asset.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { AssetStatus } from '@mantle/types';
 
 @Controller('assets')
 @UseGuards(JwtAuthGuard)

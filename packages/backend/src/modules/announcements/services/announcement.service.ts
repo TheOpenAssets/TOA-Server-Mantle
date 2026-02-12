@@ -5,10 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   Announcement,
   AnnouncementDocument,
-  AnnouncementType,
-  AnnouncementStatus,
 } from '../../../database/schemas/announcement.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { AnnouncementType, AnnouncementStatus } from '@mantle/types';
 
 @Injectable()
 export class AnnouncementService {

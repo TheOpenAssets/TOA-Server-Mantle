@@ -1,17 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { BidStatus, WalletAddress } from '@mantle/types';
 
 export type BidDocument = Bid & Document;
-
-export enum BidStatus {
-  PENDING = 'PENDING', // Bid created but not submitted
-  PLACED = 'PLACED', // Bid placed on-chain
-  FINALIZED = 'FINALIZED', // Auction ended, result pending
-  WON = 'WON', // Bid won after result declared
-  LOST = 'LOST', // Bid lost after result declared
-  SETTLED = 'SETTLED', // Rewards claimed / refunds processed
-  REFUNDED = 'REFUNDED', // Lost and received full refund
-}
 
 @Schema({ timestamps: true })
 export class Bid {
@@ -19,7 +10,7 @@ export class Bid {
   assetId!: string;
 
   @Prop({ required: true, index: true })
-  bidder!: string; // Wallet address
+  bidder!: WalletAddress; // Wallet address
 
   @Prop({ required: true })
   tokenAmount!: string; // BigInt as string

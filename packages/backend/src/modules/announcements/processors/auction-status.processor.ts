@@ -6,12 +6,16 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
-import { User, UserDocument, UserRole } from '../../../database/schemas/user.schema';
+import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { AnnouncementService } from '../services/announcement.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
-import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { 
+  UserRole, 
+  NotificationType, 
+  NotificationSeverity, 
+  NotificationAction 
+} from '@mantle/types';
 import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
 import { toISTISOString } from '../../../utils/date.utils';
 

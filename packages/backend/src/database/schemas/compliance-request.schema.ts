@@ -1,13 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { ComplianceRequestStatus, WalletAddress } from '@mantle/types';
 
 export type ComplianceRequestDocument = ComplianceRequest & Document;
-
-export enum ComplianceRequestStatus {
-  PENDING = 'PENDING',
-  APPROVED = 'APPROVED',
-  REJECTED = 'REJECTED',
-}
 
 @Schema({ timestamps: true })
 export class ComplianceRequest {
@@ -18,7 +13,7 @@ export class ComplianceRequest {
   tokenAddress!: string; // Token contract address
 
   @Prop({ required: true, index: true })
-  investorAddress!: string; // Wallet requesting access
+  investorAddress!: WalletAddress; // Wallet requesting access
 
   @Prop({ required: true })
   requestedAmount!: string; // How many tokens they want to buy (for context)

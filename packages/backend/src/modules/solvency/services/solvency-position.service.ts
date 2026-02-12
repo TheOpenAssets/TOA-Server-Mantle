@@ -4,11 +4,14 @@ import { Model } from 'mongoose';
 import {
   SolvencyPosition,
   SolvencyPositionDocument,
-  TokenType,
-  HealthStatus,
-  PositionStatus,
 } from '../../../database/schemas/solvency-position.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { 
+  TokenType, 
+  SolvencyHealthStatus as HealthStatus, 
+  SolvencyPositionStatus as PositionStatus,
+  WalletAddress 
+} from '@mantle/types';
 import { SolvencyBlockchainService } from './solvency-blockchain.service';
 
 @Injectable()

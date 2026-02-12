@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-import { Notification } from './notification.schema';
+import { WalletAddress } from '@mantle/types';
 
 export type UserNotificationDocument = UserNotification & Document;
 
@@ -27,7 +27,7 @@ export class UserNotification {
   userId!: string; // Reference to User ID string from auth
 
   @Prop({ required: true, index: true })
-  walletAddress!: string;
+  walletAddress!: WalletAddress;
 
   @Prop({ type: [NotificationItemSchema], default: [] })
   notifications!: NotificationItem[];

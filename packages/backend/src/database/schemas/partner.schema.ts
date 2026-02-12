@@ -1,19 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { PartnerStatus, PartnerTier, WalletAddress } from '@mantle/types';
 
 export type PartnerDocument = Partner & Document;
-
-export enum PartnerStatus {
-  ACTIVE = 'ACTIVE',
-  SUSPENDED = 'SUSPENDED',
-  INACTIVE = 'INACTIVE',
-}
-
-export enum PartnerTier {
-  BASIC = 'BASIC',
-  PREMIUM = 'PREMIUM',
-  ENTERPRISE = 'ENTERPRISE',
-}
 
 @Schema({ timestamps: true })
 export class Partner {
@@ -56,7 +45,7 @@ export class Partner {
   platformFeePercentage!: number;     // Basis points (e.g., 50 = 0.5%)
 
   @Prop({ required: true })
-  settlementAddress!: string;         // Where to send/receive USDC
+  settlementAddress!: WalletAddress;         // Where to send/receive USDC
 
   // Webhook Integration (Optional)
   @Prop()
@@ -70,7 +59,7 @@ export class Partner {
   contactEmail!: string;
 
   @Prop()
-  contactWallet?: string;
+  contactWallet?: WalletAddress;
 
   @Prop({ default: false })
   kycVerified!: boolean;
@@ -80,7 +69,7 @@ export class Partner {
 
   // Audit
   @Prop({ required: true })
-  createdBy!: string;                 // Admin wallet who created this partner
+  createdBy!: WalletAddress;                 // Admin wallet who created this partner
 
   @Prop()
   lastUsedAt?: Date;

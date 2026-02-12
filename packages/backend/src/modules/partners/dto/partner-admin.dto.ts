@@ -1,6 +1,6 @@
 import { IsString, IsEnum, IsNumber, IsEmail, IsUrl, IsOptional, IsEthereumAddress, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PartnerStatus, PartnerTier } from '../../../database/schemas/partner.schema';
+import { PartnerStatus, PartnerTier } from '@mantle/types';
 
 export class CreatePartnerDto {
   @ApiProperty({ example: 'XYZ Lending' })

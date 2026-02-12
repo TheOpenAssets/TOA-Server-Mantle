@@ -3,19 +3,25 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
-import { Bid, BidDocument, BidStatus } from '../../../database/schemas/bid.schema';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
-import { P2POrder, P2POrderDocument, OrderStatus } from '../../../database/schemas/p2p-order.schema';
+import { P2POrder, P2POrderDocument } from '../../../database/schemas/p2p-order.schema';
 import { P2PTrade, P2PTradeDocument } from '../../../database/schemas/p2p-trade.schema';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { TokenHolderTrackingService } from '../../yield/services/token-holder-tracking.service';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { SseEmitterService } from '../../notifications/services/sse-emitter.service';
-import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
-import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { 
+  AssetStatus, 
+  BidStatus, 
+  OrderStatus, 
+  NotificationType, 
+  NotificationSeverity, 
+  NotificationAction,
+  SolvencyPositionStatus as PositionStatus 
+} from '@mantle/types';
 import { SolvencyPositionService } from '../../solvency/services/solvency-position.service';
-import { PositionStatus } from '../../../database/schemas/solvency-position.schema';
 
 @Processor('event-processing')
 export class EventProcessor extends WorkerHost {

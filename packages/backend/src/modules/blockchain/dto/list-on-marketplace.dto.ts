@@ -1,9 +1,5 @@
 import { IsString, IsNotEmpty, IsEnum, IsOptional, IsNumberString } from 'class-validator';
-
-export enum ListingType {
-  STATIC = 'STATIC',
-  AUCTION = 'AUCTION',
-}
+import { ListingType } from '@mantle/types';
 
 export class ListOnMarketplaceDto {
   @IsString()

@@ -1,13 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { OrderStatus, WalletAddress } from '@mantle/types';
 
 export type P2POrderDocument = P2POrder & Document;
-
-export enum OrderStatus {
-  OPEN = 'OPEN',
-  FILLED = 'FILLED',
-  CANCELLED = 'CANCELLED',
-}
 
 @Schema({ timestamps: true })
 export class P2POrder {
@@ -15,7 +10,7 @@ export class P2POrder {
   orderId!: string; // On-chain ID
 
   @Prop({ required: true, index: true })
-  maker!: string; // Wallet address
+  maker!: WalletAddress;
 
   @Prop({ required: true, index: true })
   assetId!: string;

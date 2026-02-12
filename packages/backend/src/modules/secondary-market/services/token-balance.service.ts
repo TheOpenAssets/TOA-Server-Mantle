@@ -5,9 +5,10 @@ import { ConfigService } from '@nestjs/config';
 import { createPublicClient, http, Address } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
-import { P2POrder, P2POrderDocument, OrderStatus } from '../../../database/schemas/p2p-order.schema';
+import { P2POrder, P2POrderDocument } from '../../../database/schemas/p2p-order.schema';
 import { LeveragePosition } from '../../../database/schemas/leverage-position.schema';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
+import { OrderStatus, WalletAddress } from '@mantle/types';
 
 export interface TokenBalanceInfo {
     assetId: string;

@@ -1,15 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { SettlementStatus } from '@mantle/types';
 
 export type SettlementDocument = Settlement & Document;
-
-export enum SettlementStatus {
-  PENDING_CONVERSION = 'PENDING_CONVERSION',
-  READY_FOR_DISTRIBUTION = 'READY_FOR_DISTRIBUTION',
-  DISTRIBUTING = 'DISTRIBUTING',
-  DISTRIBUTED = 'DISTRIBUTED',
-  FAILED = 'FAILED',
-}
 
 @Schema({ timestamps: true })
 export class Settlement {

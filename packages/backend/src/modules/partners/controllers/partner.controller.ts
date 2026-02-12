@@ -13,7 +13,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery }
 import { PartnerLoanService } from '../services/partner-loan.service';
 import { PartnerApiKeyGuard } from '../guards/partner-api-key.guard';
 import { PartnerBorrowDto, PartnerRepayDto, PartnerRepayWithTransferDto } from '../dto/partner-loan.dto';
-import { PartnerLoanStatus } from '../../../database/schemas/partner-loan.schema';
+import { PartnerLoanStatus, WalletAddress } from '@mantle/types';
 import { SolvencyBlockchainService } from '../../solvency/services/solvency-blockchain.service';
 
 @ApiTags('Partners')

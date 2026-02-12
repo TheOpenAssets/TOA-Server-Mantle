@@ -1,21 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { LeveragePositionStatus, LeveragePositionHealth, WalletAddress } from '@mantle/types';
 
 export type LeveragePositionDocument = LeveragePosition & Document;
-
-export enum PositionStatus {
-  ACTIVE = 'ACTIVE',
-  LIQUIDATED = 'LIQUIDATED',
-  SETTLED = 'SETTLED',
-  CLOSED = 'CLOSED',
-}
-
-export enum PositionHealth {
-  HEALTHY = 'HEALTHY', // > 140%
-  WARNING = 'WARNING', // 125-140%
-  CRITICAL = 'CRITICAL', // 110-125%
-  LIQUIDATABLE = 'LIQUIDATABLE', // < 110%
-}
 
 @Schema({ timestamps: true })
 export class HarvestRecord {
@@ -55,7 +42,7 @@ export class LeveragePosition extends Document {
   positionId!: number; // On-chain position ID
 
   @Prop({ required: true, index: true })
-  userAddress!: string; // Investor wallet address
+  userAddress!: WalletAddress; // Investor wallet address
 
   @Prop({ required: true, index: true })
   assetId!: string; // Asset ID reference
@@ -78,11 +65,11 @@ export class LeveragePosition extends Document {
   @Prop({ required: true })
   currentHealthFactor!: number; // Current health factor in basis points
 
-  @Prop({ enum: PositionHealth, default: PositionHealth.HEALTHY })
-  healthStatus!: PositionHealth;
+  @Prop({ enum: LeveragePositionHealth, default: LeveragePositionHealth.HEALTHY })
+  healthStatus!: LeveragePositionHealth;
 
-  @Prop({ enum: PositionStatus, default: PositionStatus.ACTIVE })
-  status!: PositionStatus;
+  @Prop({ enum: LeveragePositionStatus, default: LeveragePositionStatus.ACTIVE })
+  status!: LeveragePositionStatus;
 
   @Prop({ required: true })
   createdAt!: Date;
