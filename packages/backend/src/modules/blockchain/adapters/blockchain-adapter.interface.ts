@@ -17,7 +17,6 @@ export interface BlockchainAdapter {
       name?: string;
       symbol?: string;
       attestationHash?: string;
-      blobId?: string;
       [key: string]: any;
     }
   ): Promise<DeployedTokenResult>;
