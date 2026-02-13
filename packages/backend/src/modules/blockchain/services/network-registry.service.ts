@@ -54,13 +54,21 @@ export class NetworkRegistryService implements OnModuleInit {
     return await adapter.registerIdentity(walletAddress);
   }
 
-  async deployAssetToken(assetId: string, totalSupply: number, name: string, symbol: string) {
+  async deployAssetToken(
+    assetId: string, 
+    totalSupply: number, 
+    params: {
+      name?: string;
+      symbol?: string;
+      attestationHash?: string;
+      blobId?: string;
+    }
+  ) {
     if (!this.isAvailable('assets')) {
       return { completed: false, skipped: true, reason: 'ASSETS_FEATURE_DISABLED' };
     }
     const adapter = await this.getBlockchainAdapter();
-    // Note: name and symbol added to match adapter interface
-    return await adapter.deployToken(assetId, totalSupply, name, symbol);
+    return await adapter.deployToken(assetId, totalSupply, params);
   }
 
   async registerAssetOnChain(dto: any) {
@@ -71,13 +79,22 @@ export class NetworkRegistryService implements OnModuleInit {
     return await adapter.registerAsset(dto);
   }
 
+  async revokeAssetOnChain(assetId: string) {
+    if (!this.isAvailable('assets')) {
+      return { completed: false, skipped: true, reason: 'ASSETS_FEATURE_DISABLED' };
+    }
+    const adapter = await this.getBlockchainAdapter();
+    return await adapter.revokeAsset(assetId);
+  }
+
   async listAssetOnMarketplace(
     tokenIdentifier: string,
     listingType: string,
     price: number,
     minInvestment: number,
     duration: number,
-    totalSupply: number
+    totalSupply: number,
+    minPrice?: string
   ) {
     if (!this.isAvailable('marketplace')) {
       return { completed: false, skipped: true, reason: 'MARKETPLACE_FEATURE_DISABLED' };
@@ -89,8 +106,20 @@ export class NetworkRegistryService implements OnModuleInit {
       price,
       minInvestment,
       duration,
-      totalSupply
+      totalSupply,
+      minPrice
     );
+  }
+
+  async deactivateListingOnMarketplace(tokenIdentifier: string) {
+    if (!this.isAvailable('marketplace')) {
+      return { completed: false, skipped: true, reason: 'MARKETPLACE_FEATURE_DISABLED' };
+    }
+    const adapter = await this.getBlockchainAdapter();
+    if ('deactivateListing' in adapter) {
+      return await (adapter as any).deactivateListing(tokenIdentifier);
+    }
+    return { completed: false, skipped: true, reason: 'METHOD_NOT_SUPPORTED_BY_ADAPTER' };
   }
 
   async approveTrustlineForUser(userAddress: string, assetIdentifier: string) {

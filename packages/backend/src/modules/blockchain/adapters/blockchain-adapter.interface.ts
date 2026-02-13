@@ -13,8 +13,13 @@ export interface BlockchainAdapter {
   deployToken(
     assetId: string,
     totalSupply: number,
-    attestationHash: string,
-    blobId: string
+    params: {
+      name?: string;
+      symbol?: string;
+      attestationHash?: string;
+      blobId?: string;
+      [key: string]: any;
+    }
   ): Promise<DeployedTokenResult>;
   
   // Marketplace
@@ -24,7 +29,8 @@ export interface BlockchainAdapter {
     price: number,
     minInvestment: number,
     duration: number,
-    totalSupply: number
+    totalSupply: number,
+    minPrice?: string
   ): Promise<{ txId: string }>;
   
   // Identity

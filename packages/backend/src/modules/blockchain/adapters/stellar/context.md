@@ -7,9 +7,11 @@ This folder contains the concrete implementations of the blockchain adapter inte
 
 ### `StellarBlockchainAdapter`
 - Implements `BlockchainAdapter`.
-- Manages native asset flags (`AUTH_REQUIRED`, etc.) via classic operations.
-- Invokes Soroban smart contracts for registry operations.
-- Uses `rpc.Server` for transaction submission and simulation.
+- **Transaction Confirmation**: Includes a robust `confirmTransaction` polling mechanism (30s timeout, 2s intervals) to ensure transactions are successfully applied before returning.
+- **Asset Management**: Handles `registerAsset` (AttestationRegistry) and `registerAssetInRegistry` (AssetRegistry).
+- **Token Management**: Implements native asset flag setting and deterministic token identifier generation.
+- **Revocation**: Supports multi-level revocation across AttestationRegistry, AssetRegistry, and PrimaryMarket.
+- **Identity**: Manages KYC registration on the Soroban IdentityRegistry.
 
 ### `StellarWalletAdapter`
 - Implements `WalletAdapter`.

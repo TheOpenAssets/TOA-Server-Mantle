@@ -111,8 +111,10 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
   async deployToken(
     assetId: string,
     totalSupply: number,
-    name: string,
-    symbol: string,
+    params: {
+      name?: string;
+      symbol?: string;
+    }
   ): Promise<DeployedTokenResult> {
     const wallet = this.walletAdapter.getAdminWallet();
     const address = this.contractAdapter.getContractAddress('TokenFactory');
@@ -122,6 +124,7 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     const assetIdBytes32 = '0x' + assetId.replace(/-/g, '').padEnd(64, '0');
     const totalSupplyBigInt = BigInt(totalSupply);
     const issuer = wallet.account.address;
+    const { name, symbol } = params;
 
     this.logger.log(`Deploying EVM token for asset ${assetId}...`);
 
@@ -129,7 +132,7 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
       address: address as Address,
       abi,
       functionName: 'deployTokenSuite',
-      args: [assetIdBytes32, totalSupplyBigInt, name, symbol, issuer],
+      args: [assetIdBytes32, totalSupplyBigInt, name || 'RWA Token', symbol || 'RWA', issuer],
     }), 'deployTokenSuite write');
 
     const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
