@@ -47,4 +47,5 @@ packages/backend/local-storage/
 packages/stellar-contracts/target/
 packages/backend/uploads/
 packages/stellar-contracts/cargo.lock
+packages/stellar-contracts/node_modules/
 scripts/*

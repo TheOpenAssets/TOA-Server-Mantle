@@ -3,17 +3,46 @@ import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
 
+interface DeployedContracts {
+  networks?: {
+    [key: string]: {
+      contracts: Record<string, string>;
+      network: string;
+      timestamp?: string;
+    };
+  };
+  // Legacy format support
+  contracts?: Record<string, string>;
+}
+
 @Injectable()
 export class ContractLoaderService implements OnModuleInit {
   private readonly logger = new Logger(ContractLoaderService.name);
   private contracts: Record<string, string> = {};
   private abis: Record<string, any> = {};
+  private currentNetwork: string;
 
-  constructor(private configService: ConfigService) {}
+  constructor(private configService: ConfigService) {
+    this.currentNetwork = this.configService.get('blockchain.network') || 'mantle-testnet';
+  }
 
   onModuleInit() {
     this.loadContracts();
     this.loadAbis();
+  }
+
+  private getNetworkKey(): string {
+    const chainId = this.configService.get('blockchain.chainId');
+    const networkMap: Record<number, string> = {
+      5003: 'mantle-sepolia',
+      5000: 'mantle-mainnet',
+    };
+    
+    if (chainId && networkMap[chainId]) {
+      return networkMap[chainId];
+    }
+    
+    return this.currentNetwork;
   }
 
   private loadContracts() {
@@ -24,10 +53,27 @@ export class ContractLoaderService implements OnModuleInit {
       // Navigate to monorepo root (up two levels from packages/backend)
       const monorepoRoot = path.join(process.cwd(), '../..');
       const deployPath = path.join(monorepoRoot, 'packages/contracts/deployed_contracts.json');
+      
       if (fs.existsSync(deployPath)) {
-        const data = JSON.parse(fs.readFileSync(deployPath, 'utf8'));
-        this.contracts = { ...data.contracts, ...envContracts }; // Env overrides file
-        this.logger.log(`Loaded contract addresses from ${deployPath}`);
+        const data: DeployedContracts = JSON.parse(fs.readFileSync(deployPath, 'utf8'));
+        const networkKey = this.getNetworkKey();
+        
+        this.logger.log(`Loading contracts for network: ${networkKey}`);
+        
+        // Handle multi-chain structure
+        if (data.networks && data.networks[networkKey]) {
+          this.contracts = { ...data.networks[networkKey].contracts, ...envContracts };
+          this.logger.log(`Loaded ${Object.keys(data.networks[networkKey].contracts).length} contract addresses from ${deployPath}`);
+        }
+        // Fallback to legacy format
+        else if (data.contracts) {
+          this.logger.warn('Using legacy deployed_contracts.json format. Consider migrating to multi-chain structure.');
+          this.contracts = { ...data.contracts, ...envContracts };
+          this.logger.log(`Loaded ${Object.keys(data.contracts).length} contract addresses (legacy format)`);
+        } else {
+          this.logger.warn(`No contracts found for network ${networkKey} in deployed_contracts.json`);
+          this.contracts = envContracts || {};
+        }
       } else {
         this.logger.warn(`deployed_contracts.json not found at ${deployPath}. Relying on env vars.`);
         this.contracts = envContracts || {};

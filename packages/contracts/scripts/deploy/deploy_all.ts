@@ -57,6 +57,28 @@ import { ethers, network } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
 
+interface DeployedContracts {
+  networks?: {
+    [key: string]: {
+      contracts: Record<string, string>;
+      network: string;
+      timestamp?: string;
+    };
+  };
+  // Legacy format support
+  contracts?: Record<string, string>;
+  network?: string;
+}
+
+function getNetworkKey(networkName: string): string {
+  const networkMap: Record<string, string> = {
+    mantleSepolia: 'mantle-sepolia',
+    mantleTestnet: 'mantle-testnet',
+    mantle: 'mantle-mainnet',
+  };
+  return networkMap[networkName] || `mantle-${networkName}`;
+}
+
 async function main() {
   console.log("\n═══════════════════════════════════════════════");
   console.log(`🚀 OpenAssets Full Stack Deployment`);
@@ -71,52 +93,79 @@ async function main() {
   console.log(`💰 Balance: ${ethers.formatEther(await ethers.provider.getBalance(deployer.address))} ETH\n`);
 
   const deployPath = path.join(__dirname, "../../deployed_contracts.json");
-  let deployed: any = fs.existsSync(deployPath)
+  let deployed: DeployedContracts = fs.existsSync(deployPath)
     ? JSON.parse(fs.readFileSync(deployPath, "utf8"))
-    : { contracts: {} };
+    : { networks: {} };
+
+  // Migrate legacy format if needed
+  if (deployed.contracts && !deployed.networks) {
+    console.log("   🔄 Migrating legacy format to multi-chain structure...");
+    const legacyNetwork = deployed.network || 'mantle-testnet';
+    deployed.networks = {
+      [legacyNetwork]: {
+        contracts: deployed.contracts,
+        network: legacyNetwork,
+        timestamp: deployed.timestamp,
+      },
+    };
+    delete deployed.contracts;
+    delete deployed.network;
+  }
+
+  const networkKey = getNetworkKey(network.name);
+  if (!deployed.networks) deployed.networks = {};
+  if (!deployed.networks[networkKey]) {
+    deployed.networks[networkKey] = {
+      contracts: {},
+      network: network.name,
+    };
+  }
 
   const save = () => fs.writeFileSync(deployPath, JSON.stringify(deployed, null, 2));
   const set = (k: string, v: string) => {
-    deployed.contracts[k] = v;
+    deployed.networks![networkKey].contracts[k] = v;
+    deployed.networks![networkKey].timestamp = new Date().toISOString();
     save();
     console.log(`   📌 ${k} = ${v}`);
   };
 
+  const existingContracts = deployed.networks[networkKey].contracts;
+
   // ------------------------------------------------------------------
   console.log("\n[1] USDC SETUP");
   // ------------------------------------------------------------------
-  if (!deployed.contracts.USDC) {
+  if (!existingContracts.USDC) {
     console.log("   ➜ Deploying MockUSDC...");
     const MockUSDC = await ethers.getContractFactory("MockUSDC");
     const usdc = await MockUSDC.deploy();
     await usdc.waitForDeployment();
     set("USDC", await usdc.getAddress());
   } else {
-    console.log(`   ✔ Using existing USDC: ${deployed.contracts.USDC}`);
+    console.log(`   ✔ Using existing USDC: ${existingContracts.USDC}`);
   }
 
-  const USDC = deployed.contracts.USDC;
+  const USDC = existingContracts.USDC;
 
   // ------------------------------------------------------------------
   console.log("\n[2] COMPLIANCE REGISTRIES");
   // ------------------------------------------------------------------
-  if (!deployed.contracts.AttestationRegistry) {
+  if (!existingContracts.AttestationRegistry) {
     console.log("   ➜ Deploying AttestationRegistry...");
     const x = await (await ethers.getContractFactory("AttestationRegistry")).deploy();
     await x.waitForDeployment();
     set("AttestationRegistry", await x.getAddress());
   }
 
-  if (!deployed.contracts.TrustedIssuersRegistry) {
+  if (!existingContracts.TrustedIssuersRegistry) {
     console.log("   ➜ Deploying TrustedIssuersRegistry...");
     const x = await (await ethers.getContractFactory("TrustedIssuersRegistry")).deploy();
     await x.waitForDeployment();
     set("TrustedIssuersRegistry", await x.getAddress());
   }
 
-  if (!deployed.contracts.IdentityRegistry) {
+  if (!existingContracts.IdentityRegistry) {
     console.log("   ➜ Deploying IdentityRegistry...");
-    const x = await (await ethers.getContractFactory("IdentityRegistry")).deploy(deployed.contracts.TrustedIssuersRegistry);
+    const x = await (await ethers.getContractFactory("IdentityRegistry")).deploy(existingContracts.TrustedIssuersRegistry);
     await x.waitForDeployment();
     set("IdentityRegistry", await x.getAddress());
   }
@@ -124,7 +173,7 @@ async function main() {
   // ------------------------------------------------------------------
   console.log("\n[3] YIELD VAULT");
   // ------------------------------------------------------------------
-  if (!deployed.contracts.YieldVault) {
+  if (!existingContracts.YieldVault) {
     console.log(`   ➜ Deploying YieldVault (USDC=${USDC})`);
     const x = await (await ethers.getContractFactory("YieldVault")).deploy(USDC, deployer.address);
     await x.waitForDeployment();
@@ -134,25 +183,25 @@ async function main() {
   // ------------------------------------------------------------------
   console.log("\n[4] TOKEN FACTORY");
   // ------------------------------------------------------------------
-  if (!deployed.contracts.TokenFactory) {
+  if (!existingContracts.TokenFactory) {
     console.log("   ➜ Deploying TokenFactory with:");
-    console.log("      AttestationRegistry:", deployed.contracts.AttestationRegistry);
-    console.log("      IdentityRegistry:   ", deployed.contracts.IdentityRegistry);
-    console.log("      TrustedIssuers:    ", deployed.contracts.TrustedIssuersRegistry);
-    console.log("      YieldVault:        ", deployed.contracts.YieldVault);
+    console.log("      AttestationRegistry:", existingContracts.AttestationRegistry);
+    console.log("      IdentityRegistry:   ", existingContracts.IdentityRegistry);
+    console.log("      TrustedIssuers:    ", existingContracts.TrustedIssuersRegistry);
+    console.log("      YieldVault:        ", existingContracts.YieldVault);
 
     const x = await (await ethers.getContractFactory("TokenFactory")).deploy(
-      deployed.contracts.AttestationRegistry,
-      deployed.contracts.IdentityRegistry,
-      deployed.contracts.TrustedIssuersRegistry,
+      existingContracts.AttestationRegistry,
+      existingContracts.IdentityRegistry,
+      existingContracts.TrustedIssuersRegistry,
       deployer.address,
-      deployed.contracts.YieldVault
+      existingContracts.YieldVault
     );
     await x.waitForDeployment();
     set("TokenFactory", await x.getAddress());
 
     console.log("   🔗 Linking TokenFactory → YieldVault");
-    const yieldVault = await ethers.getContractAt("YieldVault", deployed.contracts.YieldVault);
+    const yieldVault = await ethers.getContractAt("YieldVault", existingContracts.YieldVault);
     await yieldVault.setFactory(x.target);
     console.log("   ✔ Factory linked");
   }
@@ -160,10 +209,10 @@ async function main() {
   // ------------------------------------------------------------------
   console.log("\n[5] PRIMARY MARKET");
   // ------------------------------------------------------------------
-  if (!deployed.contracts.PrimaryMarketplace) {
+  if (!existingContracts.PrimaryMarketplace) {
     console.log("   ➜ Deploying PrimaryMarket...");
     const x = await (await ethers.getContractFactory("PrimaryMarket")).deploy(
-      deployed.contracts.TokenFactory,
+      existingContracts.TokenFactory,
       deployer.address,
       USDC
     );
@@ -174,7 +223,7 @@ async function main() {
   // ------------------------------------------------------------------
   console.log("\n[6] SENIOR POOL + LIQUIDITY");
   // ------------------------------------------------------------------
-  if (!deployed.contracts.SeniorPool) {
+  if (!existingContracts.SeniorPool) {
     console.log("   ➜ Deploying SeniorPool...");
     const x = await (await ethers.getContractFactory("SeniorPool")).deploy(USDC);
     await x.waitForDeployment();
@@ -192,29 +241,29 @@ async function main() {
   // ------------------------------------------------------------------
   console.log("\n[7] LEVERAGE PRIMITIVES (mETH, DEX, Fluxion)");
   // ------------------------------------------------------------------
-  if (!deployed.contracts.MockMETH) {
+  if (!existingContracts.MockMETH) {
     console.log("   ➜ Deploying MockMETH...");
     const x = await (await ethers.getContractFactory("contracts/test/MockMETH.sol:MockMETH")).deploy();
     await x.waitForDeployment();
     set("MockMETH", await x.getAddress());
   }
 
-  if (!deployed.contracts.MockFluxionDEX) {
+  if (!existingContracts.MockFluxionDEX) {
     console.log("   ➜ Deploying MockFluxionDEX (3000 USDC/mETH)...");
     const x = await (await ethers.getContractFactory("MockFluxionDEX")).deploy(
-      deployed.contracts.MockMETH, USDC, ethers.parseUnits("3000", 6)
+      existingContracts.MockMETH, USDC, ethers.parseUnits("3000", 6)
     );
     await x.waitForDeployment();
     set("MockFluxionDEX", await x.getAddress());
   }
 
-  if (!deployed.contracts.FluxionIntegration) {
+  if (!existingContracts.FluxionIntegration) {
     console.log("   ➜ Deploying FluxionIntegration...");
     const x = await (await ethers.getContractFactory("FluxionIntegration")).deploy(
-      deployed.contracts.MockMETH,
+      existingContracts.MockMETH,
       USDC,
-      deployed.contracts.MockFluxionDEX,
-      deployed.contracts.MockMETH
+      existingContracts.MockFluxionDEX,
+      existingContracts.MockMETH
     );
     await x.waitForDeployment();
     set("FluxionIntegration", await x.getAddress());
@@ -223,25 +272,25 @@ async function main() {
   // ------------------------------------------------------------------
   console.log("\n[8] LEVERAGE VAULT");
   // ------------------------------------------------------------------
-  if (!deployed.contracts.LeverageVault) {
+  if (!existingContracts.LeverageVault) {
     console.log("   ➜ Deploying LeverageVault...");
     const x = await (await ethers.getContractFactory("LeverageVault")).deploy(
-      deployed.contracts.MockMETH,
+      existingContracts.MockMETH,
       USDC,
-      deployed.contracts.SeniorPool,
-      deployed.contracts.FluxionIntegration
+      existingContracts.SeniorPool,
+      existingContracts.FluxionIntegration
     );
     await x.waitForDeployment();
     set("LeverageVault", await x.getAddress());
 
     console.log("   🔗 Linking LeverageVault → YieldVault");
-    await x.setYieldVault(deployed.contracts.YieldVault);
+    await x.setYieldVault(existingContracts.YieldVault);
 
     console.log("   🔗 Linking LeverageVault → PrimaryMarket");
-    await x.setPrimaryMarket(deployed.contracts.PrimaryMarketplace);
+    await x.setPrimaryMarket(existingContracts.PrimaryMarketplace);
 
     console.log("   🔗 Authorizing in SeniorPool");
-    const seniorPool = await ethers.getContractAt("SeniorPool", deployed.contracts.SeniorPool);
+    const seniorPool = await ethers.getContractAt("SeniorPool", existingContracts.SeniorPool);
     if (await seniorPool.leverageVault() === ethers.ZeroAddress) {
       await seniorPool.setLeverageVault(x.target);
       console.log("   ✔ SeniorPool linked to LeverageVault");
@@ -251,51 +300,51 @@ async function main() {
   // ------------------------------------------------------------------
   console.log("\n[9] SOLVENCY VAULT");
   // ------------------------------------------------------------------
-  if (!deployed.contracts.SolvencyVault) {
+  if (!existingContracts.SolvencyVault) {
     console.log("   ➜ Deploying SolvencyVault...");
     const x = await (await ethers.getContractFactory("SolvencyVault")).deploy(
-      USDC, deployed.contracts.SeniorPool
+      USDC, existingContracts.SeniorPool
     );
     await x.waitForDeployment();
     set("SolvencyVault", await x.getAddress());
 
-    const seniorPool = await ethers.getContractAt("SeniorPool", deployed.contracts.SeniorPool);
+    const seniorPool = await ethers.getContractAt("SeniorPool", existingContracts.SeniorPool);
     if (await seniorPool.solvencyVault() === ethers.ZeroAddress) {
       await seniorPool.setSolvencyVault(x.target);
       console.log("   ✔ SeniorPool linked to SolvencyVault");
     }
 
     console.log("   🔗 Linking SolvencyVault → YieldVault");
-    await x.setYieldVault(deployed.contracts.YieldVault);
+    await x.setYieldVault(existingContracts.YieldVault);
 
     console.log("   🔗 Linking SolvencyVault → PrimaryMarket");
-    await x.setPrimaryMarket(deployed.contracts.PrimaryMarketplace);
+    await x.setPrimaryMarket(existingContracts.PrimaryMarketplace);
   }
 
   // ------------------------------------------------------------------
   console.log("\n[10] OAID CREDIT IDENTITY");
   // ------------------------------------------------------------------
-  if (!deployed.contracts.OAID) {
+  if (!existingContracts.OAID) {
     console.log("   ➜ Deploying OAID...");
     const x = await (await ethers.getContractFactory("OAID")).deploy();
     await x.waitForDeployment();
     set("OAID", await x.getAddress());
 
-    const solvencyVault = await ethers.getContractAt("SolvencyVault", deployed.contracts.SolvencyVault);
+    const solvencyVault = await ethers.getContractAt("SolvencyVault", existingContracts.SolvencyVault);
     console.log("   🔗 Mutual authorization: OAID ↔ SolvencyVault");
     await solvencyVault.setOAID(x.target);
-    await x.setSolvencyVault(deployed.contracts.SolvencyVault);
+    await x.setSolvencyVault(existingContracts.SolvencyVault);
   }
 
   // ------------------------------------------------------------------
   console.log("\n[11] IDENTITY REGISTRATION");
   // ------------------------------------------------------------------
-  const id = await ethers.getContractAt("IdentityRegistry", deployed.contracts.IdentityRegistry);
+  const id = await ethers.getContractAt("IdentityRegistry", existingContracts.IdentityRegistry);
   const toRegister = [
-    deployed.contracts.TokenFactory,
-    deployed.contracts.PrimaryMarketplace,
-    deployed.contracts.LeverageVault,
-    deployed.contracts.SolvencyVault
+    existingContracts.TokenFactory,
+    existingContracts.PrimaryMarketplace,
+    existingContracts.LeverageVault,
+    existingContracts.SolvencyVault
   ];
 
   for (const addr of toRegister) {
@@ -309,14 +358,12 @@ async function main() {
     }
   }
 
-  deployed.network = network.name;
-  deployed.timestamp = new Date().toISOString();
   save();
 
   console.log("\n═══════════════════════════════════════════════");
   console.log("🎯 SYSTEM BOOTSTRAP COMPLETE");
   console.log("═══════════════════════════════════════════════");
-  console.table(deployed.contracts);
+  console.table(deployed.networks![networkKey].contracts);
 }
 
 main().catch(e => {
