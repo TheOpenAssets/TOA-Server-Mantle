@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { OrderStatus, WalletAddress } from '@mantle/types';
+import { OrderStatus, WalletAddress } from '@openassets/types';
 
 export type P2POrderDocument = P2POrder & Document;
 

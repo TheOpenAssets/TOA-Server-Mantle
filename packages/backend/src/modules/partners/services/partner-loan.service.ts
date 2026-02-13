@@ -24,7 +24,7 @@ import { WalletService } from '../../blockchain/services/wallet.service';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { Address, createPublicClient, http, PublicClient } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
-import { PartnerLoanStatus, RepaymentSource, WalletAddress } from '@mantle/types';
+import { PartnerLoanStatus, RepaymentSource, WalletAddress } from '@openassets/types';
 
 @Injectable()
 export class PartnerLoanService {

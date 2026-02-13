@@ -4,17 +4,18 @@ import {
   AssetStatus,
   AssetType,
   IAssetEVM,
+  IAssetStellar,
   IAssetMetadata,
   IAssetTokenParams,
   IAssetFiles,
   IAssetCheckpoints,
   WalletAddress,
-} from '@mantle/types';
+} from '@openassets/types';
 
 export type AssetDocument = Asset & Document;
 
 @Schema({ timestamps: true })
-export class Asset implements IAssetEVM {
+export class Asset implements IAssetEVM, IAssetStellar {
   @Prop({ required: true, unique: true })
   assetId!: string;
 
@@ -73,8 +74,9 @@ export class Asset implements IAssetEVM {
   @Prop({ type: Object })
   registry?: {
     transactionHash: string;
-    blockNumber: number;
+    blockNumber?: number;
     registeredAt: Date;
+    assetCode?: string;
   };
 
   @Prop({ type: Object })

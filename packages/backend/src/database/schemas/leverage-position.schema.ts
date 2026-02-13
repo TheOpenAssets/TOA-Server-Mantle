@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { LeveragePositionStatus, LeveragePositionHealth, WalletAddress } from '@mantle/types';
+import { LeveragePositionStatus, LeveragePositionHealth, WalletAddress } from '@openassets/types';
 
 export type LeveragePositionDocument = LeveragePosition & Document;
 

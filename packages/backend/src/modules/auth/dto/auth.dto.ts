@@ -1,5 +1,5 @@
 import { IsString, IsNotEmpty, IsOptional, IsEnum } from 'class-validator';
-import { UserRole } from '@mantle/types';
+import { UserRole } from '@openassets/types';
 
 export class ChallengeDto {
   @IsString()

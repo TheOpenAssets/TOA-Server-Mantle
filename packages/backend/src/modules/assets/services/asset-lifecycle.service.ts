@@ -20,7 +20,7 @@ import {
   NotificationType, 
   NotificationSeverity, 
   NotificationAction 
-} from '@mantle/types';
+} from '@openassets/types';
 
 import { RegisterAssetDto } from '../../blockchain/dto/register-asset.dto';
 import { AttestationService } from '../../compliance-engine/services/attestation.service';

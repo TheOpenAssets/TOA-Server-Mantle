@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import { SolvencyPositionService } from './solvency-position.service';
 import { SolvencyBlockchainService } from './solvency-blockchain.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { PositionStatus } from '../../../database/schemas/solvency-position.schema';
+import { SolvencyPositionStatus } from '@openassets/types';
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 
@@ -23,7 +23,7 @@ export class RepaymentMonitorService {
   async checkRepayments() {
     this.logger.log('Checking for overdue repayments...');
 
-    const activePositions = await this.positionService.getAllPositions(PositionStatus.ACTIVE);
+    const activePositions = await this.positionService.getAllPositions(SolvencyPositionStatus.ACTIVE);
     const now = new Date();
 
     for (const position of activePositions) {

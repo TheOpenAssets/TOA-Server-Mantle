@@ -17,7 +17,7 @@ import {
   NotificationType, 
   NotificationSeverity, 
   NotificationAction 
-} from '@mantle/types';
+} from '@openassets/types';
 
 @Processor('asset-processing')
 export class AssetProcessor extends WorkerHost {

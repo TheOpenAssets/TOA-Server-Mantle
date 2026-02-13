@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { createHash, randomBytes } from 'crypto';
 import { Partner, PartnerDocument } from '../../../database/schemas/partner.schema';
-import { PartnerStatus } from '@mantle/types';
+import { PartnerStatus } from '@openassets/types';
 
 @Injectable()
 export class PartnerService {

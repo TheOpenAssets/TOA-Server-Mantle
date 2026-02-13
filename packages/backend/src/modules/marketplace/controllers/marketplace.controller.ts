@@ -2,7 +2,7 @@ import { Controller, Get, Post, Param, UseGuards, Query, Body, Request } from '@
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
-import { AssetStatus } from '@mantle/types';
+import { AssetStatus } from '@openassets/types';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { Settlement, SettlementDocument } from '../../../database/schemas/settlement.schema';

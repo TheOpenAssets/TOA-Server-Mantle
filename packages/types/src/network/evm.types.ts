@@ -29,7 +29,7 @@ export interface IAssetEVM extends IAsset {
   };
   registry?: {
     transactionHash: string;
-    blockNumber: number;
+    blockNumber?: number;
     registeredAt: Date;
   };
   token?: {

@@ -1,6 +1,6 @@
 import { Controller, Get, Param, Query, Patch } from '@nestjs/common';
 import { AnnouncementService } from '../services/announcement.service';
-import { AnnouncementType, AnnouncementStatus } from '@mantle/types';
+import { AnnouncementType, AnnouncementStatus } from '@openassets/types';
 
 @Controller('announcements')
 export class AnnouncementController {

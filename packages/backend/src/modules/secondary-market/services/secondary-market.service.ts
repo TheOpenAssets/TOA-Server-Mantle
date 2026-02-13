@@ -10,7 +10,7 @@ import { P2PTrade, P2PTradeDocument } from '../../../database/schemas/p2p-trade.
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { TokenBalanceService } from './token-balance.service';
-import { OrderStatus, WalletAddress } from '@mantle/types';
+import { OrderStatus, WalletAddress } from '@openassets/types';
 
 @Injectable()
 export class SecondaryMarketService {

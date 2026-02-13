@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { AnnouncementType, AnnouncementStatus } from '@mantle/types';
+import { AnnouncementType, AnnouncementStatus } from '@openassets/types';
 
 export type AnnouncementDocument = Announcement & Document;
 

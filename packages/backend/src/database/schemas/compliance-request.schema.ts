@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { ComplianceRequestStatus, WalletAddress } from '@mantle/types';
+import { ComplianceRequestStatus, WalletAddress } from '@openassets/types';
 
 export type ComplianceRequestDocument = ComplianceRequest & Document;
 

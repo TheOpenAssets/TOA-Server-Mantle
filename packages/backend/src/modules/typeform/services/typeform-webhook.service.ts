@@ -8,7 +8,7 @@ import * as os from 'os';
 import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
 import { AssetType, CreateAssetDto } from '../../assets/dto/create-asset.dto';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
-import { UserRole } from '@mantle/types';
+import { UserRole } from '@openassets/types';
 import { TypeformWebhookDto } from '../dto/typeform-webhook.dto';
 
 @Injectable()

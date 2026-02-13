@@ -1,3 +1,5 @@
+import { ListingType, WalletAddress } from '@openassets/types';
+
 export interface DeployedTokenResult {
   primaryIdentifier: string; // EVM: address, Stellar: assetCode:issuerPubKey
   auxiliaryIdentifier?: string; // EVM: complianceAddress
@@ -17,6 +19,7 @@ export interface BlockchainAdapter {
       name?: string;
       symbol?: string;
       attestationHash?: string;
+      blobId?: string;
       [key: string]: any;
     }
   ): Promise<DeployedTokenResult>;
@@ -24,7 +27,7 @@ export interface BlockchainAdapter {
   // Marketplace
   listOnMarketplace(
     tokenIdentifier: string,
-    listingType: string,
+    listingType: ListingType,
     price: number,
     minInvestment: number,
     duration: number,
@@ -33,9 +36,9 @@ export interface BlockchainAdapter {
   ): Promise<{ txId: string }>;
   
   // Identity
-  registerIdentity(walletAddress: string): Promise<{ txId: string }>;
-  isVerified(walletAddress: string): Promise<boolean>;
+  registerIdentity(walletAddress: WalletAddress): Promise<{ txId: string }>;
+  isVerified(walletAddress: WalletAddress): Promise<boolean>;
   
   // Stellar specific (gracefully ignored on EVM)
-  approveTrustline?(walletAddress: string, assetIdentifier: string): Promise<{ txId: string; skipped?: boolean }>;
+  approveTrustline?(walletAddress: WalletAddress, assetIdentifier: string): Promise<{ txId: string; skipped?: boolean }>;
 }

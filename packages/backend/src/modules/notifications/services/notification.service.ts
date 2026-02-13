@@ -5,7 +5,7 @@ import { Notification, NotificationDocument } from '../schemas/notification.sche
 import { UserNotification, UserNotificationDocument } from '../schemas/user-notification.schema';
 import { SseEmitterService } from './sse-emitter.service';
 import { CreateNotificationDto } from '../dto/create-notification.dto';
-import { NotificationType, NotificationSeverity, NotificationAction, WalletAddress } from '@mantle/types';
+import { NotificationType, NotificationSeverity, NotificationAction, WalletAddress } from '@openassets/types';
 
 @Injectable()
 export class NotificationService {

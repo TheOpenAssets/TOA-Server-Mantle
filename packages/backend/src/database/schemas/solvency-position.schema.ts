@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 import { Settlement } from './settlement.schema';
-import { TokenType, SolvencyHealthStatus, SolvencyPositionStatus, WalletAddress } from '@mantle/types';
+import { TokenType, SolvencyHealthStatus, SolvencyPositionStatus, WalletAddress } from '@openassets/types';
 
 export type SolvencyPositionDocument = SolvencyPosition & Document;
 

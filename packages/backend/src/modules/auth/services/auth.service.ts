@@ -12,7 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
-import { UserRole } from '@mantle/types';
+import { UserRole } from '@openassets/types';
 import { UserSession, UserSessionDocument } from '../../../database/schemas/session.schema';
 import { RedisService } from '../../redis/redis.service';
 import { SignatureService } from './signature.service';

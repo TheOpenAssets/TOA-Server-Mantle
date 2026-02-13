@@ -184,6 +184,8 @@ async function main() {
     const att = contracts.AttestationRegistry;
     const trusted = contracts.TrustedIssuersRegistry;
 
+    if (!usdc) throw new Error("USDC not deployed");
+
     const Yield = await (await ethers.getContractFactory("YieldVault")).deploy(usdc, deployer.address);
     await Yield.waitForDeployment();
     set("YieldVault", Yield.target as string);
@@ -196,15 +198,15 @@ async function main() {
     set("TokenFactory", Factory.target as string);
     console.log("TokenFactory:", Factory.target);
 
-    await Yield.setFactory(Factory.target);
+    await (Yield as any).setFactory(Factory.target);
     console.log("YieldVault.setFactory -> OK");
 
-    const PM = await (await ethers.getContractFactory("PrimaryMarket")).deploy(
+    const PM = await (await ethers.getContractFactory("PrimaryMarketplace")).deploy(
       Factory.target, deployer.address, usdc
     );
     await PM.waitForDeployment();
     set("PrimaryMarketplace", PM.target as string);
-    console.log("PrimaryMarket:", PM.target);
+    console.log("PrimaryMarketplace:", PM.target);
   }
 
   // ------------------------------------------------------------------
@@ -216,6 +218,7 @@ async function main() {
     wipe(state, networkKey, ["SeniorPool", "SolvencyVault", "OAID"]);
 
     const usdc = contracts.USDC;
+    if (!usdc) throw new Error("USDC not deployed");
 
     const Pool = await (await ethers.getContractFactory("SeniorPool")).deploy(usdc);
     await Pool.waitForDeployment();
@@ -232,17 +235,17 @@ async function main() {
     set("OAID", OAID.target as string);
     console.log("OAID:", OAID.target);
 
-    await Pool.setSolvencyVault(Solvency.target);
-    await Solvency.setOAID(OAID.target);
-    await OAID.setSolvencyVault(Solvency.target);
+    await (Pool as any).setSolvencyVault(Solvency.target);
+    await (Solvency as any).setOAID(OAID.target);
+    await (OAID as any).setSolvencyVault(Solvency.target);
 
     console.log("SeniorPool ↔ SolvencyVault ↔ OAID fully linked");
 
     const usdcToken = await ethers.getContractAt("MockUSDC", usdc);
     const amt = ethers.parseUnits("500000", 6);
-    await usdcToken.mint(deployer.address, amt);
-    await usdcToken.approve(Pool.target, amt);
-    await Pool.depositLiquidity(amt);
+    await (usdcToken as any).mint(deployer.address, amt);
+    await (usdcToken as any).approve(Pool.target, amt);
+    await (Pool as any).depositLiquidity(amt);
 
     console.log("SeniorPool seeded with 500,000 USDC");
   }
@@ -263,6 +266,8 @@ async function main() {
     const market = contracts.PrimaryMarketplace;
     const identity = contracts.IdentityRegistry;
 
+    if (!meth || !usdc || !dex) throw new Error("Mocks not deployed");
+
     const Flux = await (await ethers.getContractFactory("FluxionIntegration")).deploy(
       meth, usdc, dex, meth
     );
@@ -277,14 +282,14 @@ async function main() {
     set("LeverageVault", Lev.target as string);
     console.log("LeverageVault:", Lev.target);
 
-    await Lev.setYieldVault(yieldVault);
-    await Lev.setPrimaryMarket(market);
+    await (Lev as any).setYieldVault(yieldVault);
+    await (Lev as any).setPrimaryMarket(market);
 
-    const Pool = await ethers.getContractAt("SeniorPool", pool);
-    await Pool.setLeverageVault(Lev.target);
+    const Pool = await ethers.getContractAt("SeniorPool", pool!);
+    await (Pool as any).setLeverageVault(Lev.target);
 
-    const ID = await ethers.getContractAt("IdentityRegistry", identity);
-    await ID.registerIdentity(Lev.target);
+    const ID = await ethers.getContractAt("IdentityRegistry", identity!);
+    await (ID as any).registerIdentity(Lev.target);
 
     console.log("LeverageVault fully wired and registered");
   }

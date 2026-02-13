@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { PartnerStatus, PartnerTier, WalletAddress } from '@mantle/types';
+import { PartnerStatus, PartnerTier, WalletAddress } from '@openassets/types';
 
 export type PartnerDocument = Partner & Document;
 

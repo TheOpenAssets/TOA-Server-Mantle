@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-import { WalletAddress } from '@mantle/types';
+import { WalletAddress } from '@openassets/types';
 
 export type UserNotificationDocument = UserNotification & Document;
 

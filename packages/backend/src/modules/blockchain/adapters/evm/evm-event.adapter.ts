@@ -17,21 +17,20 @@ export class EvmEventAdapter implements EventAdapter {
   private publicClient: PublicClient;
   private lastBlockNumber: bigint = 0n;
   private isPolling = false;
-  private pollingInterval: NodeJS.Timeout;
+  private pollingInterval?: NodeJS.Timeout;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly contractAdapter: EvmContractAdapter,
     private readonly eventQueue: Queue,
   ) {
-    const rpcUrl = this.configService.get<string>('blockchain.rpcUrl');
-    const chainId = this.configService.get<number>('blockchain.chainId');
-    const networkName = this.configService.get<string>('network.networkName');
+    const rpcUrl = this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
+    const chainId = this.configService.get<number>('blockchain.chainId') || 5003;
+    const networkName = this.configService.get<string>('network.networkName') || 'Mantle Sepolia';
 
     const chain = defineChain({
       id: chainId,
       name: networkName,
-      network: 'mantle',
       nativeCurrency: { decimals: 18, name: 'MNT', symbol: 'MNT' },
       rpcUrls: {
         default: { http: [rpcUrl] },

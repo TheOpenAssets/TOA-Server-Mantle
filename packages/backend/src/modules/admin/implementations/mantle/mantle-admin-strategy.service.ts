@@ -13,7 +13,7 @@ import {
   NotificationType, 
   NotificationSeverity, 
   NotificationAction 
-} from '@mantle/types';
+} from '@openassets/types';
 
 @Injectable()
 export class MantleAdminStrategy implements IAdminDomainStrategy {

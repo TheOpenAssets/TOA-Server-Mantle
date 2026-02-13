@@ -7,7 +7,7 @@ import { IAssetOriginationService } from '../../../registry/interfaces/asset-ori
 import { CreateAssetDto } from '../../dto/create-asset.dto';
 import { BlockchainService } from '../../../blockchain/services/blockchain.service';
 import { NotificationService } from '../../../notifications/services/notification.service';
-import { AssetStatus } from '@mantle/types';
+import { AssetStatus } from '@openassets/types';
 
 @Injectable()
 export class MantleAssetOriginationService implements IAssetOriginationService {

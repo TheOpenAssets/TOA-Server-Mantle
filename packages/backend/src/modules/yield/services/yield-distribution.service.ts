@@ -20,7 +20,7 @@ import {
   NotificationSeverity,
   NotificationAction,
   WalletAddress
-} from '@mantle/types';
+} from '@openassets/types';
 import { RecordSettlementDto } from '../dto/yield-ops.dto';
 import { LeveragePositionService } from '../../leverage/services/leverage-position.service';
 import { LeverageBlockchainService } from '../../leverage/services/leverage-blockchain.service';

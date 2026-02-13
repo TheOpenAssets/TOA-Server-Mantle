@@ -15,7 +15,7 @@ import {
   NotificationType, 
   NotificationSeverity, 
   NotificationAction 
-} from '@mantle/types';
+} from '@openassets/types';
 import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
 import { toISTISOString } from '../../../utils/date.utils';
 

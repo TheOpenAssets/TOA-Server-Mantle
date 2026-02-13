@@ -3,14 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import { 
   rpc, 
   TransactionBuilder, 
-  Networks, 
   Operation, 
-  Asset, 
   Contract, 
   xdr,
   Address,
+  Account,
   BASE_FEE
 } from '@stellar/stellar-sdk';
+import { ListingType, WalletAddress } from '@openassets/types';
 import { BlockchainAdapter, DeployedTokenResult } from '../blockchain-adapter.interface';
 import { StellarWalletAdapter } from './stellar-wallet.adapter';
 import { StellarContractAdapter } from './stellar-contract-loader.adapter';
@@ -25,8 +25,8 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     private readonly walletAdapter: StellarWalletAdapter,
     private readonly contractAdapter: StellarContractAdapter,
   ) {
-    const rpcUrl = this.configService.get<string>('network.stellar.rpcUrl');
-    this.networkPassphrase = this.configService.get<string>('network.stellar.networkPassphrase');
+    const rpcUrl = this.configService.get<string>('network.stellar.rpcUrl') || 'https://soroban-testnet.stellar.org';
+    this.networkPassphrase = this.configService.get<string>('network.stellar.networkPassphrase') || 'Test SDF Network ; September 2015';
     this.sorobanServer = new rpc.Server(rpcUrl);
   }
 
@@ -185,7 +185,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
       contract.call(
         'deactivate_listing',
         new Address(adminKeypair.publicKey()).toScVal(),
-        xdr.ScVal.scvString(assetCode),
+        xdr.ScVal.scvString(assetCode || ''),
         new Address(this.walletAdapter.getPlatformAddress()).toScVal(),
       )
     )
@@ -228,7 +228,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
       networkPassphrase: this.networkPassphrase,
     })
     .addOperation(Operation.setOptions({
-      setFlags: 7, // AUTH_REQUIRED | AUTH_REVOCABLE | AUTH_CLAWBACK
+      setFlags: (1 | 2 | 4) as any, // AUTH_REQUIRED | AUTH_REVOCABLE | AUTH_CLAWBACK
     }))
     .setTimeout(30)
     .build();
@@ -245,7 +245,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
 
   async listOnMarketplace(
     tokenIdentifier: string,
-    listingType: string,
+    listingType: ListingType,
     price: number,
     minInvestment: number,
     duration: number,
@@ -263,8 +263,8 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     const source = await this.sorobanServer.getAccount(adminKeypair.publicKey());
     
     const minPriceVal = minPrice && minPrice !== '0' 
-      ? xdr.ScVal.scvOption(xdr.ScVal.scvI64(xdr.Int64.fromString(minPrice)))
-      : xdr.ScVal.scvOption(null);
+      ? (xdr.ScVal as any).scvOption(xdr.ScVal.scvI64(xdr.Int64.fromString(minPrice)))
+      : (xdr.ScVal as any).scvOption(null);
 
     const tx = new TransactionBuilder(source, {
       fee: BASE_FEE,
@@ -274,9 +274,9 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
       contract.call(
         'list_asset',
         new Address(adminKeypair.publicKey()).toScVal(),
-        xdr.ScVal.scvString(assetCode),
+        xdr.ScVal.scvString(assetCode || ''),
         new Address(this.walletAdapter.getPlatformAddress()).toScVal(),
-        xdr.ScVal.scvSymbol(listingType === 'STATIC' ? 'Static' : 'Auction'),
+        xdr.ScVal.scvSymbol(listingType === ListingType.STATIC ? 'Static' : 'Auction'),
         xdr.ScVal.scvI64(xdr.Int64.fromString(price.toString())),
         minPriceVal,
         xdr.ScVal.scvU64(xdr.Uint64.fromString(duration.toString())),
@@ -293,7 +293,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     return { txId: response.hash };
   }
 
-  async registerIdentity(walletAddress: string): Promise<{ txId: string }> {
+  async registerIdentity(walletAddress: WalletAddress): Promise<{ txId: string }> {
     const adminKeypair = this.walletAdapter.getAdminKeypair();
     const contractId = this.contractAdapter.getContractAddress('IdentityRegistry');
     const contract = new Contract(contractId);
@@ -309,7 +309,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         'register_identity',
         new Address(adminKeypair.publicKey()).toScVal(),
         new Address(walletAddress).toScVal(),
-        xdr.ScVal.scvOption(xdr.ScVal.scvU32(365)), // 1 year expiry
+        (xdr.ScVal as any).scvOption(xdr.ScVal.scvU32(365)), // 1 year expiry
         xdr.ScVal.scvU32(1), // Tier 1
         xdr.ScVal.scvString('US'), // Placeholder country
       )
@@ -324,12 +324,12 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     return { txId: response.hash };
   }
 
-  async isVerified(walletAddress: string): Promise<boolean> {
+  async isVerified(walletAddress: WalletAddress): Promise<boolean> {
     const contractId = this.contractAdapter.getContractAddress('IdentityRegistry');
     const contract = new Contract(contractId);
 
     const tx = new TransactionBuilder(
-      new rpc.Account(this.walletAdapter.getAdminAddress(), '0'), 
+      new Account(this.walletAdapter.getAdminAddress(), '0'), 
       {
         fee: '0',
         networkPassphrase: this.networkPassphrase,
@@ -345,12 +345,12 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
 
     const response = await this.sorobanServer.simulateTransaction(tx);
     if (rpc.Api.isSimulationSuccess(response)) {
-      return response.result.retval.getBool();
+      return (response.result!.retval as any).getBool();
     }
     return false;
   }
 
-  async approveTrustline(walletAddress: string, assetIdentifier: string): Promise<{ txId: string }> {
+  async approveTrustline(walletAddress: WalletAddress, assetIdentifier: string): Promise<{ txId: string }> {
     const platformKeypair = this.walletAdapter.getPlatformKeypair();
     const [assetCode] = assetIdentifier.split(':');
 
@@ -364,7 +364,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     })
     .addOperation(Operation.allowTrust({
       trustor: walletAddress,
-      assetCode: assetCode,
+      assetCode: assetCode || '',
       authorize: true,
     }))
     .setTimeout(30)

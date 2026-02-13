@@ -8,7 +8,7 @@ import {
 import { 
   LeveragePositionStatus as PositionStatus, 
   LeveragePositionHealth as PositionHealth 
-} from '@mantle/types';
+} from '@openassets/types';
 
 @Injectable()
 export class LeveragePositionService {

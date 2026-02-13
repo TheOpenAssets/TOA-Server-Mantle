@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserRole } from '@mantle/types';
+import { UserRole } from '@openassets/types';
 
 @Injectable()
 export class OriginatorGuard implements CanActivate {

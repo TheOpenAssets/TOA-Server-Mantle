@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { PartnerService } from '../services/partner.service';
-import { PartnerStatus } from '@mantle/types';
+import { PartnerStatus } from '@openassets/types';
 
 @Injectable()
 export class PartnerApiKeyGuard implements CanActivate {

@@ -17,7 +17,7 @@ import { IAdminDomainStrategy } from '../interfaces/admin-domain.interface';
 export class ModuleRegistryService implements OnModuleInit {
   private readonly logger = new Logger(ModuleRegistryService.name);
   private readonly serviceMap = new Map<string, any>();
-  private networkType: NetworkType;
+  private networkType?: NetworkType;
 
   constructor(
     private configService: ConfigService,

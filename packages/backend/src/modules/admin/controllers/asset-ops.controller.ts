@@ -10,7 +10,7 @@ import { EndAuctionDto } from '../../marketplace/dto/end-auction.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
-import { AssetStatus } from '@mantle/types';
+import { AssetStatus } from '@openassets/types';
 
 import { AuctionService } from '../../marketplace/services/auction.service';
 

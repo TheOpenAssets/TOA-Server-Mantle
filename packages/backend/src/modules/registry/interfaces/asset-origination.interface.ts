@@ -1,4 +1,4 @@
-import { AssetStatus } from '@mantle/types';
+import { AssetStatus } from '@openassets/types';
 import { CreateAssetDto } from '../../assets/dto/create-asset.dto';
 import { RegisterAssetDto } from '../../blockchain/dto/register-asset.dto';
 

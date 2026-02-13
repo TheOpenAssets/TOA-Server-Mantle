@@ -7,7 +7,7 @@ import {
   AnnouncementDocument,
 } from '../../../database/schemas/announcement.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
-import { AnnouncementType, AnnouncementStatus } from '@mantle/types';
+import { AnnouncementType, AnnouncementStatus } from '@openassets/types';
 
 @Injectable()
 export class AnnouncementService {

@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ModuleRef } from '@nestjs/core';
+import { ListingType, WalletAddress } from '@openassets/types';
 import { 
   BLOCKCHAIN_ADAPTER, 
   WALLET_ADAPTER, 
@@ -13,20 +14,20 @@ export class NetworkRegistryService implements OnModuleInit {
   private readonly logger = new Logger(NetworkRegistryService.name);
   private features: Record<string, boolean>;
   private networkType: string;
-  private blockchainAdapter: BlockchainAdapter;
+  private blockchainAdapter?: BlockchainAdapter;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly moduleRef: ModuleRef,
   ) {
-    this.features = this.configService.get<Record<string, boolean>>('network.features');
-    this.networkType = this.configService.get<string>('network.networkType');
+    this.features = this.configService.get<Record<string, boolean>>('network.features') || {};
+    this.networkType = this.configService.get<string>('network.networkType') || 'mantle';
   }
 
   async onModuleInit() {
     try {
       this.blockchainAdapter = this.moduleRef.get<BlockchainAdapter>(BLOCKCHAIN_ADAPTER, { strict: false });
-    } catch (e) {
+    } catch (e: any) {
       this.logger.warn(`Blockchain adapter not yet available during onModuleInit: ${e.message}`);
     }
   }
@@ -46,7 +47,7 @@ export class NetworkRegistryService implements OnModuleInit {
     return this.networkType;
   }
 
-  async registerIdentityOnChain(walletAddress: string) {
+  async registerIdentityOnChain(walletAddress: WalletAddress) {
     if (!this.isAvailable('kyc')) {
       return { completed: false, skipped: true, reason: 'KYC_FEATURE_DISABLED' };
     }
@@ -89,7 +90,7 @@ export class NetworkRegistryService implements OnModuleInit {
 
   async listAssetOnMarketplace(
     tokenIdentifier: string,
-    listingType: string,
+    listingType: ListingType,
     price: number,
     minInvestment: number,
     duration: number,
@@ -116,18 +117,18 @@ export class NetworkRegistryService implements OnModuleInit {
       return { completed: false, skipped: true, reason: 'MARKETPLACE_FEATURE_DISABLED' };
     }
     const adapter = await this.getBlockchainAdapter();
-    if ('deactivateListing' in adapter) {
+    if (adapter && 'deactivateListing' in adapter) {
       return await (adapter as any).deactivateListing(tokenIdentifier);
     }
     return { completed: false, skipped: true, reason: 'METHOD_NOT_SUPPORTED_BY_ADAPTER' };
   }
 
-  async approveTrustlineForUser(userAddress: string, assetIdentifier: string) {
+  async approveTrustlineForUser(userAddress: WalletAddress, assetIdentifier: string) {
     if (this.networkType !== 'stellar') {
       return { completed: false, skipped: true, reason: 'NOT_APPLICABLE_ON_NETWORK' };
     }
     const adapter = await this.getBlockchainAdapter();
-    if (adapter.approveTrustline) {
+    if (adapter && adapter.approveTrustline) {
       return await adapter.approveTrustline(userAddress, assetIdentifier);
     }
     return { completed: false, skipped: true, reason: 'METHOD_NOT_SUPPORTED_BY_ADAPTER' };

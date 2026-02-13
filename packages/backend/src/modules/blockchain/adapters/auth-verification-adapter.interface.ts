@@ -1,7 +1,9 @@
+import { WalletAddress } from '@openassets/types';
+
 export interface AuthVerificationAdapter {
   verifySignatureAndExtractAddress(
     nonce: string,
     signature: string,
-    claimedAddress: string
-  ): Promise<string>;
+    claimedAddress: WalletAddress
+  ): Promise<WalletAddress>;
 }

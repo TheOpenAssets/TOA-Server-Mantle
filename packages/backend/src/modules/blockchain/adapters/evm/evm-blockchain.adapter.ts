@@ -8,6 +8,7 @@ import {
   defineChain,
   PublicClient 
 } from 'viem';
+import { ListingType, WalletAddress } from '@openassets/types';
 import { BlockchainAdapter, DeployedTokenResult } from '../blockchain-adapter.interface';
 import { EvmWalletAdapter } from './evm-wallet.adapter';
 import { EvmContractAdapter } from './evm-contract-loader.adapter';
@@ -21,14 +22,13 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     private readonly walletAdapter: EvmWalletAdapter,
     private readonly contractAdapter: EvmContractAdapter,
   ) {
-    const rpcUrl = this.configService.get<string>('blockchain.rpcUrl');
-    const chainId = this.configService.get<number>('blockchain.chainId');
-    const networkName = this.configService.get<string>('network.networkName');
+    const rpcUrl = this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
+    const chainId = this.configService.get<number>('blockchain.chainId') || 5003;
+    const networkName = this.configService.get<string>('network.networkName') || 'Mantle Sepolia';
 
     const chain = defineChain({
       id: chainId,
       name: networkName,
-      network: 'mantle',
       nativeCurrency: {
         decimals: 18,
         name: 'MNT',
@@ -81,12 +81,12 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
 
     this.logger.log(`Registering asset ${assetId} on EVM chain...`);
 
-    const txId = await this.executeWithRetry(() => wallet.writeContract({
+    const txId = await this.executeWithRetry(() => (wallet as any).writeContract({
       address: address as Address,
       abi,
       functionName: 'registerAsset',
       args: [assetId, attestationHash, blobId, payload, signature],
-    }), 'registerAsset write');
+    }), 'registerAsset write') as `0x${string}`;
 
     this.logger.log(`Asset registered on EVM: ${txId}`);
     return { txId };
@@ -97,12 +97,12 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     const address = this.contractAdapter.getContractAddress('AttestationRegistry');
     const abi = this.contractAdapter.getContractInterface('AttestationRegistry');
 
-    const txId = await this.executeWithRetry(() => wallet.writeContract({
+    const txId = await this.executeWithRetry(() => (wallet as any).writeContract({
       address: address as Address,
       abi,
       functionName: 'revokeAsset',
       args: [assetId, 'REASON_NOT_SPECIFIED'],
-    }), 'revokeAsset write');
+    }), 'revokeAsset write') as `0x${string}`;
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({ hash: txId }), 'revokeAsset receipt');
     return { txId };
@@ -123,17 +123,17 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     // Convert UUID to bytes32
     const assetIdBytes32 = '0x' + assetId.replace(/-/g, '').padEnd(64, '0');
     const totalSupplyBigInt = BigInt(totalSupply);
-    const issuer = wallet.account.address;
+    const issuer = wallet.account?.address;
     const { name, symbol } = params;
 
     this.logger.log(`Deploying EVM token for asset ${assetId}...`);
 
-    const txId = await this.executeWithRetry(() => wallet.writeContract({
+    const txId = await this.executeWithRetry(() => (wallet as any).writeContract({
       address: address as Address,
       abi,
       functionName: 'deployTokenSuite',
       args: [assetIdBytes32, totalSupplyBigInt, name || 'RWA Token', symbol || 'RWA', issuer],
-    }), 'deployTokenSuite write');
+    }), 'deployTokenSuite write') as `0x${string}`;
 
     const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash: txId,
@@ -170,44 +170,35 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
 
   async listOnMarketplace(
     tokenIdentifier: string,
-    listingType: string,
+    listingType: ListingType,
     price: number,
     minInvestment: number,
     duration: number,
-    totalSupply: number
+    totalSupply: number,
+    minPrice?: string
   ): Promise<{ txId: string }> {
     const wallet = this.walletAdapter.getAdminWallet();
     const address = this.contractAdapter.getContractAddress('PrimaryMarketplace');
     const abi = this.contractAdapter.getContractInterface('PrimaryMarketplace');
 
-    // Deterministic assetId from tokenIdentifier is not easy here, but BlockchainService
-    // previously queried the DB. To keep adapter pure, we should pass assetId if needed
-    // or rely on what's available. Assuming tokenIdentifier is tokenAddress for EVM.
-    
-    // For now, mirroring the complex listOnMarketplace from BlockchainService would require
-    // a lot of context. Let's assume the caller provides the necessary normalized values.
-    
-    const listingTypeEnum = listingType === 'STATIC' ? 0 : 1;
-
-    // We need assetId (bytes32). Let's assume it's passed or derived.
-    // In actual implementation, we'd adjust the interface or the caller.
+    const listingTypeEnum = listingType === ListingType.STATIC ? 0 : 1;
     const dummyAssetId = '0x' + '0'.repeat(64); 
 
-    const txId = await this.executeWithRetry(() => wallet.writeContract({
+    const txId = await this.executeWithRetry(() => (wallet as any).writeContract({
       address: address as Address,
       abi,
       functionName: 'createListing',
       args: [
-        dummyAssetId, // This is a gap in the interface vs old service
+        dummyAssetId,
         tokenIdentifier as Address,
         listingTypeEnum,
         BigInt(price),
-        0n, // minPrice placeholder
+        BigInt(minPrice || '0'),
         BigInt(duration),
         BigInt(totalSupply),
         BigInt(minInvestment),
       ],
-    }), 'createListing write');
+    }), 'createListing write') as `0x${string}`;
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
       hash: txId,
@@ -217,27 +208,31 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     return { txId };
   }
 
-  async registerIdentity(walletAddress: string): Promise<{ txId: string }> {
+  async registerIdentity(walletAddress: WalletAddress): Promise<{ txId: string }> {
     const wallet = this.walletAdapter.getAdminWallet();
     const address = this.contractAdapter.getContractAddress('IdentityRegistry');
     const abi = this.contractAdapter.getContractInterface('IdentityRegistry');
 
-    const txId = await this.executeWithRetry(() => wallet.writeContract({
+    const txId = await this.executeWithRetry(() => (wallet as any).writeContract({
       address: address as Address,
       abi,
       functionName: 'registerIdentity',
       args: [walletAddress],
-    }), 'registerIdentity write');
+    }), 'registerIdentity write') as `0x${string}`;
 
-    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
-      hash: txId,
-      timeout: 300000,
-    }), 'registerIdentity receipt');
+    await this.executeWithReceipt(txId, 'registerIdentity');
 
     return { txId };
   }
 
-  async isVerified(walletAddress: string): Promise<boolean> {
+  private async executeWithReceipt(hash: string, description: string) {
+    return await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
+      hash: hash as `0x${string}`,
+      timeout: 300000,
+    }), `${description} receipt`);
+  }
+
+  async isVerified(walletAddress: WalletAddress): Promise<boolean> {
     const address = this.contractAdapter.getContractAddress('IdentityRegistry');
     const abi = this.contractAdapter.getContractInterface('IdentityRegistry');
 

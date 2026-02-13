@@ -5,7 +5,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { RedisService } from '../../redis/redis.service';
 import { SignatureService } from './signature.service';
 import { User } from '../../../database/schemas/user.schema';
-import { UserRole } from '@mantle/types';
+import { UserRole } from '@openassets/types';
 import { UserSession } from '../../../database/schemas/session.schema';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { mockDeep, DeepMockProxy } from 'jest-mock-extended';

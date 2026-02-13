@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { NotificationType, NotificationSeverity, NotificationAction } from '@mantle/types';
+import { NotificationType, NotificationSeverity, NotificationAction } from '@openassets/types';
 
 export type NotificationDocument = Notification & Document;
 

@@ -1,5 +1,5 @@
 import { IsString, IsNotEmpty, IsEnum, IsOptional, IsNumberString } from 'class-validator';
-import { ListingType } from '@mantle/types';
+import { ListingType } from '@openassets/types';
 
 export class ListOnMarketplaceDto {
   @IsString()

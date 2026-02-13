@@ -11,7 +11,7 @@ import {
   SolvencyHealthStatus as HealthStatus, 
   SolvencyPositionStatus as PositionStatus,
   WalletAddress 
-} from '@mantle/types';
+} from '@openassets/types';
 import { SolvencyBlockchainService } from './solvency-blockchain.service';
 
 @Injectable()

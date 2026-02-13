@@ -15,3 +15,4 @@ export * from './domain/compliance.types';
 
 // Network
 export * from './network/evm.types';
+export * from './network/stellar.types';

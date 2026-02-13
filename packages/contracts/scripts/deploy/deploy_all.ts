@@ -123,13 +123,16 @@ async function main() {
 
   const save = () => fs.writeFileSync(deployPath, JSON.stringify(deployed, null, 2));
   const set = (k: string, v: string) => {
+    if (!deployed.networks![networkKey]) {
+      deployed.networks![networkKey] = { contracts: {}, network: network.name };
+    }
     deployed.networks![networkKey].contracts[k] = v;
     deployed.networks![networkKey].timestamp = new Date().toISOString();
     save();
     console.log(`   📌 ${k} = ${v}`);
   };
 
-  const existingContracts = deployed.networks[networkKey].contracts;
+  const existingContracts = deployed.networks![networkKey].contracts;
 
   // ------------------------------------------------------------------
   console.log("\n[1] USDC SETUP");
@@ -202,7 +205,7 @@ async function main() {
 
     console.log("   🔗 Linking TokenFactory → YieldVault");
     const yieldVault = await ethers.getContractAt("YieldVault", existingContracts.YieldVault);
-    await yieldVault.setFactory(x.target);
+    await (yieldVault as any).setFactory(x.target);
     console.log("   ✔ Factory linked");
   }
 
@@ -210,8 +213,8 @@ async function main() {
   console.log("\n[5] PRIMARY MARKET");
   // ------------------------------------------------------------------
   if (!existingContracts.PrimaryMarketplace) {
-    console.log("   ➜ Deploying PrimaryMarket...");
-    const x = await (await ethers.getContractFactory("PrimaryMarket")).deploy(
+    console.log("   ➜ Deploying PrimaryMarketplace...");
+    const x = await (await ethers.getContractFactory("PrimaryMarketplace")).deploy(
       existingContracts.TokenFactory,
       deployer.address,
       USDC
@@ -232,9 +235,9 @@ async function main() {
     console.log("   💰 Seeding SeniorPool with 500,000 USDC");
     const usdc = await ethers.getContractAt("MockUSDC", USDC);
     const amt = ethers.parseUnits("500000", 6);
-    await usdc.mint(deployer.address, amt);
-    await usdc.approve(x.target, amt);
-    await x.depositLiquidity(amt);
+    await (usdc as any).mint(deployer.address, amt);
+    await (usdc as any).approve(x.target, amt);
+    await (x as any).depositLiquidity(amt);
     console.log("   ✔ Liquidity deposited");
   }
 
@@ -284,15 +287,15 @@ async function main() {
     set("LeverageVault", await x.getAddress());
 
     console.log("   🔗 Linking LeverageVault → YieldVault");
-    await x.setYieldVault(existingContracts.YieldVault);
+    await (x as any).setYieldVault(existingContracts.YieldVault);
 
     console.log("   🔗 Linking LeverageVault → PrimaryMarket");
-    await x.setPrimaryMarket(existingContracts.PrimaryMarketplace);
+    await (x as any).setPrimaryMarket(existingContracts.PrimaryMarketplace);
 
     console.log("   🔗 Authorizing in SeniorPool");
     const seniorPool = await ethers.getContractAt("SeniorPool", existingContracts.SeniorPool);
-    if (await seniorPool.leverageVault() === ethers.ZeroAddress) {
-      await seniorPool.setLeverageVault(x.target);
+    if (await (seniorPool as any).leverageVault() === ethers.ZeroAddress) {
+      await (seniorPool as any).setLeverageVault(x.target);
       console.log("   ✔ SeniorPool linked to LeverageVault");
     }
   }
@@ -309,16 +312,16 @@ async function main() {
     set("SolvencyVault", await x.getAddress());
 
     const seniorPool = await ethers.getContractAt("SeniorPool", existingContracts.SeniorPool);
-    if (await seniorPool.solvencyVault() === ethers.ZeroAddress) {
-      await seniorPool.setSolvencyVault(x.target);
+    if (await (seniorPool as any).solvencyVault() === ethers.ZeroAddress) {
+      await (seniorPool as any).setSolvencyVault(x.target);
       console.log("   ✔ SeniorPool linked to SolvencyVault");
     }
 
     console.log("   🔗 Linking SolvencyVault → YieldVault");
-    await x.setYieldVault(existingContracts.YieldVault);
+    await (x as any).setYieldVault(existingContracts.YieldVault);
 
     console.log("   🔗 Linking SolvencyVault → PrimaryMarket");
-    await x.setPrimaryMarket(existingContracts.PrimaryMarketplace);
+    await (x as any).setPrimaryMarket(existingContracts.PrimaryMarketplace);
   }
 
   // ------------------------------------------------------------------
@@ -332,8 +335,8 @@ async function main() {
 
     const solvencyVault = await ethers.getContractAt("SolvencyVault", existingContracts.SolvencyVault);
     console.log("   🔗 Mutual authorization: OAID ↔ SolvencyVault");
-    await solvencyVault.setOAID(x.target);
-    await x.setSolvencyVault(existingContracts.SolvencyVault);
+    await (solvencyVault as any).setOAID(x.target);
+    await (x as any).setSolvencyVault(existingContracts.SolvencyVault);
   }
 
   // ------------------------------------------------------------------
@@ -348,10 +351,10 @@ async function main() {
   ];
 
   for (const addr of toRegister) {
-    const ok = await id.isVerified(addr);
+    const ok = await (id as any).isVerified(addr);
     if (!ok) {
       console.log(`   🔐 Registering ${addr}`);
-      await id.registerIdentity(addr);
+      await (id as any).registerIdentity(addr);
       console.log("   ✔ Registered");
     } else {
       console.log(`   ✔ Already verified: ${addr}`);

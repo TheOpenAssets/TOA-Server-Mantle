@@ -12,8 +12,9 @@ import {
   AssetStatus, 
   NotificationType, 
   NotificationSeverity, 
-  NotificationAction 
-} from '@mantle/types';
+  NotificationAction,
+  ListingType
+} from '@openassets/types';
 
 @Injectable()
 export class StellarAdminStrategy implements IAdminDomainStrategy {
@@ -33,7 +34,7 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     const payload = await this.assetLifecycleService.getRegisterAssetPayload(assetId);
     
     this.logger.log(`Registering asset ${assetId} on Stellar AttestationRegistry...`);
-    const result = await this.networkRegistryService.registerAssetOnChain(payload);
+    const result: any = await this.networkRegistryService.registerAssetOnChain(payload);
 
     await this.assetModel.updateOne(
       { assetId },
@@ -44,7 +45,7 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
           'registry.registeredAt': new Date(),
           'checkpoints.registered': true,
         },
-      },
+      } as any,
     );
 
     await this.notificationService.create({
@@ -77,7 +78,7 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     const totalSupply = dto.totalSupply ? parseInt(dto.totalSupply) : parseInt(asset.tokenParams?.totalSupply || '0');
 
     // Stellar deployment involves AssetRegistry registration which needs attestation data
-    const result = await this.networkRegistryService.deployAssetToken(
+    const result: any = await this.networkRegistryService.deployAssetToken(
       dto.assetId,
       totalSupply,
       {
@@ -100,7 +101,7 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
           'registry.assetCode': assetCode,
           'checkpoints.tokenized': true,
         },
-      },
+      } as any,
     );
 
     await this.notificationService.create({
@@ -131,22 +132,22 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
       throw new HttpException('Asset or token not found', HttpStatus.NOT_FOUND);
     }
 
-    const listingType = asset.assetType;
+    const listingType = asset.assetType as unknown as ListingType;
     const price = parseInt(asset.tokenParams?.pricePerToken || '0');
     const minInvestment = parseInt(asset.tokenParams?.minInvestment || '0');
     const duration = dto.duration ? parseInt(dto.duration) : (asset.listing?.duration || 0);
     const totalSupply = parseInt(asset.token?.supply || asset.tokenParams?.totalSupply || '0');
 
-    if (listingType === 'AUCTION' && !duration) {
+    if (listingType === ListingType.AUCTION && !duration) {
       throw new HttpException('Duration is required for AUCTION listings', HttpStatus.BAD_REQUEST);
     }
 
-    const minPrice = listingType === 'AUCTION'
+    const minPrice = listingType === ListingType.AUCTION
       ? (asset.listing?.priceRange?.min || price.toString())
       : '0';
 
     this.logger.log(`Listing asset ${dto.assetId} on Stellar PrimaryMarket...`);
-    const result = await this.networkRegistryService.listAssetOnMarketplace(
+    const result: any = await this.networkRegistryService.listAssetOnMarketplace(
       asset.token.address,
       listingType,
       price,
@@ -166,11 +167,11 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
           'listing.active': true,
           'listing.listedAt': new Date(),
           'listing.sold': '0',
-          'listing.phase': listingType === 'AUCTION' ? 'BIDDING' : undefined,
+          'listing.phase': listingType === ListingType.AUCTION ? 'BIDDING' : undefined,
           'listing.duration': duration,
           'listing.transactionHash': result.txId,
         },
-      },
+      } as any,
     );
 
     await this.notificationService.create({
@@ -200,7 +201,7 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     this.logger.log(`Revoking asset ${assetId} on Stellar...`);
     
     // 1. Revoke in AttestationRegistry
-    const result = await this.networkRegistryService.revokeAssetOnChain(assetId);
+    const result: any = await this.networkRegistryService.revokeAssetOnChain(assetId);
 
     // 2. If already tokenized, we should also revoke in AssetRegistry and deactivate listing
     if (asset.status === AssetStatus.TOKENIZED || asset.status === AssetStatus.LISTED) {
@@ -232,7 +233,7 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     this.logger.log(`Ending auction for ${assetId} on Stellar...`);
     
     // 1. Deactivate listing on-chain
-    const result = await this.networkRegistryService.deactivateListingOnMarketplace(asset.token.address);
+    const result: any = await this.networkRegistryService.deactivateListingOnMarketplace(asset.token.address);
 
     // 2. Delegate to shared lifecycle service for DB settlement
     const settlementResult = await this.assetLifecycleService.endAuction(assetId, clearingPrice, result.txId);

@@ -20,7 +20,7 @@ import {
   NotificationSeverity, 
   NotificationAction,
   SolvencyPositionStatus as PositionStatus 
-} from '@mantle/types';
+} from '@openassets/types';
 import { SolvencyPositionService } from '../../solvency/services/solvency-position.service';
 
 @Processor('event-processing')

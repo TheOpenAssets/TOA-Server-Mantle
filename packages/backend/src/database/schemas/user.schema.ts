@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { UserRole, IUser, IKycDocument, KycStatus, WalletAddress } from '@mantle/types';
+import { UserRole, IUser, IKycDocument, KycStatus, WalletAddress } from '@openassets/types';
 
 export type UserDocument = User & Document;
 

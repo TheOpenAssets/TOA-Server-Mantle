@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { YieldClaimStatus, WalletAddress } from '@mantle/types';
+import { YieldClaimStatus, WalletAddress } from '@openassets/types';
 
 @Schema({ timestamps: true })
 export class UserYieldClaim extends Document {

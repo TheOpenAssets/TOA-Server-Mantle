@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { SettlementStatus } from '@mantle/types';
+import { SettlementStatus } from '@openassets/types';
 
 export type SettlementDocument = Settlement & Document;
 
