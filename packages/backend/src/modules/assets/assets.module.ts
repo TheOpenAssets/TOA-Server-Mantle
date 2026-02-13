@@ -15,6 +15,9 @@ import { AuthModule } from '../auth/auth.module'; // For JwtAuthGuard
 import { ComplianceEngineModule } from '../compliance-engine/compliance-engine.module';
 import { AnnouncementsModule } from '../announcements/announcements.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { MantleAssetOriginationService } from './implementations/mantle/mantle-asset-origination.service';
+import { StellarAssetOriginationService } from './implementations/stellar/stellar-asset-origination.service';
+import { MANTLE_ASSET_ORIGINATION_TOKEN, STELLAR_ASSET_ORIGINATION_TOKEN } from '../registry/registry.constants';
 
 @Module({
   imports: [
@@ -38,7 +41,24 @@ import { NotificationsModule } from '../notifications/notifications.module';
     NotificationsModule,
   ],
   controllers: [AssetsController],
-  providers: [AssetLifecycleService, AssetProcessor, EigenDAService],
-  exports: [AssetLifecycleService, EigenDAService],
+  providers: [
+    AssetLifecycleService,
+    AssetProcessor,
+    EigenDAService,
+    {
+      provide: MANTLE_ASSET_ORIGINATION_TOKEN,
+      useClass: MantleAssetOriginationService,
+    },
+    {
+      provide: STELLAR_ASSET_ORIGINATION_TOKEN,
+      useClass: StellarAssetOriginationService,
+    },
+  ],
+  exports: [
+    AssetLifecycleService,
+    EigenDAService,
+    MANTLE_ASSET_ORIGINATION_TOKEN,
+    STELLAR_ASSET_ORIGINATION_TOKEN,
+  ],
 })
 export class AssetModule {}

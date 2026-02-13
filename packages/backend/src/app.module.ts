@@ -16,6 +16,7 @@ import { RedisModule } from './modules/redis/redis.module';
 import { KycModule } from './modules/kyc/kyc.module';
 import { BlockchainModule } from './modules/blockchain/blockchain.module';
 import { AssetModule } from './modules/assets/assets.module';
+import { RegistryModule } from './modules/registry/registry.module';
 import { YieldModule } from './modules/yield/yield.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -94,6 +95,7 @@ export class AppModule {
       AuthModule,
       KycModule,
       BlockchainModule.forRoot(),
+      RegistryModule,
       AssetModule,
       AdminModule,
       NotificationsModule,

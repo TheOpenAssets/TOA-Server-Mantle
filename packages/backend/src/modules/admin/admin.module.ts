@@ -15,6 +15,10 @@ import { User, UserSchema } from '../../database/schemas/user.schema';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { MarketplaceModule } from '../marketplace/marketplace.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { RegistryModule } from '../registry/registry.module';
+import { MantleAdminStrategy } from './implementations/mantle/mantle-admin-strategy.service';
+import { StellarAdminStrategy } from './implementations/stellar/stellar-admin-strategy.service';
+import { MANTLE_ADMIN_STRATEGY_TOKEN, STELLAR_ADMIN_STRATEGY_TOKEN } from '../registry/registry.constants';
 
 @Module({
   imports: [
@@ -29,6 +33,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AuthModule,
     MarketplaceModule,
     NotificationsModule,
+    RegistryModule,
   ],
   controllers: [
     AdminController,
@@ -37,6 +42,20 @@ import { NotificationsModule } from '../notifications/notifications.module';
     YieldOpsController,
     SyncController,
   ],
-  providers: [AdminService],
+  providers: [
+    AdminService,
+    {
+      provide: MANTLE_ADMIN_STRATEGY_TOKEN,
+      useClass: MantleAdminStrategy,
+    },
+    {
+      provide: STELLAR_ADMIN_STRATEGY_TOKEN,
+      useClass: StellarAdminStrategy,
+    },
+  ],
+  exports: [
+    MANTLE_ADMIN_STRATEGY_TOKEN,
+    STELLAR_ADMIN_STRATEGY_TOKEN,
+  ],
 })
 export class AdminModule {}
