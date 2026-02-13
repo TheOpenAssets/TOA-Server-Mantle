@@ -12,7 +12,8 @@ The platform also provides advanced financial infrastructure on top of the token
 
 ### Monorepo Structure
 
-The project is a bun workspaces monorepo with three packages:
+The project is a bun
+ workspaces monorepo with three packages:
 
 - **packages/backend** — NestJS REST API (TypeScript). The brain of the platform. Handles all business logic, API routing, database operations, and blockchain orchestration.
 - **packages/contracts** — Solidity smart contracts (Hardhat). 17 contracts deployed on Mantle Sepolia covering the full on-chain layer.

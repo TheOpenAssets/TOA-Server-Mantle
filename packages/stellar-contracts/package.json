@@ -1,0 +1,10 @@
+{
+  "name": "@mantle/stellar-contracts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Soroban smart contracts for Open Assets platform",
+  "scripts": {
+    "build": "cargo build --target wasm32-unknown-unknown --release",
+    "test": "cargo test"
+  }
+}
