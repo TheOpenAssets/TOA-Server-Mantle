@@ -5,7 +5,7 @@ import * as bodyParser from 'body-parser';
 import { ISTLogger } from './logger/ist-logger.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create(AppModule.forRoot(), {
     logger: new ISTLogger(),
   });
 

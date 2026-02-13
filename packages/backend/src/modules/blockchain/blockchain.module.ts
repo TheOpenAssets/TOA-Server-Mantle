@@ -1,13 +1,15 @@
-import { Module, Global } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { Module, Global, DynamicModule, Provider } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
+import { ModuleRef } from '@nestjs/core';
 import blockchainConfig from '../../config/blockchain.config';
 import { BlockchainService } from './services/blockchain.service';
 import { WalletService } from './services/wallet.service';
 import { ContractLoaderService } from './services/contract-loader.service';
 import { EventListenerService } from './services/event-listener.service';
 import { MethPriceService } from './services/meth-price.service';
+import { NetworkRegistryService } from './services/network-registry.service';
 import { EventProcessor } from './processors/event.processor';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { Bid, BidSchema } from '../../database/schemas/bid.schema';
@@ -18,43 +20,132 @@ import { Purchase, PurchaseSchema } from '../../database/schemas/purchase.schema
 import { YieldModule } from '../yield/yield.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { forwardRef } from '@nestjs/common';
-// import { SecondaryMarketModule } from '../secondary-market/secondary-market.module';
+import { 
+  BLOCKCHAIN_ADAPTER, 
+  WALLET_ADAPTER, 
+  EVENT_ADAPTER, 
+  CONTRACT_ADAPTER, 
+  AUTH_VERIFICATION_ADAPTER 
+} from './blockchain.constants';
+import { EvmBlockchainAdapter } from './adapters/evm/evm-blockchain.adapter';
+import { EvmWalletAdapter } from './adapters/evm/evm-wallet.adapter';
+import { EvmEventAdapter } from './adapters/evm/evm-event.adapter';
+import { EvmContractAdapter } from './adapters/evm/evm-contract-loader.adapter';
+import { EvmAuthVerificationAdapter } from './adapters/evm/evm-auth-verification.adapter';
+import { StellarBlockchainAdapter } from './adapters/stellar/stellar-blockchain.adapter';
+import { StellarWalletAdapter } from './adapters/stellar/stellar-wallet.adapter';
+import { StellarContractAdapter } from './adapters/stellar/stellar-contract-loader.adapter';
+import { StellarAuthVerificationAdapter } from './adapters/stellar/stellar-auth-verification.adapter';
+import { Queue } from 'bullmq';
 
 @Global()
-@Module({
-  imports: [
-    ConfigModule.forFeature(blockchainConfig),
-    MongooseModule.forFeature([
-      { name: Asset.name, schema: AssetSchema },
-      { name: Bid.name, schema: BidSchema },
-      { name: User.name, schema: UserSchema },
-      { name: P2POrder.name, schema: P2POrderSchema },
-      { name: P2PTrade.name, schema: P2PTradeSchema },
-      { name: Purchase.name, schema: PurchaseSchema },
-    ]),
-    BullModule.registerQueue({
-      name: 'event-processing',
-    }),
-    forwardRef(() => YieldModule),
-    forwardRef(() => NotificationsModule),
-    forwardRef(() => import('../secondary-market/secondary-market.module').then(m => m.SecondaryMarketModule)),
-    forwardRef(() => import('../solvency/solvency.module').then(m => m.SolvencyModule)),
-  ],
-  providers: [
-    BlockchainService,
-    WalletService,
-    ContractLoaderService,
-    EventListenerService,
-    MethPriceService,
-    EventProcessor,
-  ],
-  exports: [
-    BlockchainService,
-    WalletService,
-    ContractLoaderService,
-    EventListenerService,
-    MethPriceService,
-    MongooseModule,
-  ],
-})
-export class BlockchainModule { }
+@Module({})
+export class BlockchainModule {
+  static forRoot(): DynamicModule {
+    return {
+      module: BlockchainModule,
+      imports: [
+        ConfigModule.forFeature(blockchainConfig),
+        MongooseModule.forFeature([
+          { name: Asset.name, schema: AssetSchema },
+          { name: Bid.name, schema: BidSchema },
+          { name: User.name, schema: UserSchema },
+          { name: P2POrder.name, schema: P2POrderSchema },
+          { name: P2PTrade.name, schema: P2PTradeSchema },
+          { name: Purchase.name, schema: PurchaseSchema },
+        ]),
+        BullModule.registerQueue({
+          name: 'event-processing',
+        }),
+        forwardRef(() => YieldModule),
+        forwardRef(() => NotificationsModule),
+        forwardRef(() => import('../secondary-market/secondary-market.module').then(m => m.SecondaryMarketModule)),
+        forwardRef(() => import('../solvency/solvency.module').then(m => m.SolvencyModule)),
+      ],
+      providers: [
+        // Registry
+        NetworkRegistryService,
+        
+        // Adapters (Determined at runtime via factory)
+        {
+          provide: CONTRACT_ADAPTER,
+          useFactory: (configService: ConfigService) => {
+            const networkType = configService.get('network.networkType');
+            if (networkType === 'stellar') {
+              return new StellarContractAdapter(configService);
+            }
+            return new EvmContractAdapter(configService);
+          },
+          inject: [ConfigService],
+        },
+        {
+          provide: WALLET_ADAPTER,
+          useFactory: (configService: ConfigService) => {
+            const networkType = configService.get('network.networkType');
+            if (networkType === 'stellar') {
+              return new StellarWalletAdapter(configService);
+            }
+            return new EvmWalletAdapter(configService);
+          },
+          inject: [ConfigService],
+        },
+        {
+          provide: BLOCKCHAIN_ADAPTER,
+          useFactory: (configService: ConfigService, wallet: any, contract: any) => {
+            const networkType = configService.get('network.networkType');
+            if (networkType === 'stellar') {
+              return new StellarBlockchainAdapter(configService, wallet, contract);
+            }
+            return new EvmBlockchainAdapter(configService, wallet, contract);
+          },
+          inject: [ConfigService, WALLET_ADAPTER, CONTRACT_ADAPTER],
+        },
+        {
+          provide: EVENT_ADAPTER,
+          useFactory: (configService: ConfigService, contract: any, queue: Queue) => {
+            const networkType = configService.get('network.networkType');
+            if (networkType === 'stellar') {
+              // TODO: Implement StellarEventAdapter
+              return null;
+            }
+            return new EvmEventAdapter(configService, contract, queue);
+          },
+          inject: [ConfigService, CONTRACT_ADAPTER, 'BullQueue_event-processing'],
+        },
+        {
+          provide: AUTH_VERIFICATION_ADAPTER,
+          useFactory: (configService: ConfigService) => {
+            const networkType = configService.get('network.networkType');
+            if (networkType === 'stellar') {
+              return new StellarAuthVerificationAdapter();
+            }
+            return new EvmAuthVerificationAdapter();
+          },
+          inject: [ConfigService],
+        },
+
+        // Legacy Services (Wrappers)
+        BlockchainService,
+        WalletService,
+        ContractLoaderService,
+        EventListenerService,
+        MethPriceService,
+        EventProcessor,
+      ],
+      exports: [
+        BLOCKCHAIN_ADAPTER,
+        WALLET_ADAPTER,
+        EVENT_ADAPTER,
+        CONTRACT_ADAPTER,
+        AUTH_VERIFICATION_ADAPTER,
+        NetworkRegistryService,
+        BlockchainService,
+        WalletService,
+        ContractLoaderService,
+        EventListenerService,
+        MethPriceService,
+        MongooseModule,
+      ],
+    };
+  }
+}
