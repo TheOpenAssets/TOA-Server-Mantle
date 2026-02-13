@@ -24,10 +24,10 @@ export class Partner {
   publicKey?: string;                 // Optional: Partner's Ethereum address
 
   // Configuration
-  @Prop({ required: true, enum: PartnerStatus, default: PartnerStatus.ACTIVE })
+  @Prop({ required: true, enum: PartnerStatus, default: PartnerStatus.ACTIVE, type: String })
   status!: PartnerStatus;
 
-  @Prop({ required: true, enum: PartnerTier, default: PartnerTier.BASIC })
+  @Prop({ required: true, enum: PartnerTier, default: PartnerTier.BASIC, type: String })
   tier!: PartnerTier;
 
   // Limits & Quotas (all in 6 decimals - USDC format)
@@ -44,7 +44,7 @@ export class Partner {
   @Prop({ required: true, default: 50 })
   platformFeePercentage!: number;     // Basis points (e.g., 50 = 0.5%)
 
-  @Prop({ required: true })
+  @Prop({ required: true, type: String })
   settlementAddress!: WalletAddress;         // Where to send/receive USDC
 
   // Webhook Integration (Optional)
@@ -58,7 +58,7 @@ export class Partner {
   @Prop({ required: true })
   contactEmail!: string;
 
-  @Prop()
+  @Prop({ type: String })
   contactWallet?: WalletAddress;
 
   @Prop({ default: false })
@@ -68,7 +68,7 @@ export class Partner {
   contractSigned!: boolean;
 
   // Audit
-  @Prop({ required: true })
+  @Prop({ required: true, type: String })
   createdBy!: WalletAddress;                 // Admin wallet who created this partner
 
   @Prop()

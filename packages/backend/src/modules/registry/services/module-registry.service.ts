@@ -55,7 +55,7 @@ export class ModuleRegistryService implements OnModuleInit {
 
   private async resolveService(key: string, token: string) {
     try {
-      const service = await this.moduleRef.resolve(token, undefined, { strict: false });
+      const service = this.moduleRef.get(token, { strict: false });
       if (service) {
         this.serviceMap.set(key, service);
         this.logger.log(`Resolved ${key}: ${token}`);

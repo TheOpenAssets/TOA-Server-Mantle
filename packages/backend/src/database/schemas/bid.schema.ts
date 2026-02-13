@@ -9,7 +9,7 @@ export class Bid {
   @Prop({ required: true, index: true })
   assetId!: string;
 
-  @Prop({ required: true, index: true })
+  @Prop({ required: true, index: true, type: String })
   bidder!: WalletAddress; // Wallet address
 
   @Prop({ required: true })
@@ -24,7 +24,7 @@ export class Bid {
   @Prop({ required: true })
   bidIndex!: number; // Index in smart contract array
 
-  @Prop({ required: true, enum: BidStatus, default: BidStatus.PENDING })
+  @Prop({ required: true, enum: BidStatus, default: BidStatus.PENDING, type: String })
   status!: BidStatus;
 
   @Prop({ type: String })

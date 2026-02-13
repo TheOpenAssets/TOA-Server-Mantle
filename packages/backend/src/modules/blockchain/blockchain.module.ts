@@ -19,6 +19,8 @@ import { P2PTrade, P2PTradeSchema } from '../../database/schemas/p2p-trade.schem
 import { Purchase, PurchaseSchema } from '../../database/schemas/purchase.schema';
 import { YieldModule } from '../yield/yield.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SecondaryMarketModule } from '../secondary-market/secondary-market.module';
+import { SolvencyModule } from '../solvency/solvency.module';
 import { forwardRef } from '@nestjs/common';
 import { 
   BLOCKCHAIN_ADAPTER, 
@@ -59,8 +61,8 @@ export class BlockchainModule {
         }),
         forwardRef(() => YieldModule),
         forwardRef(() => NotificationsModule),
-        forwardRef(() => import('../secondary-market/secondary-market.module').then(m => m.SecondaryMarketModule)),
-        forwardRef(() => import('../solvency/solvency.module').then(m => m.SolvencyModule)),
+        forwardRef(() => SecondaryMarketModule),
+        forwardRef(() => SolvencyModule),
       ],
       providers: [
         // Registry
@@ -106,7 +108,10 @@ export class BlockchainModule {
             const networkType = configService.get('network.networkType');
             if (networkType === 'stellar') {
               // TODO: Implement StellarEventAdapter
-              return null;
+              return {
+                startListening: async () => {},
+                stopListening: async () => {},
+              };
             }
             return new EvmEventAdapter(configService, contract, queue);
           },

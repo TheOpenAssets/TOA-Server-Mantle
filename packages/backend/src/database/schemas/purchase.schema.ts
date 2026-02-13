@@ -32,10 +32,10 @@ export class Purchase {
   @Prop()
   blockTimestamp?: Date;
 
-  @Prop({ default: 'CONFIRMED' })
+  @Prop({ default: 'CONFIRMED', type: String })
   status!: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'CLAIMED';
 
-  @Prop({ default: 'PRIMARY_MARKET' })
+  @Prop({ default: 'PRIMARY_MARKET', type: String })
   source!: 'PRIMARY_MARKET' | 'AUCTION' | 'SECONDARY_MARKET' | 'P2P_SELL_ORDER' | 'SECONDARY_MARKET_PURCHASE' | 'P2P_ORDER_CANCELLED';
 
   @Prop()

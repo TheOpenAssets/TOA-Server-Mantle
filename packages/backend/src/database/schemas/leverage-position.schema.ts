@@ -41,7 +41,7 @@ export class LeveragePosition extends Document {
   @Prop({ required: true, unique: true })
   positionId!: number; // On-chain position ID
 
-  @Prop({ required: true, index: true })
+  @Prop({ required: true, index: true, type: String })
   userAddress!: WalletAddress; // Investor wallet address
 
   @Prop({ required: true, index: true })
@@ -65,10 +65,10 @@ export class LeveragePosition extends Document {
   @Prop({ required: true })
   currentHealthFactor!: number; // Current health factor in basis points
 
-  @Prop({ enum: LeveragePositionHealth, default: LeveragePositionHealth.HEALTHY })
+  @Prop({ enum: LeveragePositionHealth, default: LeveragePositionHealth.HEALTHY, type: String })
   healthStatus!: LeveragePositionHealth;
 
-  @Prop({ enum: LeveragePositionStatus, default: LeveragePositionStatus.ACTIVE })
+  @Prop({ enum: LeveragePositionStatus, default: LeveragePositionStatus.ACTIVE, type: String })
   status!: LeveragePositionStatus;
 
   @Prop({ required: true })

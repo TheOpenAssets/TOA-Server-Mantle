@@ -10,13 +10,13 @@ export class SolvencyPosition {
   @Prop({ required: true, unique: true, index: true })
   positionId!: number; // On-chain position ID
 
-  @Prop({ required: true, index: true })
+  @Prop({ required: true, index: true, type: String })
   userAddress!: WalletAddress; // Wallet address
 
   @Prop({ required: true })
   collateralTokenAddress!: string; // RWA or PrivateAsset token address
 
-  @Prop({ required: true, enum: TokenType })
+  @Prop({ required: true, enum: TokenType, type: String })
   collateralTokenType!: TokenType;
 
   @Prop({ required: true })
@@ -34,10 +34,10 @@ export class SolvencyPosition {
   @Prop({ type: Number })
   currentHealthFactor?: number; // Basis points (15000 = 150%)
 
-  @Prop({ required: true, enum: SolvencyHealthStatus, default: SolvencyHealthStatus.HEALTHY })
+  @Prop({ required: true, enum: SolvencyHealthStatus, default: SolvencyHealthStatus.HEALTHY, type: String })
   healthStatus!: SolvencyHealthStatus;
 
-  @Prop({ required: true, enum: SolvencyPositionStatus, default: SolvencyPositionStatus.ACTIVE })
+  @Prop({ required: true, enum: SolvencyPositionStatus, default: SolvencyPositionStatus.ACTIVE, type: String })
   status!: SolvencyPositionStatus;
 
   // Repayment tracking

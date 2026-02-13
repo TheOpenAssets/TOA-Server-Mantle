@@ -6,10 +6,10 @@ export type UserDocument = User & Document;
 
 @Schema({ timestamps: true })
 export class User implements IUser {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, unique: true, index: true, type: String })
   walletAddress!: WalletAddress;
 
-  @Prop({ required: true, enum: UserRole, default: UserRole.INVESTOR })
+  @Prop({ required: true, enum: UserRole, default: UserRole.INVESTOR, type: String })
   role!: UserRole;
 
   @Prop({ required: true, default: false })

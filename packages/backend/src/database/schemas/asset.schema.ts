@@ -19,13 +19,13 @@ export class Asset implements IAssetEVM, IAssetStellar {
   @Prop({ required: true, unique: true })
   assetId!: string;
 
-  @Prop({ required: true })
+  @Prop({ required: true, type: String })
   originator!: WalletAddress;
 
-  @Prop({ required: true, enum: AssetStatus, default: AssetStatus.UPLOADED })
+  @Prop({ required: true, enum: AssetStatus, default: AssetStatus.UPLOADED, type: String })
   status!: AssetStatus;
 
-  @Prop({ required: true, enum: AssetType })
+  @Prop({ required: true, enum: AssetType, type: String })
   assetType!: AssetType;
 
   @Prop({ type: Object })

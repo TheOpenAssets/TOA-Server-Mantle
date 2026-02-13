@@ -12,7 +12,7 @@ export class Announcement {
   @Prop({ required: true })
   assetId!: string; // Reference to Asset
 
-  @Prop({ required: true, enum: AnnouncementType })
+  @Prop({ required: true, enum: AnnouncementType, type: String })
   type!: AnnouncementType;
 
   @Prop({ required: true })
@@ -21,7 +21,7 @@ export class Announcement {
   @Prop({ required: true })
   message!: string;
 
-  @Prop({ required: true, enum: AnnouncementStatus, default: AnnouncementStatus.ACTIVE })
+  @Prop({ required: true, enum: AnnouncementStatus, default: AnnouncementStatus.ACTIVE, type: String })
   status!: AnnouncementStatus;
 
   @Prop({ type: Object })

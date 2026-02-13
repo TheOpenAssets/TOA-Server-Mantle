@@ -30,7 +30,7 @@ export class Settlement {
   @Prop()
   usdcAmount?: string; // USDC equivalent after fiat conversion
 
-  @Prop({ required: true, enum: SettlementStatus, default: SettlementStatus.PENDING_CONVERSION })
+  @Prop({ required: true, enum: SettlementStatus, default: SettlementStatus.PENDING_CONVERSION, type: String })
   status!: SettlementStatus;
 
   @Prop()

@@ -4,7 +4,7 @@ import { YieldClaimStatus, WalletAddress } from '@openassets/types';
 
 @Schema({ timestamps: true })
 export class UserYieldClaim extends Document {
-  @Prop({ required: true, index: true })
+  @Prop({ required: true, index: true, type: String })
   userAddress!: WalletAddress; // Investor who claimed
 
   @Prop({ required: true, index: true })
@@ -28,7 +28,7 @@ export class UserYieldClaim extends Document {
   @Prop({ required: true })
   claimTimestamp!: Date; // Blockchain timestamp of claim
 
-  @Prop({ enum: YieldClaimStatus, default: YieldClaimStatus.PENDING })
+  @Prop({ enum: YieldClaimStatus, default: YieldClaimStatus.PENDING, type: String })
   status!: YieldClaimStatus;
 
   @Prop()

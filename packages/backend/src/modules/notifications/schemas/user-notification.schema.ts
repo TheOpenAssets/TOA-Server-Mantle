@@ -26,7 +26,7 @@ export class UserNotification {
   @Prop({ required: true, index: true, unique: true })
   userId!: string; // Reference to User ID string from auth
 
-  @Prop({ required: true, index: true })
+  @Prop({ required: true, index: true, type: String })
   walletAddress!: WalletAddress;
 
   @Prop({ type: [NotificationItemSchema], default: [] })

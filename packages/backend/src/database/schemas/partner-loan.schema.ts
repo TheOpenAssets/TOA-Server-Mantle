@@ -20,7 +20,7 @@ export class PartnerLoan {
   partnerName!: string;               // Cached for queries
 
   // User & Position
-  @Prop({ required: true, index: true })
+  @Prop({ required: true, index: true, type: String })
   userWallet!: WalletAddress;                // Borrower's wallet
 
   @Prop({ required: true, index: true })
@@ -58,7 +58,7 @@ export class PartnerLoan {
   }>;
 
   // Status
-  @Prop({ required: true, enum: PartnerLoanStatus, default: PartnerLoanStatus.ACTIVE })
+  @Prop({ required: true, enum: PartnerLoanStatus, default: PartnerLoanStatus.ACTIVE, type: String })
   status!: PartnerLoanStatus;
 
   // On-chain References
