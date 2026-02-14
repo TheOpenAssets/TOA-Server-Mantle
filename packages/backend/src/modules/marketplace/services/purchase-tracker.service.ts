@@ -1,66 +1,33 @@
-import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, Inject } from '@nestjs/common';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Model, Connection } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
-import { createPublicClient, http, Hash, decodeEventLog } from 'viem';
-import { mantleSepolia } from '../../../config/mantle-chain';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Settlement, SettlementDocument } from '../../../database/schemas/settlement.schema';
 import { YieldClaim, YieldClaimDocument } from '../../../database/schemas/yield-claim.schema';
 import { LeveragePosition } from '../../../database/schemas/leverage-position.schema';
-import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { BLOCKCHAIN_ADAPTER } from '../../blockchain/constants';
+import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
+
 @Injectable()
 export class PurchaseTrackerService {
   private readonly logger = new Logger(PurchaseTrackerService.name);
-  private publicClient;
 
   constructor(
     private configService: ConfigService,
-    private contractLoader: ContractLoaderService,
+    @Inject(BLOCKCHAIN_ADAPTER) private blockchainAdapter: BlockchainAdapter,
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Settlement.name) private settlementModel: Model<SettlementDocument>,
     @InjectModel(YieldClaim.name) private yieldClaimModel: Model<YieldClaimDocument>,
     private notificationService: NotificationService,
     @InjectConnection() private connection: Connection,
-  ) {
-    this.publicClient = createPublicClient({
-      chain: mantleSepolia,
-      transport: http(this.configService.get('blockchain.rpcUrl')),
-    });
-  }
-
-  private async executeWithRetry<T>(
-    operation: () => Promise<T>,
-    description: string,
-    maxRetries = 5,
-    initialDelay = 2000,
-  ): Promise<T> {
-    let retries = 0;
-    let delay = initialDelay;
-
-    while (true) {
-      try {
-        return await operation();
-      } catch (error: any) {
-        retries++;
-        if (retries > maxRetries) {
-          this.logger.error(`Failed ${description} after ${maxRetries} retries: ${error.message}`);
-          throw error;
-        }
-        this.logger.warn(
-          `Error in ${description} (attempt ${retries}/${maxRetries}): ${error.message}. Retrying in ${delay}ms...`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        delay *= 2;
-      }
-    }
-  }
+  ) {}
 
   /**
    * Validate and record a purchase transaction
@@ -131,8 +98,8 @@ export class PurchaseTrackerService {
     // Handle normal purchase (positive amount) - validate on-chain
 
     // Validate transaction on-chain
-    const purchaseData = await this.validatePurchaseTransaction(
-      dto.txHash as Hash,
+    const purchaseData = await this.blockchainAdapter.verifyPurchaseTransaction(
+      dto.txHash,
       dto.assetId,
       investorWallet,
     );
@@ -225,82 +192,6 @@ export class PurchaseTrackerService {
       totalPayment: purchaseData.totalPayment,
       tokenAddress: asset.token?.address,
     };
-  }
-
-  /**
-   * Validate purchase transaction on-chain
-   */
-  private async validatePurchaseTransaction(
-    txHash: Hash,
-    assetId: string,
-    expectedBuyer: string,
-  ): Promise<{
-    amount: string;
-    price: string;
-    totalPayment: string;
-    blockNumber: number;
-    timestamp: number;
-  } | null> {
-    try {
-      // Get transaction receipt
-      const receipt = await this.executeWithRetry(() => this.publicClient.getTransactionReceipt({ hash: txHash }), 'getTransactionReceipt');
-
-      if (!receipt || receipt.status !== 'success') {
-        this.logger.error(`Transaction not found or failed: ${txHash}`);
-        return null;
-      }
-
-      // Get block to extract timestamp
-      const block = await this.publicClient.getBlock({ blockNumber: receipt.blockNumber });
-
-      // Decode TokensPurchased event from logs
-      const marketplaceAddress = this.contractLoader.getContractAddress('PrimaryMarketplace');
-      const abi = this.contractLoader.getContractAbi('PrimaryMarketplace');
-
-      // Convert assetId to bytes32 for comparison
-      const assetIdBytes32 = '0x' + assetId.replace(/-/g, '').padEnd(64, '0');
-
-      for (const log of receipt.logs) {
-        if (log.address.toLowerCase() !== marketplaceAddress.toLowerCase()) {
-          continue;
-        }
-
-        try {
-          const decoded = decodeEventLog({
-            abi,
-            data: log.data,
-            topics: log.topics,
-          }) as { eventName: string; args: any };
-
-          if (decoded.eventName === 'TokensPurchased') {
-            const { assetId: eventAssetId, buyer, amount, price, totalPayment } = decoded.args;
-
-            // Validate this is the correct purchase
-            if (
-              eventAssetId.toLowerCase() === assetIdBytes32.toLowerCase() &&
-              buyer.toLowerCase() === expectedBuyer.toLowerCase()
-            ) {
-              return {
-                amount: amount.toString(),
-                price: price.toString(),
-                totalPayment: totalPayment.toString(),
-                blockNumber: Number(receipt.blockNumber),
-                timestamp: Number(block.timestamp),
-              };
-            }
-          }
-        } catch (e) {
-          // Skip logs that don't match
-          continue;
-        }
-      }
-
-      this.logger.error(`TokensPurchased event not found in transaction ${txHash}`);
-      return null;
-    } catch (error: any) {
-      this.logger.error(`Error validating transaction ${txHash}:`, error.message);
-      return null;
-    }
   }
 
   /**

@@ -6,6 +6,26 @@ export interface DeployedTokenResult {
   txId: string;
 }
 
+export interface PurchaseVerificationResult {
+  amount: string; // 18 decimals
+  price: string; // 6 decimals (USDC)
+  totalPayment: string; // 6 decimals (USDC)
+  blockNumber: number;
+  timestamp: number; // Unix timestamp
+}
+
+export interface BidVerificationResult {
+  tokenAmount: string; // 18 decimals
+  price: string; // 6 decimals (USDC)
+  bidIndex: number;
+}
+
+export interface BidSettlementResult {
+  tokensReceived: string; // 18 decimals
+  refundAmount: string; // 6 decimals (USDC)
+  cost: string; // 6 decimals (USDC)
+}
+
 export interface BlockchainAdapter {
   // Asset Management
   registerAsset(dto: any): Promise<{ txId: string }>;
@@ -34,6 +54,25 @@ export interface BlockchainAdapter {
     totalSupply: string | number,
     minPrice?: string
   ): Promise<{ txId: string }>;
+  
+  // Marketplace Verification
+  verifyPurchaseTransaction(
+    txHash: string,
+    assetId: string,
+    expectedBuyer: string,
+  ): Promise<PurchaseVerificationResult | null>;
+
+  verifyBidTransaction(
+    txHash: string,
+    assetId: string,
+    expectedBidder: string,
+  ): Promise<BidVerificationResult | null>;
+
+  verifyBidSettlement(
+    txHash: string,
+    assetId: string,
+    expectedBidder: string,
+  ): Promise<BidSettlementResult | null>;
   
   // Identity
   registerIdentity(walletAddress: WalletAddress): Promise<{ txId: string }>;

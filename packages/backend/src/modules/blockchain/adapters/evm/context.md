@@ -9,6 +9,7 @@ This folder contains the concrete implementations of the blockchain adapter inte
 - Implements `BlockchainAdapter`.
 - Handles contract writes (registration, deployment, listing) and reads using `viem`'s `PublicClient` and `WalletClient`.
 - Dynamically constructs the chain definition from `network.config.ts`.
+- **Transaction Verification**: Implements `verifyPurchaseTransaction`, `verifyBidTransaction`, and `verifyBidSettlement` by decoding EVM logs from transaction receipts.
 
 ### `EvmWalletAdapter`
 - Implements `WalletAdapter`.

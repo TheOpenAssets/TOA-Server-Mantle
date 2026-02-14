@@ -1,6 +1,8 @@
 import { IsString, IsNotEmpty, IsNumberString, IsOptional, Matches } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class NotifyPurchaseDto {
+  @ApiProperty({ description: 'Network transaction identifier (EVM hash or Stellar hash)' })
   @IsString()
   @IsNotEmpty()
   txHash!: string;

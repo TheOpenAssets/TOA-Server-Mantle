@@ -10,10 +10,18 @@ import {
   Address,
   Account,
   BASE_FEE,
-  Keypair
+  Keypair,
+  scValToNative,
+  StrKey
 } from '@stellar/stellar-sdk';
 import { ListingType, WalletAddress } from '@openassets/types';
-import { BlockchainAdapter, DeployedTokenResult } from '../blockchain-adapter.interface';
+import { 
+  BlockchainAdapter, 
+  DeployedTokenResult,
+  PurchaseVerificationResult,
+  BidVerificationResult,
+  BidSettlementResult
+} from '../blockchain-adapter.interface';
 import { StellarWalletAdapter } from './stellar-wallet.adapter';
 import { StellarContractAdapter } from './stellar-contract-loader.adapter';
 
@@ -330,6 +338,154 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     await this.confirmTransaction(response.hash);
 
     return { txId: response.hash };
+  }
+
+  async verifyPurchaseTransaction(
+    txHash: string,
+    assetId: string,
+    expectedBuyer: string,
+  ): Promise<PurchaseVerificationResult | null> {
+    try {
+      this.logger.log(`Verifying Stellar purchase transaction: ${txHash}`);
+      const response = await this.sorobanServer.getTransaction(txHash);
+      if (response.status !== 'SUCCESS' || !response.resultMetaXdr) {
+        this.logger.warn(`Stellar transaction ${txHash} failed or missing meta`);
+        return null;
+      }
+
+      const meta = xdr.TransactionMeta.fromXDR(response.resultMetaXdr, 'base64');
+      const events = meta.v3().sorobanMeta().events();
+      const contractIdStr = this.contractAdapter.getContractAddress('PrimaryMarket');
+
+      for (const event of events) {
+        // Filter by contract ID
+        if (StrKey.encodeContract(event.contractId()) !== contractIdStr) continue;
+
+        const topics = event.body().v0().topics();
+        // First topic is event name
+        const eventName = topics[0].sym().toString();
+
+        if (eventName === 'TokensPurchased') {
+          const data = event.body().v0().data();
+          const args = scValToNative(data);
+          
+          // Expecting [assetId, buyer, amount, price, totalPayment]
+          const [evtAssetId, evtBuyer, evtAmount, evtPrice, evtTotalPayment] = args;
+
+          if (evtAssetId === assetId && evtBuyer === expectedBuyer) {
+            return {
+              amount: evtAmount.toString(),
+              price: evtPrice.toString(),
+              totalPayment: evtTotalPayment.toString(),
+              blockNumber: response.ledger,
+              timestamp: Number(response.createdAt),
+            };
+          }
+        }
+      }
+
+      this.logger.warn(`TokensPurchased event not found in tx ${txHash}`);
+      return null;
+    } catch (error: any) {
+      this.logger.error(`Error verifying purchase tx ${txHash}: ${error.message}`);
+      return null;
+    }
+  }
+
+  async verifyBidTransaction(
+    txHash: string,
+    assetId: string,
+    expectedBidder: string,
+  ): Promise<BidVerificationResult | null> {
+    try {
+      this.logger.log(`Verifying Stellar bid transaction: ${txHash}`);
+      const response = await this.sorobanServer.getTransaction(txHash);
+      if (response.status !== 'SUCCESS' || !response.resultMetaXdr) {
+        this.logger.warn(`Stellar transaction ${txHash} failed or missing meta`);
+        return null;
+      }
+
+      const meta = xdr.TransactionMeta.fromXDR(response.resultMetaXdr, 'base64');
+      const events = meta.v3().sorobanMeta().events();
+      const contractIdStr = this.contractAdapter.getContractAddress('PrimaryMarket');
+
+      for (const event of events) {
+        if (StrKey.encodeContract(event.contractId()) !== contractIdStr) continue;
+
+        const topics = event.body().v0().topics();
+        const eventName = topics[0].sym().toString();
+
+        if (eventName === 'BidSubmitted') {
+          const data = event.body().v0().data();
+          const args = scValToNative(data);
+          
+          // Expecting [assetId, bidder, tokenAmount, price, bidIndex]
+          const [evtAssetId, evtBidder, evtTokenAmount, evtPrice, evtBidIndex] = args;
+
+          if (evtAssetId === assetId && evtBidder === expectedBidder) {
+            return {
+              tokenAmount: evtTokenAmount.toString(),
+              price: evtPrice.toString(),
+              bidIndex: Number(evtBidIndex),
+            };
+          }
+        }
+      }
+
+      this.logger.warn(`BidSubmitted event not found in tx ${txHash}`);
+      return null;
+    } catch (error: any) {
+      this.logger.error(`Error verifying bid tx ${txHash}: ${error.message}`);
+      return null;
+    }
+  }
+
+  async verifyBidSettlement(
+    txHash: string,
+    assetId: string,
+    expectedBidder: string,
+  ): Promise<BidSettlementResult | null> {
+    try {
+      this.logger.log(`Verifying Stellar settlement transaction: ${txHash}`);
+      const response = await this.sorobanServer.getTransaction(txHash);
+      if (response.status !== 'SUCCESS' || !response.resultMetaXdr) {
+        this.logger.warn(`Stellar transaction ${txHash} failed or missing meta`);
+        return null;
+      }
+
+      const meta = xdr.TransactionMeta.fromXDR(response.resultMetaXdr, 'base64');
+      const events = meta.v3().sorobanMeta().events();
+      const contractIdStr = this.contractAdapter.getContractAddress('PrimaryMarket');
+
+      for (const event of events) {
+        if (StrKey.encodeContract(event.contractId()) !== contractIdStr) continue;
+
+        const topics = event.body().v0().topics();
+        const eventName = topics[0].sym().toString();
+
+        if (eventName === 'BidSettled') {
+          const data = event.body().v0().data();
+          const args = scValToNative(data);
+          
+          // Expecting [assetId, bidder, tokensReceived, cost, refund]
+          const [evtAssetId, evtBidder, evtTokensReceived, evtCost, evtRefund] = args;
+
+          if (evtAssetId === assetId && evtBidder === expectedBidder) {
+            return {
+              tokensReceived: evtTokensReceived.toString(),
+              cost: evtCost.toString(),
+              refundAmount: evtRefund.toString(),
+            };
+          }
+        }
+      }
+
+      this.logger.warn(`BidSettled event not found in tx ${txHash}`);
+      return null;
+    } catch (error: any) {
+      this.logger.error(`Error verifying settlement tx ${txHash}: ${error.message}`);
+      return null;
+    }
   }
 
   async registerIdentity(walletAddress: WalletAddress): Promise<{ txId: string }> {

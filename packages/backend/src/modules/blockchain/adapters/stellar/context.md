@@ -12,6 +12,7 @@ This folder contains the concrete implementations of the blockchain adapter inte
 - **Token Management**: Implements native asset flag setting and deterministic token identifier generation.
 - **Revocation**: Supports multi-level revocation across AttestationRegistry, AssetRegistry, and PrimaryMarket.
 - **Identity**: Manages KYC registration on the Soroban IdentityRegistry.
+- **Transaction Verification**: Implements `verifyPurchaseTransaction`, `verifyBidTransaction`, and `verifyBidSettlement` by fetching transactions via Soroban RPC and decoding contract events. Validates 18-decimal/6-decimal canonical forms.
 
 ### `StellarWalletAdapter`
 - Implements `WalletAdapter`.

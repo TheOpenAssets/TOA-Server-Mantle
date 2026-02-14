@@ -9,7 +9,13 @@ import {
   PublicClient 
 } from 'viem';
 import { ListingType, WalletAddress } from '@openassets/types';
-import { BlockchainAdapter, DeployedTokenResult } from '../blockchain-adapter.interface';
+import { 
+  BlockchainAdapter, 
+  DeployedTokenResult,
+  PurchaseVerificationResult,
+  BidVerificationResult,
+  BidSettlementResult
+} from '../blockchain-adapter.interface';
 import { EvmWalletAdapter } from './evm-wallet.adapter';
 import { EvmContractAdapter } from './evm-contract-loader.adapter';
 
@@ -206,6 +212,200 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     }), 'createListing receipt');
 
     return { txId };
+  }
+
+  async verifyPurchaseTransaction(
+    txHash: string,
+    assetId: string,
+    expectedBuyer: string,
+  ): Promise<PurchaseVerificationResult | null> {
+    try {
+      // Get transaction receipt
+      const receipt = await this.executeWithRetry(() => this.publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` }), 'getTransactionReceipt');
+
+      if (!receipt || receipt.status !== 'success') {
+        this.logger.error(`Transaction not found or failed: ${txHash}`);
+        return null;
+      }
+
+      // Get block to extract timestamp
+      const block = await this.publicClient.getBlock({ blockNumber: receipt.blockNumber });
+
+      // Decode TokensPurchased event from logs
+      const marketplaceAddress = this.contractAdapter.getContractAddress('PrimaryMarketplace');
+      const abi = this.contractAdapter.getContractInterface('PrimaryMarketplace');
+
+      // Convert assetId to bytes32 for comparison
+      const assetIdBytes32 = '0x' + assetId.replace(/-/g, '').padEnd(64, '0');
+
+      for (const log of receipt.logs) {
+        if (log.address.toLowerCase() !== marketplaceAddress.toLowerCase()) {
+          continue;
+        }
+
+        try {
+          const decoded = decodeEventLog({
+            abi,
+            data: log.data,
+            topics: log.topics,
+          }) as unknown as { eventName: string; args: any };
+
+          if (decoded.eventName === 'TokensPurchased') {
+            const { assetId: eventAssetId, buyer, amount, price, totalPayment } = decoded.args;
+
+            // Validate this is the correct purchase
+            if (
+              eventAssetId.toLowerCase() === assetIdBytes32.toLowerCase() &&
+              buyer.toLowerCase() === expectedBuyer.toLowerCase()
+            ) {
+              return {
+                amount: amount.toString(),
+                price: price.toString(),
+                totalPayment: totalPayment.toString(),
+                blockNumber: Number(receipt.blockNumber),
+                timestamp: Number(block.timestamp),
+              };
+            }
+          }
+        } catch (e) {
+          // Skip logs that don't match
+          continue;
+        }
+      }
+
+      this.logger.error(`TokensPurchased event not found in transaction ${txHash}`);
+      return null;
+    } catch (error: any) {
+      this.logger.error(`Error validating transaction ${txHash}:`, error.message);
+      return null;
+    }
+  }
+
+  async verifyBidTransaction(
+    txHash: string,
+    assetId: string,
+    expectedBidder: string,
+  ): Promise<BidVerificationResult | null> {
+    try {
+      // Get transaction receipt
+      const receipt = await this.executeWithRetry(() => this.publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` }), 'getTransactionReceipt');
+
+      if (!receipt || receipt.status !== 'success') {
+        this.logger.error(`Transaction not found or failed: ${txHash}`);
+        return null;
+      }
+
+      // Decode BidSubmitted event from logs
+      const marketplaceAddress = this.contractAdapter.getContractAddress('PrimaryMarketplace');
+      const abi = this.contractAdapter.getContractInterface('PrimaryMarketplace');
+
+      // Convert assetId to bytes32 for comparison
+      const assetIdBytes32 = '0x' + assetId.replace(/-/g, '').padEnd(64, '0');
+
+      for (const log of receipt.logs) {
+        if (log.address.toLowerCase() !== marketplaceAddress.toLowerCase()) {
+          continue;
+        }
+
+        try {
+          const decoded = decodeEventLog({
+            abi,
+            data: log.data,
+            topics: log.topics,
+          }) as unknown as { eventName: string; args: any };
+
+          if (decoded.eventName === 'BidSubmitted') {
+            const { assetId: eventAssetId, bidder, tokenAmount, price, bidIndex } = decoded.args;
+
+            // Validate this is the correct bid
+            if (
+              eventAssetId.toLowerCase() === assetIdBytes32.toLowerCase() &&
+              bidder.toLowerCase() === expectedBidder.toLowerCase()
+            ) {
+              return {
+                tokenAmount: tokenAmount.toString(),
+                price: price.toString(),
+                bidIndex: Number(bidIndex),
+              };
+            }
+          }
+        } catch (e) {
+          // Skip logs that don't match
+          continue;
+        }
+      }
+
+      this.logger.error(`BidSubmitted event not found in transaction ${txHash}`);
+      return null;
+    } catch (error: any) {
+      this.logger.error(`Error validating transaction ${txHash}:`, error.message);
+      return null;
+    }
+  }
+
+  async verifyBidSettlement(
+    txHash: string,
+    assetId: string,
+    expectedBidder: string,
+  ): Promise<BidSettlementResult | null> {
+    try {
+      // Get transaction receipt
+      const receipt = await this.executeWithRetry(() => this.publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` }), 'getTransactionReceipt');
+
+      if (!receipt || receipt.status !== 'success') {
+        this.logger.error(`Transaction not found or failed: ${txHash}`);
+        return null;
+      }
+
+      // Decode BidSettled event from logs
+      const marketplaceAddress = this.contractAdapter.getContractAddress('PrimaryMarketplace');
+      const abi = this.contractAdapter.getContractInterface('PrimaryMarketplace');
+
+      // Convert assetId to bytes32 for comparison
+      const assetIdBytes32 = '0x' + assetId.replace(/-/g, '').padEnd(64, '0');
+
+      for (const log of receipt.logs) {
+        if (log.address.toLowerCase() !== marketplaceAddress.toLowerCase()) {
+          continue;
+        }
+
+        try {
+          const decoded = decodeEventLog({
+            abi,
+            data: log.data,
+            topics: log.topics,
+          }) as unknown as { eventName: string; args: any };
+          if (decoded.eventName === 'BidSettled') {
+            const {
+              assetId: eventAssetId,
+              bidder,
+              tokensReceived,
+              cost,
+              refund,
+            } = decoded.args;
+            if (
+              eventAssetId.toLowerCase() === assetIdBytes32.toLowerCase() &&
+              bidder.toLowerCase() === expectedBidder.toLowerCase()
+            ) {
+              return {
+                tokensReceived: tokensReceived.toString(),
+                refundAmount: refund.toString(),
+                cost: cost.toString(),
+              };
+            }
+          }
+        } catch (e) {
+          // Skip logs that don't match
+          continue;
+        }
+      }
+
+      this.logger.error(`BidSettled event not found in transaction ${txHash}`);
+      return null;
+    } catch (error: any) {
+      this.logger.error(`Error validating settlement transaction ${txHash}:`, error.message);
+      return null;
+    }
   }
 
   async registerIdentity(walletAddress: WalletAddress): Promise<{ txId: string }> {
