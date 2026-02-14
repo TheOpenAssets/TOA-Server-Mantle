@@ -27,6 +27,7 @@ import { AttestationService } from '../../compliance-engine/services/attestation
 import { AnnouncementService } from '../../announcements/services/announcement.service';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
+import { detectNetworkType } from '../../auth/utils/wallet.util';
 
 @Injectable()
 export class AssetLifecycleService {
@@ -154,6 +155,7 @@ export class AssetLifecycleService {
       originator: userWallet,
       status: AssetStatus.UPLOADED,
       assetType: dto.assetType,
+      network: detectNetworkType(userWallet),
       metadata: {
         invoiceNumber: dto.invoiceNumber,
         faceValue: dto.faceValue,

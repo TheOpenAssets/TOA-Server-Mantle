@@ -84,12 +84,13 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
   }
 
   async registerAssetInRegistry(dto: any): Promise<{ txId: string }> {
-    const { assetId, totalSupply, attestationHash, blobId } = dto;
+    const { assetId, totalSupply, attestationHash, blobId, symbol } = dto;
     const adminKeypair = this.walletAdapter.getAdminKeypair();
     const contractId = this.contractAdapter.getContractAddress('AssetRegistry');
     const contract = new Contract(contractId);
     
-    const assetCode = `RWA${assetId.substring(0, 8)}`.toUpperCase();
+    // Use provided symbol or generate one from assetId
+    const assetCode = symbol || 'RWA' + assetId.replace(/^0x/i, '').substring(0, 8).toUpperCase();
 
     this.logger.log(`Registering asset ${assetCode} in AssetRegistry...`);
 
@@ -156,7 +157,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     const adminKeypair = this.walletAdapter.getAdminKeypair();
     const contractId = this.contractAdapter.getContractAddress('AssetRegistry');
     const contract = new Contract(contractId);
-    const assetCode = `RWA${assetId.substring(0, 8)}`.toUpperCase();
+    const assetCode = 'RWA' + assetId.replace(/^0x/i, '').substring(0, 8).toUpperCase();
 
     this.logger.log(`Revoking asset ${assetCode} on Stellar AssetRegistry...`);
 
@@ -216,14 +217,15 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
 
   async deployToken(
     assetId: string,
-    totalSupply: number,
+    totalSupply: string | number,
     params: {
       attestationHash?: string;
       blobId?: string;
+      symbol?: string;
     }
   ): Promise<DeployedTokenResult> {
     const platformKeypair = this.walletAdapter.getPlatformKeypair();
-    const assetCode = `RWA${assetId.substring(0, 8)}`.toUpperCase();
+    const assetCode = params.symbol || 'RWA' + assetId.replace(/^0x/i, '').substring(0, 8).toUpperCase();
     
     this.logger.log(`Registering and creating native Stellar asset ${assetCode} for asset ${assetId}...`);
 
@@ -231,8 +233,9 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     await this.registerAssetInRegistry({
       assetId,
       totalSupply,
-      attestationHash: params.attestationHash || '',
-      blobId: params.blobId || ''
+      attestationHash: params.attestationHash || '0x' + '0'.repeat(64),
+      blobId: params.blobId || '0x' + '0'.repeat(64),
+      symbol: params.symbol
     });
 
     // 2. Set AUTH flags on platform account (issuer)
@@ -273,25 +276,34 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
   async listOnMarketplace(
     tokenIdentifier: string,
     listingType: ListingType,
-    price: number,
-    _minInvestment: number,
+    price: string | number,
+    minInvestment: string | number,
     duration: number,
-    totalSupply: number,
+    totalSupply: string | number,
     minPrice?: string,
   ): Promise<{ txId: string }> {
     const adminKeypair = this.walletAdapter.getAdminKeypair();
     const contractId = this.contractAdapter.getContractAddress('PrimaryMarket');
     const contract = new Contract(contractId);
     
+    // In Stellar, tokenIdentifier is usually "ASSET_CODE:ISSUER_PUBKEY"
     const [assetCode] = tokenIdentifier.split(':');
 
     this.logger.log(`Listing ${assetCode} on Stellar Primary Market...`);
 
     const source = await this.sorobanServer.getAccount(adminKeypair.publicKey());
     
-    const minPriceVal = minPrice && minPrice !== '0'
-      ? xdr.ScVal.scvI64(xdr.Int64.fromString(minPrice))
-      : xdr.ScVal.scvVoid();
+    // Option<i64> in Soroban: None → scvVoid(), Some(x) → scvI64(x) directly
+    let minPriceVal: xdr.ScVal;
+    if (minPrice && minPrice !== '0' && minPrice !== 'null') {
+      minPriceVal = xdr.ScVal.scvI64(xdr.Int64.fromString(minPrice.toString()));
+    } else {
+      minPriceVal = xdr.ScVal.scvVoid();
+    }
+
+    // #[contracttype] unit enum: plain Symbol, no Vec wrapper
+    const listingTypeSymbol = listingType.toString().toUpperCase() === 'AUCTION' ? 'Auction' : 'Static';
+    const listingTypeVal = xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(listingTypeSymbol)]);
 
     const tx = new TransactionBuilder(source, {
       fee: BASE_FEE,
@@ -303,7 +315,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         new Address(adminKeypair.publicKey()).toScVal(),
         xdr.ScVal.scvString(assetCode || ''),
         new Address(this.walletAdapter.getPlatformAddress()).toScVal(),
-        xdr.ScVal.scvSymbol(listingType === ListingType.STATIC ? 'Static' : 'Auction'),
+        listingTypeVal,
         xdr.ScVal.scvI64(xdr.Int64.fromString(price.toString())),
         minPriceVal,
         xdr.ScVal.scvU64(xdr.Uint64.fromString(duration.toString())),

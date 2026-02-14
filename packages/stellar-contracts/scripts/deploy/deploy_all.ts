@@ -29,6 +29,7 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Keypair } from '@stellar/stellar-sdk';
 
 interface DeployedContracts {
   networks?: {
@@ -152,7 +153,8 @@ function deployContract(name: string, wasmFileName: string, initArgs?: string[])
       execCommand(initCmd);
       log(`${name} initialized`, 'success');
     } catch (error: any) {
-      log(`Warning: Initialization may have failed: ${error.message}`, 'info');
+      log(`FATAL: Initialization failed for ${name}: ${error.message}`, 'error');
+      throw new Error(`Contract deployment incomplete: ${name} failed to initialize`);
     }
   }
 
@@ -183,7 +185,20 @@ async function main() {
   console.log('═══════════════════════════════════════════════\n');
 
   // Get deployer address to use as admin
-  const deployerAddress = execCommand(`stellar keys address ${STELLAR_ACCOUNT}`);
+  let deployerAddress: string;
+  if (STELLAR_ACCOUNT.startsWith('S') && STELLAR_ACCOUNT.length === 56) {
+    // It's a secret key
+    try {
+        const keypair = Keypair.fromSecret(STELLAR_ACCOUNT);
+        deployerAddress = keypair.publicKey();
+    } catch (e) {
+        throw new Error('Invalid STELLAR_ACCOUNT secret key');
+    }
+  } else {
+    // It's an alias
+    deployerAddress = execCommand(`stellar keys address ${STELLAR_ACCOUNT}`);
+  }
+  
   log(`Deployer Address: ${deployerAddress}`, 'info');
 
   // Build all contracts

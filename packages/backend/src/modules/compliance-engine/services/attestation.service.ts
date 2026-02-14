@@ -34,7 +34,7 @@ export class AttestationService {
     this.adminPrivateKey = privateKey.startsWith('0x') ? privateKey as Hex : `0x${privateKey}` as Hex;
 
     // Stellar admin secret (optional, for multi-network support)
-    this.stellarAdminSecret = this.configService.get<string>('blockchain.stellarAdminSecret') || null;
+    this.stellarAdminSecret = this.configService.get<string>('network.stellar.adminSecret') || null;
   }
 
   async generateAttestation(asset: Asset, adminWallet: string): Promise<AttestationResult> {

@@ -110,7 +110,7 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
 
   async deployToken(
     assetId: string,
-    totalSupply: number,
+    totalSupply: string | number,
     params: {
       name?: string;
       symbol?: string;
@@ -171,10 +171,10 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
   async listOnMarketplace(
     tokenIdentifier: string,
     listingType: ListingType,
-    price: number,
-    minInvestment: number,
+    price: string | number,
+    minInvestment: string | number,
     duration: number,
-    totalSupply: number,
+    totalSupply: string | number,
     minPrice?: string
   ): Promise<{ txId: string }> {
     const wallet = this.walletAdapter.getAdminWallet();

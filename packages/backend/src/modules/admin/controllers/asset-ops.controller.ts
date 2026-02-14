@@ -49,6 +49,15 @@ export class AssetOpsController {
     return this.assetLifecycleService.getAllAssets(filters);
   }
 
+  @Get(':assetId')
+  async getAsset(@Param('assetId') assetId: string) {
+    const asset = await this.assetLifecycleService.getAsset(assetId);
+    if (!asset) {
+      throw new HttpException('Asset not found', HttpStatus.NOT_FOUND);
+    }
+    return { success: true, asset };
+  }
+
   @Post(':assetId/register')
   async registerAsset(@Param('assetId') assetId: string) {
     try {

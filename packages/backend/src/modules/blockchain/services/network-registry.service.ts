@@ -57,7 +57,7 @@ export class NetworkRegistryService implements OnModuleInit {
 
   async deployAssetToken(
     assetId: string, 
-    totalSupply: number, 
+    totalSupply: string | number, 
     params: {
       name?: string;
       symbol?: string;
@@ -91,10 +91,10 @@ export class NetworkRegistryService implements OnModuleInit {
   async listAssetOnMarketplace(
     tokenIdentifier: string,
     listingType: ListingType,
-    price: number,
-    minInvestment: number,
+    price: string | number,
+    minInvestment: string | number,
     duration: number,
-    totalSupply: number,
+    totalSupply: string | number,
     minPrice?: string
   ) {
     if (!this.isAvailable('marketplace')) {

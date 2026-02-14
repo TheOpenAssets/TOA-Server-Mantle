@@ -75,18 +75,26 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
 
     this.logger.log(`Deploying Stellar native asset for ${dto.assetId}...`);
     
-    const totalSupply = dto.totalSupply ? parseInt(dto.totalSupply) : parseInt(asset.tokenParams?.totalSupply || '0');
+    const totalSupply = dto.totalSupply || asset.tokenParams?.totalSupply || '0';
 
     // Convert UUID to bytes32 format (same format used in AttestationRegistry)
     const assetIdBytes32 = '0x' + dto.assetId.replace(/-/g, '').padEnd(64, '0');
+
+    // Derive asset code from invoice number if no symbol explicitly provided
+    const invoiceNumber = (asset.metadata as any)?.invoiceNumber as string | undefined;
+    const derivedSymbol = dto.symbol ||
+      (invoiceNumber
+        ? invoiceNumber.replace(/[^A-Z0-9]/gi, '').toUpperCase().substring(0, 12)
+        : undefined);
 
     // Stellar deployment involves AssetRegistry registration which needs attestation data
     const result: any = await this.networkRegistryService.deployAssetToken(
       assetIdBytes32,
       totalSupply,
       {
-        attestationHash: asset.attestation?.hash || '',
-        blobId: asset.attestation?.hash || ''
+        attestationHash: asset.attestation?.hash || '0x' + '0'.repeat(64),
+        blobId: (asset.attestation as any)?.blobId || asset.attestation?.hash || '0x' + '0'.repeat(64),
+        symbol: derivedSymbol
       }
     );
 
@@ -135,18 +143,21 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
       throw new HttpException('Asset or token not found', HttpStatus.NOT_FOUND);
     }
 
-    const listingType = asset.assetType as unknown as ListingType;
-    const price = parseInt(asset.tokenParams?.pricePerToken || '0');
-    const minInvestment = parseInt(asset.tokenParams?.minInvestment || '0');
+    // Use asset.listing.type if available, otherwise fall back to assetType
+    const listingType = (asset.listing?.type as unknown as ListingType) || (asset.assetType as unknown as ListingType);
+
+    // Use strings for large numeric values to prevent precision loss
+    const price = asset.tokenParams?.pricePerToken || '0';
+    const minInvestment = asset.tokenParams?.minInvestment || '0';
     const duration = dto.duration ? parseInt(dto.duration) : (asset.listing?.duration || 0);
-    const totalSupply = parseInt(asset.token?.supply || asset.tokenParams?.totalSupply || '0');
+    const totalSupply = asset.token?.supply || asset.tokenParams?.totalSupply || '0';
 
     if (listingType === ListingType.AUCTION && !duration) {
       throw new HttpException('Duration is required for AUCTION listings', HttpStatus.BAD_REQUEST);
     }
 
     const minPrice = listingType === ListingType.AUCTION
-      ? (asset.listing?.priceRange?.min || price.toString())
+      ? (asset.listing?.priceRange?.min || price)
       : '0';
 
     this.logger.log(`Listing asset ${dto.assetId} on Stellar PrimaryMarket...`);
@@ -197,7 +208,7 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     };
   }
 
-  async revokeAsset(assetId: string, reason: string): Promise<any> {
+  async revokeAsset(assetId: string, _reason: string): Promise<any> {
     const asset = await this.assetModel.findOne({ assetId });
     if (!asset) throw new HttpException('Asset not found', HttpStatus.NOT_FOUND);
 

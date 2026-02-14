@@ -14,7 +14,7 @@ export interface BlockchainAdapter {
   // Token Management
   deployToken(
     assetId: string,
-    totalSupply: number,
+    totalSupply: string | number,
     params: {
       name?: string;
       symbol?: string;
@@ -28,10 +28,10 @@ export interface BlockchainAdapter {
   listOnMarketplace(
     tokenIdentifier: string,
     listingType: ListingType,
-    price: number,
-    minInvestment: number,
+    price: string | number,
+    minInvestment: string | number,
     duration: number,
-    totalSupply: number,
+    totalSupply: string | number,
     minPrice?: string
   ): Promise<{ txId: string }>;
   
