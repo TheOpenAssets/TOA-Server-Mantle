@@ -7,6 +7,9 @@ The `StellarAdminStrategy` implements the `IAdminDomainStrategy` interface for t
 
 ### 1. Asset Registration
 - Calls the Soroban `AttestationRegistry` to anchor the asset's attestation hash.
+- The attestation hash (keccak256 of the asset's merkle root, metadata, and admin signature) is the sole data integrity anchor — EigenDA has been removed from the pipeline.
+- Assets transition directly from `ATTESTED` to `REGISTERED` status; the `DA_ANCHORED` intermediate status no longer exists.
+- The `blobId` parameter passed to contracts is set to the attestation hash itself (content-addressed reference). // To be deprecated soon. (blob id will be deprecated)
 - Uses transaction confirmation polling to ensure on-chain immutability before updating MongoDB.
 
 ### 2. Token Deployment (Native Asset Creation)

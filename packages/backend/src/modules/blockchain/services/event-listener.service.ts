@@ -71,7 +71,7 @@ export class EventListenerService implements OnModuleInit {
       }).select('token.address');
 
       for (const asset of assetsWithTokens) {
-        if (asset.token?.address) {
+        if (asset.token?.address && asset.token.address.startsWith('0x')) {
           this.watchedTokenAddresses.add(asset.token.address.toLowerCase());
         }
       }
@@ -186,8 +186,10 @@ export class EventListenerService implements OnModuleInit {
               timestamp: Math.floor(Date.now() / 1000),
             });
 
-            // Add new token to watchlist
-            this.watchedTokenAddresses.add(args.token.toLowerCase());
+            // Add new token to watchlist (EVM addresses only)
+            if (args.token?.startsWith('0x')) {
+              this.watchedTokenAddresses.add(args.token.toLowerCase());
+            }
           }
         } catch { /* ignore decode errors */ }
       }

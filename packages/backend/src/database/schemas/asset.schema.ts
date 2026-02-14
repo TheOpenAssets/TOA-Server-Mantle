@@ -126,7 +126,6 @@ export class Asset implements IAssetEVM, IAssetStellar {
       hashed: false,
       merkled: false,
       attested: false,
-      daAnchored: false,
       registered: false,
       tokenized: false,
     },

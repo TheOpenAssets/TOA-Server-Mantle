@@ -74,7 +74,7 @@ export class BlockchainModule {
           useFactory: (configService: ConfigService) => {
             const networkType = configService.get('network.networkType');
             if (networkType === 'stellar') {
-              return new StellarContractAdapter(configService);
+              return new StellarContractAdapter();
             }
             return new EvmContractAdapter(configService);
           },

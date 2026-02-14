@@ -93,7 +93,7 @@ export class AssetLifecycleService {
     return {
       assetId: assetIdBytes32,
       attestationHash: asset.attestation?.hash || '0x' + '0'.repeat(64),
-      blobId: asset.eigenDA?.blobId || '0x' + '0'.repeat(64),
+      blobId: asset.attestation?.hash || '0x' + '0'.repeat(64),
       payload: asset.attestation?.payload || '0x',
       signature: asset.attestation?.signature || '0x' + '0'.repeat(130),
     };
@@ -270,10 +270,7 @@ export class AssetLifecycleService {
       }
     );
 
-    // Queue EigenDA anchoring job
-    await this.assetQueue.add('eigenda-anchoring', { assetId });
-
-    this.logger.log(`Asset ${assetId} attested and queued for EigenDA anchoring`);
+    this.logger.log(`Asset ${assetId} attested and ready for on-chain registration`);
 
     // Send notification for attestation
     await this.notificationService.create({

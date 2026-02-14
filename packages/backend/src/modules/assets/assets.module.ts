@@ -3,7 +3,6 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
 import { AssetsController } from './controllers/assets.controller';
 import { AssetLifecycleService } from './services/asset-lifecycle.service';
-import { EigenDAService } from './services/eigenda.service';
 import { AssetProcessor } from './processors/asset.processor';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { Bid, BidSchema } from '../../database/schemas/bid.schema';
@@ -44,7 +43,6 @@ import { MANTLE_ASSET_ORIGINATION_TOKEN, STELLAR_ASSET_ORIGINATION_TOKEN } from 
   providers: [
     AssetLifecycleService,
     AssetProcessor,
-    EigenDAService,
     {
       provide: MANTLE_ASSET_ORIGINATION_TOKEN,
       useClass: MantleAssetOriginationService,
@@ -56,7 +54,6 @@ import { MANTLE_ASSET_ORIGINATION_TOKEN, STELLAR_ASSET_ORIGINATION_TOKEN } from 
   ],
   exports: [
     AssetLifecycleService,
-    EigenDAService,
     MANTLE_ASSET_ORIGINATION_TOKEN,
     STELLAR_ASSET_ORIGINATION_TOKEN,
   ],

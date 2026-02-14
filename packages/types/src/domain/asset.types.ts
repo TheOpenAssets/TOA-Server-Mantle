@@ -6,7 +6,6 @@ export enum AssetStatus {
   MERKLED = 'MERKLED',
   PROOF_GENERATED = 'PROOF_GENERATED',
   ATTESTED = 'ATTESTED',
-  DA_ANCHORED = 'DA_ANCHORED',
   REGISTERED = 'REGISTERED',
   TOKENIZED = 'TOKENIZED',
   SCHEDULED = 'SCHEDULED',
@@ -55,7 +54,6 @@ export interface IAssetCheckpoints {
   hashed: boolean;
   merkled: boolean;
   attested: boolean;
-  daAnchored: boolean;
   registered: boolean;
   tokenized: boolean;
 }

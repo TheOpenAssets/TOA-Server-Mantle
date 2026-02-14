@@ -77,13 +77,16 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     
     const totalSupply = dto.totalSupply ? parseInt(dto.totalSupply) : parseInt(asset.tokenParams?.totalSupply || '0');
 
+    // Convert UUID to bytes32 format (same format used in AttestationRegistry)
+    const assetIdBytes32 = '0x' + dto.assetId.replace(/-/g, '').padEnd(64, '0');
+
     // Stellar deployment involves AssetRegistry registration which needs attestation data
     const result: any = await this.networkRegistryService.deployAssetToken(
-      dto.assetId,
+      assetIdBytes32,
       totalSupply,
       {
         attestationHash: asset.attestation?.hash || '',
-        blobId: asset.eigenDA?.blobId || ''
+        blobId: asset.attestation?.hash || ''
       }
     );
 
