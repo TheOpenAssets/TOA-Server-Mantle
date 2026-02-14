@@ -11,6 +11,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { RedisModule } from '../redis/redis.module';
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { UserSession, UserSessionSchema } from '../../database/schemas/session.schema';
+import { EvmVerificationAdapter } from './adapters/evm-verification.adapter';
+import { StellarVerificationAdapter } from './adapters/stellar-verification.adapter';
 
 @Module({
   imports: [
@@ -30,7 +32,13 @@ import { UserSession, UserSessionSchema } from '../../database/schemas/session.s
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, SignatureService, JwtStrategy],
+  providers: [
+    AuthService, 
+    SignatureService, 
+    JwtStrategy,
+    EvmVerificationAdapter,
+    StellarVerificationAdapter,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

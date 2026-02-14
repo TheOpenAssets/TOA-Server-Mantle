@@ -17,6 +17,7 @@ import { UserSession, UserSessionDocument } from '../../../database/schemas/sess
 import { RedisService } from '../../redis/redis.service';
 import { SignatureService } from './signature.service';
 import { LoginDto, RefreshDto } from '../dto/auth.dto';
+import { detectNetworkType, normalizeAddress } from '../utils/wallet.util';
 
 @Injectable()
 export class AuthService {
@@ -34,7 +35,7 @@ export class AuthService {
     try {
       const configPath = join(process.cwd(), 'configs', 'approved_admins.json');
       const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-      this.approvedAdmins = config.admins.map((addr: string) => addr.toLowerCase());
+      this.approvedAdmins = config.admins.map((addr: string) => normalizeAddress(addr));
     } catch (error) {
       console.error('Failed to load approved admins config:', error);
       this.approvedAdmins = [];
@@ -45,21 +46,24 @@ export class AuthService {
    * Check if a wallet address is approved as admin
    */
   private isApprovedAdmin(walletAddress: string): boolean {
-    return this.approvedAdmins.includes(walletAddress.toLowerCase());
+    return this.approvedAdmins.includes(normalizeAddress(walletAddress));
   }
 
   async createChallenge(walletAddress: string, role?: UserRole): Promise<{ message: string; nonce: string }> {
+    const normalizedAddress = normalizeAddress(walletAddress);
+    
     // Validate admin role request
-    if (role === UserRole.ADMIN && !this.isApprovedAdmin(walletAddress)) {
+    if (role === UserRole.ADMIN && !this.isApprovedAdmin(normalizedAddress)) {
       throw new ForbiddenException('Wallet address not authorized for admin role');
     }
     const nonce = uuidv4();
-    const message = `Sign this message to authenticate with Mantle RWA Platform.\nNonce: ${nonce}\nTimestamp: ${Date.now()}`;
+    const appName = this.configService.get<string>('APP_NAME', 'Open Assets Platform');
+    const message = `Sign this message to authenticate with ${appName}.\nNonce: ${nonce}\nTimestamp: ${Date.now()}`;
 
     // Store nonce and role preference in Redis
-    await this.redisService.set(`nonce:${walletAddress}`, nonce, 60);
+    await this.redisService.set(`nonce:${normalizedAddress}`, nonce, 60);
     if (role) {
-      await this.redisService.set(`role:${walletAddress}:${nonce}`, role, 60);
+      await this.redisService.set(`role:${normalizedAddress}:${nonce}`, role, 60);
     }
 
     return { message, nonce };
@@ -67,6 +71,7 @@ export class AuthService {
 
   async login(loginDto: LoginDto) {
     const { walletAddress, signature, message } = loginDto;
+    const normalizedAddress = normalizeAddress(walletAddress);
 
     // 1. Extract Nonce from message
     const nonceMatch = message.match(/Nonce: ([a-f0-9-]+)/);
@@ -76,41 +81,41 @@ export class AuthService {
     const nonce = nonceMatch[1];
 
     // 2. Verify Nonce
-    const storedNonce = await this.redisService.get(`nonce:${walletAddress}`);
+    const storedNonce = await this.redisService.get(`nonce:${normalizedAddress}`);
     if (!storedNonce || storedNonce !== nonce) {
       throw new BadRequestException('Invalid or expired nonce');
     }
 
     // 2a. Get role preference from Redis (if provided during challenge)
-    const rolePreference = await this.redisService.get(`role:${walletAddress}:${nonce}`) as UserRole | null;
+    const rolePreference = await this.redisService.get(`role:${normalizedAddress}:${nonce}`) as UserRole | null;
 
     // Clean up nonce and role from Redis
-    await this.redisService.del(`nonce:${walletAddress}`);
+    await this.redisService.del(`nonce:${normalizedAddress}`);
     if (rolePreference) {
-      await this.redisService.del(`role:${walletAddress}:${nonce}`);
+      await this.redisService.del(`role:${normalizedAddress}:${nonce}`);
     }
 
     // 3. Verify Signature
-    const isValid = await this.signatureService.verifySignature(walletAddress, message, signature);
+    const isValid = await this.signatureService.verifySignature(normalizedAddress, message, signature);
     if (!isValid) {
       throw new UnauthorizedException('Invalid signature');
     }
 
     // 3a. Validate admin role (defense in depth)
-    if (rolePreference === UserRole.ADMIN && !this.isApprovedAdmin(walletAddress)) {
+    if (rolePreference === UserRole.ADMIN && !this.isApprovedAdmin(normalizedAddress)) {
       throw new ForbiddenException('Wallet address not authorized for admin role');
     }
 
     // 4. Find or Create User
-    let user = await this.userModel.findOne({ walletAddress });
+    let user = await this.userModel.findOne({ walletAddress: normalizedAddress });
     if (!user) {
       // Determine final role - only allow ADMIN if wallet is approved
-      const finalRole = rolePreference === UserRole.ADMIN && this.isApprovedAdmin(walletAddress)
+      const finalRole = rolePreference === UserRole.ADMIN && this.isApprovedAdmin(normalizedAddress)
         ? UserRole.ADMIN
         : (rolePreference === UserRole.ORIGINATOR ? UserRole.ORIGINATOR : UserRole.INVESTOR);
 
       user = await this.userModel.create({
-        walletAddress,
+        walletAddress: normalizedAddress,
         role: finalRole,
         kyc: false,
       });
@@ -206,6 +211,7 @@ export class AuthService {
     const accessPayload = {
       sub: user._id,
       wallet: user.walletAddress,
+      network: detectNetworkType(user.walletAddress),
       role: user.role,
       kyc: user.kyc,
       jti: accessJti,
