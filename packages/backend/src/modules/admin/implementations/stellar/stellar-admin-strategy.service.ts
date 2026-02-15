@@ -147,17 +147,28 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     const listingType = (asset.listing?.type as unknown as ListingType) || (asset.assetType as unknown as ListingType);
 
     // Use strings for large numeric values to prevent precision loss
-    const price = asset.tokenParams?.pricePerToken || '0';
+    const rawPrice = asset.tokenParams?.pricePerToken || '0';
     const minInvestment = asset.tokenParams?.minInvestment || '0';
     const duration = dto.duration ? parseInt(dto.duration) : (asset.listing?.duration || 0);
     const totalSupply = asset.token?.supply || asset.tokenParams?.totalSupply || '0';
+
+    // The asset-lifecycle service computes pricePerToken with EVM 18-decimal math:
+    //   evm_price = (raise_usdc_6dec * 10^18) / token_supply_18dec
+    // For Stellar, the contract stores price as i64 and multiplies by the 7-decimal amount,
+    // so we must convert: stellar_price = evm_price / 10^10
+    // This gives price in USDC stroops (7 decimals) per full token.
+    const STELLAR_PRICE_DIVISOR = BigInt(10_000_000_000); // 10^10
+    const price = (BigInt(rawPrice) / STELLAR_PRICE_DIVISOR).toString();
 
     if (listingType === ListingType.AUCTION && !duration) {
       throw new HttpException('Duration is required for AUCTION listings', HttpStatus.BAD_REQUEST);
     }
 
-    const minPrice = listingType === ListingType.AUCTION
-      ? (asset.listing?.priceRange?.min || price)
+    const rawMinPrice = listingType === ListingType.AUCTION
+      ? (asset.listing?.priceRange?.min || rawPrice)
+      : '0';
+    const minPrice = rawMinPrice !== '0'
+      ? (BigInt(rawMinPrice) / STELLAR_PRICE_DIVISOR).toString()
       : '0';
 
     this.logger.log(`Listing asset ${dto.assetId} on Stellar PrimaryMarket...`);

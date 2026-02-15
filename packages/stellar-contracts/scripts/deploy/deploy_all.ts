@@ -216,7 +216,8 @@ async function main() {
   if (!trustedIssuersAddress) {
     trustedIssuersAddress = deployContract(
       'TrustedIssuersRegistry',
-      'trusted_issuers_registry.wasm'
+      'trusted_issuers_registry.wasm',
+      [`--admin ${deployerAddress}`] // Initialize with deployer as admin
     );
     setContractAddress(deployed, 'TrustedIssuersRegistry', trustedIssuersAddress);
   } else {

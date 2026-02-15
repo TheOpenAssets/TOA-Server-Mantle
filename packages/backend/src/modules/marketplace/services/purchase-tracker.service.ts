@@ -11,7 +11,7 @@ import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
-import { BLOCKCHAIN_ADAPTER } from '../../blockchain/constants';
+import { BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
 import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
 
 @Injectable()

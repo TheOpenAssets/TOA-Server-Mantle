@@ -12,7 +12,8 @@ import {
   BASE_FEE,
   Keypair,
   scValToNative,
-  StrKey
+  StrKey,
+  Asset,
 } from '@stellar/stellar-sdk';
 import { ListingType, WalletAddress } from '@openassets/types';
 import { 
@@ -291,15 +292,62 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     minPrice?: string,
   ): Promise<{ txId: string }> {
     const adminKeypair = this.walletAdapter.getAdminKeypair();
+    const platformKeypair = this.walletAdapter.getPlatformKeypair();
     const contractId = this.contractAdapter.getContractAddress('PrimaryMarket');
     const contract = new Contract(contractId);
     
-    // In Stellar, tokenIdentifier is usually "ASSET_CODE:ISSUER_PUBKEY"
-    const [assetCode] = tokenIdentifier.split(':');
+    // In Stellar, tokenIdentifier is "ASSET_CODE:ISSUER_PUBKEY"
+    const [assetCode, issuerPublicKey] = tokenIdentifier.split(':');
+
+    // The PrimaryMarket contract stores asset_issuer and later calls token::Client::new(&env, &listing.asset_issuer).
+    // token::Client requires a contract address, not a Stellar account address.
+    // We must pass the SAC (Stellar Asset Contract) address derived from the classic asset.
+    const sacContractId = new Asset(assetCode || '', issuerPublicKey || '').contractId(this.networkPassphrase);
+
+    // Every Soroban contract has a corresponding Stellar account ID (G...) for classic operations
+    const primaryMarketAccountId = StrKey.encodeEd25519PublicKey(StrKey.decodeContract(contractId));
 
     this.logger.log(`Listing ${assetCode} on Stellar Primary Market...`);
+    this.logger.debug(`SAC: ${sacContractId}`);
+    this.logger.debug(`PrimaryMarket Account: ${primaryMarketAccountId}`);
 
-    const source = await this.sorobanServer.getAccount(adminKeypair.publicKey());
+    let source = await this.sorobanServer.getAccount(adminKeypair.publicKey());
+
+    // Step 1: Authorize and Fund the PrimaryMarket contract (Classic Operations)
+    // These are done in a separate transaction because Soroban simulation only supports 1 op (InvokeHostFunction)
+    if (platformKeypair.publicKey() === issuerPublicKey) {
+      this.logger.log(`Authorizing PrimaryMarket trustline and transferring tokens for ${assetCode}...`);
+      
+      const classicTx = new TransactionBuilder(source, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+      .addOperation(Operation.allowTrust({
+        trustor: primaryMarketAccountId,
+        assetCode: assetCode || '',
+        authorize: true,
+        source: platformKeypair.publicKey(),
+      }))
+      .addOperation(Operation.payment({
+        destination: primaryMarketAccountId,
+        asset: new Asset(assetCode || '', issuerPublicKey || ''),
+        amount: (BigInt(totalSupply) / BigInt(10_000_000)).toString(), // Convert units to full tokens for classic payment
+        source: platformKeypair.publicKey(),
+      }))
+      .setTimeout(60)
+      .build();
+
+      classicTx.sign(adminKeypair);
+      classicTx.sign(platformKeypair);
+
+      const classicResponse = await this.sorobanServer.sendTransaction(classicTx);
+      await this.confirmTransaction(classicResponse.hash);
+      
+      // Fetch updated account state (sequence number) for the next transaction
+      source = await this.sorobanServer.getAccount(adminKeypair.publicKey());
+    }
+    
+    // Step 2: Register the listing in the PrimaryMarket contract (Soroban Operation)
     
     // Option<i64> in Soroban: None → scvVoid(), Some(x) → scvI64(x) directly
     let minPriceVal: xdr.ScVal;
@@ -313,7 +361,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     const listingTypeSymbol = listingType.toString().toUpperCase() === 'AUCTION' ? 'Auction' : 'Static';
     const listingTypeVal = xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(listingTypeSymbol)]);
 
-    const tx = new TransactionBuilder(source, {
+    const sorobanTx = new TransactionBuilder(source, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
     })
@@ -322,7 +370,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         'list_asset',
         new Address(adminKeypair.publicKey()).toScVal(),
         xdr.ScVal.scvString(assetCode || ''),
-        new Address(this.walletAdapter.getPlatformAddress()).toScVal(),
+        new Address(sacContractId).toScVal(),
         listingTypeVal,
         xdr.ScVal.scvI64(xdr.Int64.fromString(price.toString())),
         minPriceVal,
@@ -330,10 +378,10 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         xdr.ScVal.scvI64(xdr.Int64.fromString(totalSupply.toString())),
       )
     )
-    .setTimeout(30)
+    .setTimeout(60)
     .build();
 
-    const preparedTx = await this.prepareContractCall(tx, adminKeypair);
+    const preparedTx = await this.prepareContractCall(sorobanTx, adminKeypair);
     const response = await this.sorobanServer.sendTransaction(preparedTx);
     await this.confirmTransaction(response.hash);
 
@@ -353,17 +401,29 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         return null;
       }
 
-      const meta = xdr.TransactionMeta.fromXDR(response.resultMetaXdr, 'base64');
-      const events = meta.v3().sorobanMeta().events();
+      // response.resultMetaXdr is typed as TransactionMeta in new SDKs when using getTransaction
+      // We cast to any to avoid TS issues if types are mismatched in older/newer versions
+      const meta = response.resultMetaXdr as unknown as xdr.TransactionMeta;
+      
+      const events = meta.v3()?.sorobanMeta()?.events();
+      if (!events) {
+        this.logger.warn(`No events found in transaction ${txHash}`);
+        return null;
+      }
+
       const contractIdStr = this.contractAdapter.getContractAddress('PrimaryMarket');
 
       for (const event of events) {
         // Filter by contract ID
-        if (StrKey.encodeContract(event.contractId()) !== contractIdStr) continue;
+        const eventContractId = event.contractId();
+        // Convert Opaque/Hash to Buffer for StrKey encoding
+        if (!eventContractId || StrKey.encodeContract(Buffer.from(eventContractId as any)) !== contractIdStr) continue;
 
         const topics = event.body().v0().topics();
+        if (topics.length === 0) continue;
+
         // First topic is event name
-        const eventName = topics[0].sym().toString();
+        const eventName = scValToNative(topics[0]!);
 
         if (eventName === 'TokensPurchased') {
           const data = event.body().v0().data();
@@ -405,15 +465,21 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         return null;
       }
 
-      const meta = xdr.TransactionMeta.fromXDR(response.resultMetaXdr, 'base64');
-      const events = meta.v3().sorobanMeta().events();
+      const meta = response.resultMetaXdr as unknown as xdr.TransactionMeta;
+      const events = meta.v3()?.sorobanMeta()?.events();
+
+      if (!events) return null;
+
       const contractIdStr = this.contractAdapter.getContractAddress('PrimaryMarket');
 
       for (const event of events) {
-        if (StrKey.encodeContract(event.contractId()) !== contractIdStr) continue;
+        const eventContractId = event.contractId();
+        if (!eventContractId || StrKey.encodeContract(Buffer.from(eventContractId as any)) !== contractIdStr) continue;
 
         const topics = event.body().v0().topics();
-        const eventName = topics[0].sym().toString();
+        if (topics.length === 0) continue;
+
+        const eventName = scValToNative(topics[0]!);
 
         if (eventName === 'BidSubmitted') {
           const data = event.body().v0().data();
@@ -453,15 +519,21 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         return null;
       }
 
-      const meta = xdr.TransactionMeta.fromXDR(response.resultMetaXdr, 'base64');
-      const events = meta.v3().sorobanMeta().events();
+      const meta = response.resultMetaXdr as unknown as xdr.TransactionMeta;
+      const events = meta.v3()?.sorobanMeta()?.events();
+
+      if (!events) return null;
+
       const contractIdStr = this.contractAdapter.getContractAddress('PrimaryMarket');
 
       for (const event of events) {
-        if (StrKey.encodeContract(event.contractId()) !== contractIdStr) continue;
+        const eventContractId = event.contractId();
+        if (!eventContractId || StrKey.encodeContract(Buffer.from(eventContractId as any)) !== contractIdStr) continue;
 
         const topics = event.body().v0().topics();
-        const eventName = topics[0].sym().toString();
+        if (topics.length === 0) continue;
+
+        const eventName = scValToNative(topics[0]!);
 
         if (eventName === 'BidSettled') {
           const data = event.body().v0().data();
