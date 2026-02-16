@@ -8,6 +8,7 @@ import { NetworkRegistryService } from '../../../blockchain/services/network-reg
 import { IAdminDomainStrategy } from '../../../registry/interfaces/admin-domain.interface';
 import { DeployTokenDto } from '../../../blockchain/dto/deploy-token.dto';
 import { ListOnMarketplaceDto } from '../../../blockchain/dto/list-on-marketplace.dto';
+import { toCanonical } from '../../../blockchain/utils/numeric-conversion';
 import { 
   AssetStatus, 
   NotificationType, 
@@ -146,19 +147,18 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     // Use asset.listing.type if available, otherwise fall back to assetType
     const listingType = (asset.listing?.type as unknown as ListingType) || (asset.assetType as unknown as ListingType);
 
-    // Use strings for large numeric values to prevent precision loss
+    // Convert raw wei/integer values from DB to canonical 4-decimal format
+    // Price from DB is in 18-decimal wei form (computed during origination)
     const rawPrice = asset.tokenParams?.pricePerToken || '0';
-    const minInvestment = asset.tokenParams?.minInvestment || '0';
-    const duration = dto.duration ? parseInt(dto.duration) : (asset.listing?.duration || 0);
-    const totalSupply = asset.token?.supply || asset.tokenParams?.totalSupply || '0';
+    const priceCanonical = toCanonical(rawPrice, 18).value;
 
-    // The asset-lifecycle service computes pricePerToken with EVM 18-decimal math:
-    //   evm_price = (raise_usdc_6dec * 10^18) / token_supply_18dec
-    // For Stellar, the contract stores price as i64 and multiplies by the 7-decimal amount,
-    // so we must convert: stellar_price = evm_price / 10^10
-    // This gives price in USDC stroops (7 decimals) per full token.
-    const STELLAR_PRICE_DIVISOR = BigInt(10_000_000_000); // 10^10
-    const price = (BigInt(rawPrice) / STELLAR_PRICE_DIVISOR).toString();
+    const minInvestmentRaw = asset.tokenParams?.minInvestment || '0';
+    const minInvestmentCanonical = toCanonical(minInvestmentRaw, 6).value;
+
+    const duration = dto.duration ? parseInt(dto.duration) : (asset.listing?.duration || 0);
+    
+    const totalSupplyRaw = asset.token?.supply || asset.tokenParams?.totalSupply || '0';
+    const totalSupplyCanonical = toCanonical(totalSupplyRaw, 18).value;
 
     if (listingType === ListingType.AUCTION && !duration) {
       throw new HttpException('Duration is required for AUCTION listings', HttpStatus.BAD_REQUEST);
@@ -167,19 +167,17 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     const rawMinPrice = listingType === ListingType.AUCTION
       ? (asset.listing?.priceRange?.min || rawPrice)
       : '0';
-    const minPrice = rawMinPrice !== '0'
-      ? (BigInt(rawMinPrice) / STELLAR_PRICE_DIVISOR).toString()
-      : '0';
+    const minPriceCanonical = toCanonical(rawMinPrice, rawMinPrice === rawPrice ? 18 : 6).value;
 
-    this.logger.log(`Listing asset ${dto.assetId} on Stellar PrimaryMarket...`);
+    this.logger.log(`Listing asset ${dto.assetId} on Stellar PrimaryMarket using canonical prices...`);
     const result: any = await this.networkRegistryService.listAssetOnMarketplace(
       asset.token.address,
       listingType,
-      price,
-      minInvestment,
+      priceCanonical,
+      minInvestmentCanonical,
       duration,
-      totalSupply,
-      minPrice
+      totalSupplyCanonical,
+      minPriceCanonical
     );
 
     await this.assetModel.updateOne(
@@ -188,7 +186,7 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
         $set: {
           status: AssetStatus.LISTED,
           'listing.type': listingType,
-          'listing.price': price.toString(),
+          'listing.price': priceCanonical,
           'listing.active': true,
           'listing.listedAt': new Date(),
           'listing.sold': '0',

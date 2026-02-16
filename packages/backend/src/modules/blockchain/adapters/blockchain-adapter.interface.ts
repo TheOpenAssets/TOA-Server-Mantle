@@ -1,4 +1,4 @@
-import { ListingType, WalletAddress } from '@openassets/types';
+import { ListingType, WalletAddress, PreciseNumeric } from '@openassets/types';
 
 export interface DeployedTokenResult {
   primaryIdentifier: string; // EVM: address, Stellar: assetCode:issuerPubKey
@@ -7,23 +7,23 @@ export interface DeployedTokenResult {
 }
 
 export interface PurchaseVerificationResult {
-  amount: string; // 18 decimals
-  price: string; // 6 decimals (USDC)
-  totalPayment: string; // 6 decimals (USDC)
+  amount: PreciseNumeric; // Canonical 4-decimal
+  price: PreciseNumeric; // Canonical 4-decimal (USDC)
+  totalPayment: PreciseNumeric; // Canonical 4-decimal (USDC)
   blockNumber: number;
   timestamp: number; // Unix timestamp
 }
 
 export interface BidVerificationResult {
-  tokenAmount: string; // 18 decimals
-  price: string; // 6 decimals (USDC)
+  tokenAmount: PreciseNumeric; // Canonical 4-decimal
+  price: PreciseNumeric; // Canonical 4-decimal (USDC)
   bidIndex: number;
 }
 
 export interface BidSettlementResult {
-  tokensReceived: string; // 18 decimals
-  refundAmount: string; // 6 decimals (USDC)
-  cost: string; // 6 decimals (USDC)
+  tokensReceived: PreciseNumeric; // Canonical 4-decimal
+  refundAmount: PreciseNumeric; // Canonical 4-decimal (USDC)
+  cost: PreciseNumeric; // Canonical 4-decimal (USDC)
 }
 
 export interface BlockchainAdapter {

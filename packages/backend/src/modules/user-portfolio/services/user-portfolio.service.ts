@@ -9,6 +9,7 @@ import { UserYieldClaim, UserYieldClaimDocument } from '../../../database/schema
 import { LeveragePosition } from '../../../database/schemas/leverage-position.schema';
 import { SolvencyPosition } from '../../../database/schemas/solvency-position.schema';
 import { PortfolioResponseDto, RuntimeHoldingDto, RecentActivityDto, PortfolioSummaryDto } from '../dto/portfolio-response.dto';
+import { toCanonical, fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
 @Injectable()
 export class UserPortfolioService {
@@ -71,9 +72,9 @@ export class UserPortfolioService {
         runtimeHolding.holdingType = holding.holdingType;
         runtimeHolding.status = holding.status;
         runtimeHolding.tokenBalance = holding.tokenBalance;
-        runtimeHolding.tokenBalanceFormatted = `${(Number(holding.tokenBalance) / 1e18).toFixed(2)} tokens`;
+        runtimeHolding.tokenBalanceFormatted = `${Number(holding.tokenBalance).toFixed(2)} tokens`;
         runtimeHolding.totalInvested = holding.totalInvested;
-        runtimeHolding.totalInvestedFormatted = `$${(Number(holding.totalInvested) / 1e6).toFixed(2)} USDC`;
+        runtimeHolding.totalInvestedFormatted = `$${Number(holding.totalInvested).toFixed(2)} USDC`;
         
         runtimeHolding.assetMetadata = asset ? {
           assetName: `${asset.metadata?.invoiceNumber || 'N/A'} - ${asset.metadata?.buyerName || 'N/A'}`,
@@ -102,8 +103,8 @@ export class UserPortfolioService {
     return {
       summary: {
         walletAddress: portfolio.walletAddress,
-        totalUSDCInvested: `$${(Number(portfolio.totals.totalUSDCInvested) / 1e6).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        totalYieldReceived: `$${(Number(portfolio.totals.totalYieldReceived) / 1e6).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        totalUSDCInvested: `$${Number(portfolio.totals.totalUSDCInvested).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        totalYieldReceived: `$${Number(portfolio.totals.totalYieldReceived).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         totalActivePositions: portfolio.totals.totalActivePositions,
         totalCompletedPositions: portfolio.totals.totalCompletedPositions,
         networks: portfolio.totals.networks,
@@ -124,38 +125,42 @@ export class UserPortfolioService {
   private async enrichStaticHolding(holding: any, asset: any, settlement: any, investorWallet: string) {
     const purchases = await this.purchaseModel.find({ _id: { $in: holding.purchaseIds } }).sort({ createdAt: 1 });
     
-    // Running balance calculation (from original PurchaseTrackerService)
-    let runningTokens = 0n;
-    let runningInvestment = 0n;
+    // Running balance calculation using raw bigints for precision
+    let runningTokensRaw = 0n;
+    let runningInvestmentRaw = 0n;
 
     const history = purchases.map(p => {
-      const amount = BigInt(p.amount);
-      const totalPayment = BigInt(p.totalPayment);
+      const amountCanonical = p.amount.includes('.') ? p.amount : toCanonical(p.amount, 18).value;
+      const priceCanonical = p.price.includes('.') ? p.price : toCanonical(p.price, 6).value;
+      const totalPaymentCanonical = p.totalPayment.includes('.') ? p.totalPayment : toCanonical(p.totalPayment, 6).value;
+
+      const amountRaw = fromCanonical(amountCanonical, 18);
+      const totalPaymentRaw = fromCanonical(totalPaymentCanonical, 6);
       
-      let investmentDelta = 0n;
+      let investmentDeltaRaw = 0n;
       if (p.source === 'PRIMARY_MARKET' || p.source === 'AUCTION') {
-        investmentDelta = totalPayment;
+        investmentDeltaRaw = totalPaymentRaw;
       } else if (p.source === 'SECONDARY_MARKET') {
-        investmentDelta = amount < 0n ? -totalPayment : totalPayment;
+        investmentDeltaRaw = amountRaw < 0n ? -totalPaymentRaw : totalPaymentRaw;
       } else if (p.source === 'P2P_ORDER_CANCELLED') {
-        investmentDelta = -totalPayment;
+        investmentDeltaRaw = -totalPaymentRaw;
       }
 
-      runningTokens += amount;
-      runningInvestment += investmentDelta;
+      runningTokensRaw += amountRaw;
+      runningInvestmentRaw += investmentDeltaRaw;
 
       return {
         date: p.createdAt,
         type: p.source,
-        amount: p.amount,
-        amountFormatted: `${(Number(amount) / 1e18).toFixed(2)} tokens`,
-        price: p.price,
-        priceFormatted: `$${(Number(p.price) / 1e6).toFixed(2)}`,
-        totalValue: p.totalPayment,
-        totalValueFormatted: `$${(Number(p.totalPayment) / 1e6).toFixed(2)}`,
-        investmentDelta: investmentDelta.toString(),
-        runningTokenBalance: (Number(runningTokens) / 1e18).toFixed(2),
-        runningInvestment: (Number(runningInvestment) / 1e6).toFixed(2),
+        amount: amountCanonical,
+        amountFormatted: `${amountCanonical} tokens`,
+        price: priceCanonical,
+        priceFormatted: `$${priceCanonical}`,
+        totalValue: totalPaymentCanonical,
+        totalValueFormatted: `$${totalPaymentCanonical}`,
+        investmentDelta: toCanonical(investmentDeltaRaw, 6).value,
+        runningTokenBalance: toCanonical(runningTokensRaw, 18).value,
+        runningInvestment: toCanonical(runningInvestmentRaw, 6).value,
         txHash: p.txHash,
       };
     });
@@ -163,21 +168,30 @@ export class UserPortfolioService {
     // Yield info
     let yieldInfo = {
       settlementDistributed: false,
-      claimableYield: '0',
-      claimableYieldFormatted: '0.00 USDC',
+      claimableYield: '0.0000',
+      claimableYieldFormatted: '0.0000 USDC',
     } as any;
 
     if (settlement && settlement.usdcAmount) {
-      const soldAmount = BigInt(asset?.listing?.sold || '0');
-      const userBalance = BigInt(holding.tokenBalance);
-      const settlementUSDC = BigInt(settlement.usdcAmount);
+      const totalSupplyCanonical = (asset?.listing?.sold || asset?.tokenParams?.totalSupply || '0').includes('.')
+        ? (asset?.listing?.sold || asset?.tokenParams?.totalSupply || '0')
+        : toCanonical(asset?.listing?.sold || asset?.tokenParams?.totalSupply || '0', 18).value;
+      
+      const soldAmountRaw = fromCanonical(totalSupplyCanonical, 18);
+      const userBalanceRaw = fromCanonical(holding.tokenBalance, 18);
+      
+      const settlementUSDCCanonical = settlement.usdcAmount.includes('.') 
+        ? settlement.usdcAmount 
+        : toCanonical(settlement.usdcAmount, 6).value;
+      const settlementUSDCRaw = fromCanonical(settlementUSDCCanonical, 6);
 
-      const claimableYieldRaw = soldAmount > 0n ? (userBalance * settlementUSDC) / soldAmount : 0n;
+      const claimableYieldRaw = soldAmountRaw > 0n ? (userBalanceRaw * settlementUSDCRaw) / soldAmountRaw : 0n;
+      const claimableYieldCanonical = toCanonical(claimableYieldRaw, 6).value;
 
       yieldInfo = {
         settlementDistributed: true,
-        claimableYield: claimableYieldRaw.toString(),
-        claimableYieldFormatted: `${(Number(claimableYieldRaw) / 1e6).toFixed(2)} USDC`,
+        claimableYield: claimableYieldCanonical,
+        claimableYieldFormatted: `${claimableYieldCanonical} USDC`,
         settlementDate: settlement.settlementDate,
         settlementId: settlement._id,
       };
@@ -185,7 +199,7 @@ export class UserPortfolioService {
       if (holding.status === HoldingStatus.CLAIMED && holding.latestYieldClaimId) {
         const claim = await this.yieldClaimModel.findById(holding.latestYieldClaimId);
         if (claim) {
-          yieldInfo.yieldClaimTxHash = claim.transactionHash;
+          yieldInfo.yieldClaimTxHash = claim.transactionHash || (claim as any).txHash;
         }
       }
     }
@@ -201,21 +215,25 @@ export class UserPortfolioService {
     const position = await this.leveragePositionModel.findById(holding.leveragePositionId);
     if (!position) return {};
 
+    const mETHCollateralCanonical = toCanonical(position.mETHCollateral, 18).value;
+    const usdcBorrowedCanonical = toCanonical(position.usdcBorrowed, 6).value;
+    const totalInterestPaidCanonical = toCanonical(position.totalInterestPaid, 6).value;
+
     // Format like original getLeveragePositionsForPortfolio
     return {
-      mETHCollateral: position.mETHCollateral,
-      mETHCollateralFormatted: `${(Number(position.mETHCollateral) / 1e18).toFixed(4)} mETH`,
-      usdcBorrowed: position.usdcBorrowed,
-      usdcBorrowedFormatted: `${(Number(position.usdcBorrowed) / 1e6).toFixed(2)} USDC`,
+      mETHCollateral: mETHCollateralCanonical,
+      mETHCollateralFormatted: `${mETHCollateralCanonical} mETH`,
+      usdcBorrowed: usdcBorrowedCanonical,
+      usdcBorrowedFormatted: `${usdcBorrowedCanonical} USDC`,
       healthFactor: (position.currentHealthFactor / 10000).toFixed(2) + '%',
       healthStatus: position.healthStatus,
-      totalInterestPaid: position.totalInterestPaid,
-      totalInterestPaidFormatted: `$${(Number(position.totalInterestPaid) / 1e6).toFixed(2)} USDC`,
+      totalInterestPaid: totalInterestPaidCanonical,
+      totalInterestPaidFormatted: `$${totalInterestPaidCanonical} USDC`,
       harvestHistory: (position.harvestHistory || []).map((h: any) => ({
         timestamp: h.timestamp,
-        mETHSwappedFormatted: `${(Number(h.mETHSwapped) / 1e18).toFixed(4)} mETH`,
-        usdcReceivedFormatted: `${(Number(h.usdcReceived) / 1e6).toFixed(2)} USDC`,
-        interestPaidFormatted: `${(Number(h.interestPaid) / 1e6).toFixed(2)} USDC`,
+        mETHSwappedFormatted: `${toCanonical(h.mETHSwapped, 18).value} mETH`,
+        usdcReceivedFormatted: `${toCanonical(h.usdcReceived, 6).value} USDC`,
+        interestPaidFormatted: `${toCanonical(h.interestPaid, 6).value} USDC`,
       })),
       settlementTxHash: position.settlementTxHash,
       liquidationTxHash: position.liquidationTxHash,
@@ -227,14 +245,19 @@ export class UserPortfolioService {
     const position = await this.solvencyPositionModel.findById(holding.solvencyPositionId);
     if (!position) return {};
 
+    const loanAmountCanonical = toCanonical(position.loanAmount, 6).value;
+    const repaidAmountCanonical = toCanonical(position.totalRepaid || position.repaidAmount || '0', 6).value;
+    const remainingDebtRaw = fromCanonical(loanAmountCanonical, 6) - fromCanonical(repaidAmountCanonical, 6);
+    const remainingDebtCanonical = toCanonical(remainingDebtRaw, 6).value;
+
     return {
-      loanAmount: position.loanAmount,
-      loanAmountFormatted: `$${(Number(position.loanAmount) / 1e6).toFixed(2)} USDC`,
-      repaidAmount: position.repaidAmount,
-      repaidAmountFormatted: `$${(Number(position.repaidAmount) / 1e6).toFixed(2)} USDC`,
-      remainingDebt: (BigInt(position.loanAmount) - BigInt(position.repaidAmount)).toString(),
-      healthFactor: (position.healthFactor / 100).toFixed(2) + '%',
-      nextRepaymentDate: position.nextRepaymentDate,
+      loanAmount: loanAmountCanonical,
+      loanAmountFormatted: `$${loanAmountCanonical} USDC`,
+      repaidAmount: repaidAmountCanonical,
+      repaidAmountFormatted: `$${repaidAmountCanonical} USDC`,
+      remainingDebt: remainingDebtCanonical,
+      healthFactor: (position.currentHealthFactor / 100).toFixed(2) + '%',
+      nextRepaymentDate: position.nextPaymentDueDate || position.nextRepaymentDate,
       status: position.status,
     };
   }
@@ -285,20 +308,27 @@ export class UserPortfolioService {
       holding = portfolio.holdings[portfolio.holdings.length - 1];
     }
 
-    const amount = BigInt(purchase.amount);
-    const totalPayment = BigInt(purchase.totalPayment);
+    const amountCanonical = purchase.amount.includes('.') ? purchase.amount : toCanonical(purchase.amount, 18).value;
+    const priceCanonical = purchase.price.includes('.') ? purchase.price : toCanonical(purchase.price, 6).value;
+    const totalPaymentCanonical = purchase.totalPayment.includes('.') ? purchase.totalPayment : toCanonical(purchase.totalPayment, 6).value;
+
+    const amountRaw = fromCanonical(amountCanonical, 18);
+    const totalPaymentRaw = fromCanonical(totalPaymentCanonical, 6);
     
-    let investmentDelta = 0n;
+    let investmentDeltaRaw = 0n;
     if (purchase.source === 'PRIMARY_MARKET' || purchase.source === 'AUCTION') {
-      investmentDelta = totalPayment;
+      investmentDeltaRaw = totalPaymentRaw;
     } else if (purchase.source === 'SECONDARY_MARKET') {
-      investmentDelta = amount < 0n ? -totalPayment : totalPayment;
+      investmentDeltaRaw = amountRaw < 0n ? -totalPaymentRaw : totalPaymentRaw;
     } else if (purchase.source === 'P2P_ORDER_CANCELLED') {
-       investmentDelta = -totalPayment;
+       investmentDeltaRaw = -totalPaymentRaw;
     }
 
-    holding.tokenBalance = (BigInt(holding.tokenBalance) + amount).toString();
-    holding.totalInvested = (BigInt(holding.totalInvested) + investmentDelta).toString();
+    const currentBalanceRaw = fromCanonical(holding.tokenBalance, 18);
+    const currentInvestedRaw = fromCanonical(holding.totalInvested, 6);
+
+    holding.tokenBalance = toCanonical(currentBalanceRaw + amountRaw, 18).value;
+    holding.totalInvested = toCanonical(currentInvestedRaw + investmentDeltaRaw, 6).value;
     holding.lastActivityAt = new Date();
     
     if (!holding.purchaseIds) holding.purchaseIds = [];
@@ -306,7 +336,7 @@ export class UserPortfolioService {
       holding.purchaseIds.push(purchase._id as any);
     }
 
-    if (BigInt(holding.tokenBalance) > 0n && holding.status === HoldingStatus.CLAIMED) {
+    if (fromCanonical(holding.tokenBalance, 18) > 0n && holding.status === HoldingStatus.CLAIMED) {
       holding.status = HoldingStatus.ACTIVE;
     }
 
@@ -314,7 +344,7 @@ export class UserPortfolioService {
       txHash: purchase.txHash,
       source: purchase.source,
       assetId: purchase.assetId,
-      amount: purchase.amount,
+      amount: amountCanonical,
       timestamp: purchase.createdAt || new Date(),
     };
     
@@ -343,17 +373,23 @@ export class UserPortfolioService {
     if (holding) {
       holding.status = HoldingStatus.CLAIMED;
       holding.latestYieldClaimId = claim._id as any;
-      holding.tokenBalance = '0'; // Tokens are burned on claim
+      holding.tokenBalance = '0.0000'; // Tokens are burned on claim
       holding.lastActivityAt = new Date();
       
-      const usdcReceived = claim.usdcReceived;
-      portfolio.totals.totalYieldReceived = (BigInt(portfolio.totals.totalYieldReceived) + BigInt(usdcReceived)).toString();
+      const usdcReceivedCanonical = claim.usdcReceived.toString().includes('.') 
+        ? claim.usdcReceived.toString() 
+        : toCanonical(claim.usdcReceived, 6).value;
+      
+      const currentYieldRaw = fromCanonical(portfolio.totals.totalYieldReceived, 6);
+      const claimYieldRaw = fromCanonical(usdcReceivedCanonical, 6);
+      
+      portfolio.totals.totalYieldReceived = toCanonical(currentYieldRaw + claimYieldRaw, 6).value;
       
       const activityStub = {
         txHash: claim.transactionHash || claim.txHash,
         source: 'YIELD_CLAIM',
         assetId: claim.assetId,
-        amount: usdcReceived,
+        amount: usdcReceivedCanonical,
         timestamp: claim.claimTimestamp || claim.createdAt || new Date(),
       };
       portfolio.recentActivity.unshift(activityStub);
@@ -367,7 +403,7 @@ export class UserPortfolioService {
   }
 
   private recalculateTotals(portfolio: UserPortfolioDocument) {
-    let totalUSDCInvested = 0n;
+    let totalUSDCInvestedRaw = 0n;
     let totalActivePositions = 0;
     let totalCompletedPositions = 0;
     let totalActiveLeveragePositions = 0;
@@ -378,7 +414,7 @@ export class UserPortfolioService {
       networks.add(holding.network);
       
       if (holding.holdingType !== HoldingType.SOLVENCY) {
-        totalUSDCInvested += BigInt(holding.totalInvested);
+        totalUSDCInvestedRaw += fromCanonical(holding.totalInvested, 6);
       }
 
       const isActive = [HoldingStatus.ACTIVE, HoldingStatus.YIELD_CLAIMABLE].includes(holding.status);
@@ -391,7 +427,7 @@ export class UserPortfolioService {
       }
     }
 
-    portfolio.totals.totalUSDCInvested = totalUSDCInvested.toString();
+    portfolio.totals.totalUSDCInvested = toCanonical(totalUSDCInvestedRaw, 6).value;
     portfolio.totals.totalActivePositions = totalActivePositions;
     portfolio.totals.totalCompletedPositions = totalCompletedPositions;
     portfolio.totals.totalActiveLeveragePositions = totalActiveLeveragePositions;
@@ -432,8 +468,8 @@ export class UserPortfolioService {
       network,
       holdings: [],
       totals: {
-        totalUSDCInvested: '0',
-        totalYieldReceived: '0',
+        totalUSDCInvested: '0.0000',
+        totalYieldReceived: '0.0000',
         totalActivePositions: 0,
         totalCompletedPositions: 0,
         totalActiveLeveragePositions: 0,
@@ -455,8 +491,10 @@ export class UserPortfolioService {
       if (holding) {
         holding.status = HoldingStatus.CLAIMED;
         holding.latestYieldClaimId = claim._id as any;
-        holding.tokenBalance = '0';
-        portfolio.totals.totalYieldReceived = (BigInt(portfolio.totals.totalYieldReceived) + BigInt(claim.usdcReceived)).toString();
+        holding.tokenBalance = '0.0000';
+        const claimYieldRaw = fromCanonical(toCanonical(claim.usdcReceived, 6).value, 6);
+        const currentYieldRaw = fromCanonical(portfolio.totals.totalYieldReceived, 6);
+        portfolio.totals.totalYieldReceived = toCanonical(currentYieldRaw + claimYieldRaw, 6).value;
       }
     }
 
@@ -468,8 +506,8 @@ export class UserPortfolioService {
         network,
         holdingType: HoldingType.LEVERAGE,
         status: pos.status === 'ACTIVE' ? HoldingStatus.ACTIVE : HoldingStatus.SETTLED,
-        tokenBalance: pos.rwaTokenAmount,
-        totalInvested: '0', // Leverage doesn't count as direct investment in this model
+        tokenBalance: toCanonical(pos.rwaTokenAmount, 18).value,
+        totalInvested: '0.0000', 
         leveragePositionId: pos._id,
         firstEntryAt: pos.createdAt,
         lastActivityAt: pos.updatedAt || pos.createdAt,
@@ -480,12 +518,12 @@ export class UserPortfolioService {
     for (const pos of solvencyPositions) {
       portfolio.holdings.push({
         assetId: pos.assetId,
-        tokenIdentifier: '', // Not a token-based holding in the same way
+        tokenIdentifier: pos.collateralTokenAddress || '', 
         network,
         holdingType: HoldingType.SOLVENCY,
         status: pos.status === 'ACTIVE' ? HoldingStatus.ACTIVE : HoldingStatus.SETTLED,
-        tokenBalance: '0',
-        totalInvested: pos.loanAmount,
+        tokenBalance: '0.0000',
+        totalInvested: toCanonical(pos.usdcBorrowed || pos.loanAmount, 6).value,
         solvencyPositionId: pos._id,
         firstEntryAt: pos.createdAt,
         lastActivityAt: pos.updatedAt || pos.createdAt,
@@ -495,10 +533,21 @@ export class UserPortfolioService {
     this.recalculateTotals(portfolio);
     
     // 7. Update activity tail (last 20 items from all sources)
-    // Simplified: just take last 20 purchases for now, or we could merge all
     const allActivity = [
-      ...purchases.map(p => ({ txHash: p.txHash, source: p.source, assetId: p.assetId, amount: p.amount, timestamp: p.createdAt })),
-      ...yieldClaims.map(c => ({ txHash: c.transactionHash, source: 'YIELD_CLAIM', assetId: c.assetId, amount: c.usdcReceived, timestamp: c.claimTimestamp })),
+      ...purchases.map(p => ({ 
+        txHash: p.txHash, 
+        source: p.source, 
+        assetId: p.assetId, 
+        amount: p.amount.includes('.') ? p.amount : toCanonical(p.amount, 18).value, 
+        timestamp: p.createdAt 
+      })),
+      ...yieldClaims.map(c => ({ 
+        txHash: c.transactionHash || (c as any).txHash, 
+        source: 'YIELD_CLAIM', 
+        assetId: c.assetId, 
+        amount: c.usdcReceived.toString().includes('.') ? c.usdcReceived.toString() : toCanonical(c.usdcReceived, 6).value, 
+        timestamp: c.claimTimestamp || c.createdAt 
+      })),
     ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 20);
 
     portfolio.recentActivity = allActivity as any;
@@ -519,8 +568,8 @@ export class UserPortfolioService {
         network,
         holdingType: HoldingType.STATIC,
         status: HoldingStatus.ACTIVE,
-        tokenBalance: '0',
-        totalInvested: '0',
+        tokenBalance: '0.0000',
+        totalInvested: '0.0000',
         purchaseIds: [],
         firstEntryAt: purchase.createdAt || new Date(),
         lastActivityAt: purchase.createdAt || new Date(),
@@ -529,20 +578,26 @@ export class UserPortfolioService {
       holding = portfolio.holdings[portfolio.holdings.length - 1];
     }
 
-    const amount = BigInt(purchase.amount);
-    const totalPayment = BigInt(purchase.totalPayment);
+    const amountCanonical = purchase.amount.includes('.') ? purchase.amount : toCanonical(purchase.amount, 18).value;
+    const totalPaymentCanonical = purchase.totalPayment.includes('.') ? purchase.totalPayment : toCanonical(purchase.totalPayment, 6).value;
+
+    const amountRaw = fromCanonical(amountCanonical, 18);
+    const totalPaymentRaw = fromCanonical(totalPaymentCanonical, 6);
     
-    let investmentDelta = 0n;
+    let investmentDeltaRaw = 0n;
     if (purchase.source === 'PRIMARY_MARKET' || purchase.source === 'AUCTION') {
-      investmentDelta = totalPayment;
+      investmentDeltaRaw = totalPaymentRaw;
     } else if (purchase.source === 'SECONDARY_MARKET') {
-      investmentDelta = amount < 0n ? -totalPayment : totalPayment;
+      investmentDeltaRaw = amountRaw < 0n ? -totalPaymentRaw : totalPaymentRaw;
     } else if (purchase.source === 'P2P_ORDER_CANCELLED') {
-       investmentDelta = -totalPayment;
+       investmentDeltaRaw = -totalPaymentRaw;
     }
 
-    holding.tokenBalance = (BigInt(holding.tokenBalance) + amount).toString();
-    holding.totalInvested = (BigInt(holding.totalInvested) + investmentDelta).toString();
+    const currentBalanceRaw = fromCanonical(holding.tokenBalance, 18);
+    const currentInvestedRaw = fromCanonical(holding.totalInvested, 6);
+
+    holding.tokenBalance = toCanonical(currentBalanceRaw + amountRaw, 18).value;
+    holding.totalInvested = toCanonical(currentInvestedRaw + investmentDeltaRaw, 6).value;
     if (purchase.createdAt && purchase.createdAt > holding.lastActivityAt) {
       holding.lastActivityAt = purchase.createdAt;
     }
@@ -586,8 +641,8 @@ export class UserPortfolioService {
         network,
         holdingType: HoldingType.LEVERAGE,
         status: HoldingStatus.ACTIVE,
-        tokenBalance: position.rwaTokenAmount,
-        totalInvested: '0',
+        tokenBalance: toCanonical(position.rwaTokenAmount, 18).value,
+        totalInvested: '0.0000',
         leveragePositionId: position._id,
         firstEntryAt: position.createdAt || new Date(),
         lastActivityAt: new Date(),
@@ -596,7 +651,7 @@ export class UserPortfolioService {
     } else {
       holding.status = position.status === 'ACTIVE' ? HoldingStatus.ACTIVE : 
                        (position.status === 'SETTLED' ? HoldingStatus.SETTLED : HoldingStatus.LIQUIDATED);
-      holding.tokenBalance = position.rwaTokenAmount;
+      holding.tokenBalance = toCanonical(position.rwaTokenAmount, 18).value;
       holding.lastActivityAt = new Date();
     }
 
@@ -644,8 +699,8 @@ export class UserPortfolioService {
         network,
         holdingType: HoldingType.SOLVENCY,
         status: position.status === 'ACTIVE' ? HoldingStatus.ACTIVE : HoldingStatus.SETTLED,
-        tokenBalance: '0',
-        totalInvested: position.usdcBorrowed,
+        tokenBalance: '0.0000',
+        totalInvested: toCanonical(position.usdcBorrowed, 6).value,
         solvencyPositionId: position._id,
         firstEntryAt: position.createdAt || new Date(),
         lastActivityAt: new Date(),
@@ -653,7 +708,7 @@ export class UserPortfolioService {
       portfolio.holdings.push(newHolding as any);
     } else {
       holding.status = position.status === 'ACTIVE' ? HoldingStatus.ACTIVE : HoldingStatus.SETTLED;
-      holding.totalInvested = position.usdcBorrowed;
+      holding.totalInvested = toCanonical(position.usdcBorrowed, 6).value;
       holding.lastActivityAt = new Date();
     }
 

@@ -29,6 +29,7 @@ import { StellarWalletAdapter } from './stellar-wallet.adapter';
 import { StellarContractAdapter } from './stellar-contract-loader.adapter';
 import { Model } from 'mongoose';
 import { AssetDocument } from '../../../../database/schemas/asset.schema';
+import { toCanonical, fromCanonical } from '../../utils/numeric-conversion';
 
 export class StellarBlockchainAdapter implements BlockchainAdapter {
   private readonly logger = new Logger(StellarBlockchainAdapter.name);
@@ -395,10 +396,17 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     // Step 3: Register the listing in the PrimaryMarket contract
     let source = await this.sorobanServer.getAccount(adminKeypair.publicKey());
     
+    // Convert canonical inputs to raw integer stroops/USDC
+    const priceRaw = fromCanonical(price.toString(), 6); // USDC Price (6 decimals)
+    const minPriceRaw = minPrice && minPrice !== '0' && minPrice !== 'null'
+      ? fromCanonical(minPrice.toString(), 6)
+      : 0n;
+    const totalSupplyRaw = fromCanonical(totalSupply.toString(), 7); // Token Amount (7 decimals)
+
     // Option<i64> in Soroban: None → scvVoid(), Some(x) → scvI64(x) directly
     let minPriceVal: xdr.ScVal;
-    if (minPrice && minPrice !== '0' && minPrice !== 'null') {
-      minPriceVal = xdr.ScVal.scvI64(xdr.Int64.fromString(minPrice.toString()));
+    if (minPriceRaw > 0n) {
+      minPriceVal = xdr.ScVal.scvI64(xdr.Int64.fromString(minPriceRaw.toString()));
     } else {
       minPriceVal = xdr.ScVal.scvVoid();
     }
@@ -418,10 +426,10 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         xdr.ScVal.scvString(assetCode || ''),
         new Address(sacContractId).toScVal(),
         listingTypeVal,
-        xdr.ScVal.scvI64(xdr.Int64.fromString(price.toString())),
+        xdr.ScVal.scvI64(xdr.Int64.fromString(priceRaw.toString())),
         minPriceVal,
         xdr.ScVal.scvU64(xdr.Uint64.fromString(duration.toString())),
-        xdr.ScVal.scvI64(xdr.Int64.fromString(totalSupply.toString())),
+        xdr.ScVal.scvI64(xdr.Int64.fromString(totalSupplyRaw.toString())),
       )
     )
     .setTimeout(60)
@@ -480,14 +488,14 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
 
           if (evtAssetId === assetId && evtBuyer === expectedBuyer) {
             // Price normalization: Soroban contract stores price divided by 10^10
-            const STELLAR_PRICE_MULTIPLIER = BigInt(10_000_000_000); // 10^10
-            const normalizedPrice = (BigInt(evtPrice) * STELLAR_PRICE_MULTIPLIER).toString();
-            const normalizedTotalPayment = (BigInt(evtTotalPayment) * STELLAR_PRICE_MULTIPLIER).toString();
+            // const STELLAR_PRICE_MULTIPLIER = BigInt(10_000_000_000); // 10^10
+            // const normalizedPrice = (BigInt(evtPrice) * STELLAR_PRICE_MULTIPLIER).toString();
+            // const normalizedTotalPayment = (BigInt(evtTotalPayment) * STELLAR_PRICE_MULTIPLIER).toString();
 
             return {
-              amount: evtAmount.toString(),
-              price: normalizedPrice,
-              totalPayment: normalizedTotalPayment,
+              amount: toCanonical(evtAmount, 7), // 7 decimals for tokens on Stellar
+              price: toCanonical(evtPrice, 6), // 6 decimals for USDC
+              totalPayment: toCanonical(evtTotalPayment, 6), // 6 decimals for USDC
               blockNumber: response.ledger,
               timestamp: Number(response.createdAt),
             };
@@ -542,12 +550,12 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
           if (evtAssetId === assetId && evtBidder === expectedBidder) {
             // Price normalization: Soroban contract stores price divided by 10^10
             // We must multiply back to restore canonical 6-decimal USDC form.
-            const STELLAR_PRICE_MULTIPLIER = BigInt(10_000_000_000); // 10^10
-            const normalizedPrice = (BigInt(evtPrice) * STELLAR_PRICE_MULTIPLIER).toString();
+            // const STELLAR_PRICE_MULTIPLIER = BigInt(10_000_000_000); // 10^10
+            // const normalizedPrice = (BigInt(evtPrice) * STELLAR_PRICE_MULTIPLIER).toString();
 
             return {
-              tokenAmount: evtTokenAmount.toString(),
-              price: normalizedPrice,
+              tokenAmount: toCanonical(evtTokenAmount, 7), // 7 decimals for tokens on Stellar
+              price: toCanonical(evtPrice, 6), // 6 decimals for USDC
               bidIndex: Number(evtBidIndex),
             };
           }
@@ -602,14 +610,14 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
             // Price normalization: Soroban contract stores price divided by 10^10
             // cost = (tokensReceived * price) / 10^18. 
             // If evtCost is returned in Stellar format, we must normalize it too.
-            const STELLAR_PRICE_MULTIPLIER = BigInt(10_000_000_000); // 10^10
-            const normalizedCost = (BigInt(evtCost) * STELLAR_PRICE_MULTIPLIER).toString();
-            const normalizedRefund = (BigInt(evtRefund) * STELLAR_PRICE_MULTIPLIER).toString();
+            // const STELLAR_PRICE_MULTIPLIER = BigInt(10_000_000_000); // 10^10
+            // const normalizedCost = (BigInt(evtCost) * STELLAR_PRICE_MULTIPLIER).toString();
+            // const normalizedRefund = (BigInt(evtRefund) * STELLAR_PRICE_MULTIPLIER).toString();
 
             return {
-              tokensReceived: evtTokensReceived.toString(),
-              cost: normalizedCost,
-              refundAmount: normalizedRefund,
+              tokensReceived: toCanonical(evtTokensReceived, 7), // 7 decimals for tokens on Stellar
+              cost: toCanonical(evtCost, 6), // 6 decimals for USDC
+              refundAmount: toCanonical(evtRefund, 6), // 6 decimals for USDC
             };
           }
         }

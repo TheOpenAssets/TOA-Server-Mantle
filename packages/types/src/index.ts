@@ -12,6 +12,7 @@ export * from './domain/partner.types';
 export * from './domain/notification.types';
 export * from './domain/announcement.types';
 export * from './domain/compliance.types';
+export * from './domain/numeric.types';
 
 // Network
 export * from './network/evm.types';

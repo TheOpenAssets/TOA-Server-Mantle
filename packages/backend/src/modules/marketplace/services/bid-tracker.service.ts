@@ -14,6 +14,7 @@ import { NotificationAction } from '../../notifications/enums/notification-actio
 import { BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
 import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
 import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
+import { toCanonical, fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
 @Injectable()
 export class BidTrackerService {
@@ -65,9 +66,11 @@ export class BidTrackerService {
     }
 
     // Calculate USDC deposited: payment = price * tokenAmount / 1e18
-    const tokenAmountBigInt = BigInt(bidData.tokenAmount);
-    const priceBigInt = BigInt(bidData.price);
-    const usdcDeposited = (priceBigInt * tokenAmountBigInt) / BigInt(10 ** 18);
+    // We use raw bigints for internal calculation to maintain precision
+    const tokenAmountBigInt = fromCanonical(bidData.tokenAmount.value, 18);
+    const priceBigInt = fromCanonical(bidData.price.value, 6);
+    const usdcDepositedRaw = (priceBigInt * tokenAmountBigInt) / BigInt(10 ** 18);
+    const usdcDepositedCanonical = toCanonical(usdcDepositedRaw, 6);
 
     const network = this.configService.get<string>('network.networkType') || 'mantle';
 
@@ -75,13 +78,15 @@ export class BidTrackerService {
     const bid = await this.bidModel.create({
       assetId: dto.assetId,
       bidder: investorWallet.toLowerCase(),
-      tokenAmount: bidData.tokenAmount,
-      price: bidData.price,
-      usdcDeposited: usdcDeposited.toString(),
+      tokenAmount: bidData.tokenAmount.value,
+      price: bidData.price.value,
+      usdcDeposited: usdcDepositedCanonical.value,
       bidIndex: bidData.bidIndex,
       status: BidStatus.PLACED,
       transactionHash: dto.txHash,
       network,
+      // Companion fields for precision
+      rawPrecise: bidData.tokenAmount.rawPrecise || bidData.price.rawPrecise || usdcDepositedCanonical.rawPrecise,
       // blockNumber: bidData.blockNumber,
     });
 
@@ -89,7 +94,7 @@ export class BidTrackerService {
 
     // Send notification to bidder
     try {
-      const usdcDepositedFormatted = (Number(usdcDeposited) / 1e6).toFixed(2);
+      const usdcDepositedFormatted = (Number(usdcDepositedCanonical.value)).toFixed(2);
       const assetName = `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`;
 
       await this.notificationService.create({
@@ -103,9 +108,9 @@ export class BidTrackerService {
         actionMetadata: {
           assetId: dto.assetId,
           bidId: bid._id.toString(),
-          tokenAmount: bidData.tokenAmount,
-          price: bidData.price,
-          usdcDeposited: usdcDeposited.toString(),
+          tokenAmount: bidData.tokenAmount.value,
+          price: bidData.price.value,
+          usdcDeposited: usdcDepositedCanonical.value,
         },
       });
     } catch (error: any) {
@@ -237,18 +242,21 @@ export class BidTrackerService {
     this.logger.log('Settlement validated on-chain', {
       assetId: dto.assetId,
       bidder: investorWallet,
-      tokensReceived: settlementData.tokensReceived.toString(),
-      refundAmount: settlementData.refundAmount.toString(),
+      tokensReceived: settlementData.tokensReceived.value,
+      refundAmount: settlementData.refundAmount.value,
     });
     
     // Convert to BigInt for comparison
-    const tokensReceivedBigInt = BigInt(settlementData.tokensReceived);
-    const costBigInt = BigInt(settlementData.cost);
+    const tokensReceivedBigInt = fromCanonical(settlementData.tokensReceived.value, 18);
+    const costBigInt = fromCanonical(settlementData.cost.value, 6);
 
-    const pricePerTokenWei =
+    const pricePerTokenRaw =
       tokensReceivedBigInt > 0n
         ? (costBigInt * 10n ** 18n) / tokensReceivedBigInt
         : 0n;
+    
+    const pricePerTokenCanonical = toCanonical(pricePerTokenRaw, 6);
+
     // Update bid status based on whether they won or were refunded
     const newStatus = tokensReceivedBigInt > 0n
       ? BidStatus.SETTLED
@@ -281,8 +289,8 @@ export class BidTrackerService {
       if (newStatus === BidStatus.SETTLED && tokensReceivedBigInt > 0n) {
         this.logger.log('Sending auction-won notification');
         // Auction won
-        const tokensReceivedFormatted = (Number(settlementData.tokensReceived) / 1e18).toFixed(2);
-        const clearingPriceFormatted = (Number(pricePerTokenWei) / 1e6).toFixed(2);
+        const tokensReceivedFormatted = Number(settlementData.tokensReceived.value).toFixed(2);
+        const clearingPriceFormatted = Number(pricePerTokenCanonical.value).toFixed(2);
 
         await this.notificationService.create({
           userId: investorWallet,
@@ -295,14 +303,14 @@ export class BidTrackerService {
           actionMetadata: {
             assetId: dto.assetId,
             bidId: bid._id.toString(),
-            tokensReceived: settlementData.tokensReceived.toString(),
-            clearingPrice: pricePerTokenWei.toString(),
+            tokensReceived: settlementData.tokensReceived.value,
+            clearingPrice: pricePerTokenCanonical.value,
           },
         });
       } else if (newStatus === BidStatus.REFUNDED) {
         this.logger.log('Bid lost; processing refund notification flow');
         // Bid refunded
-        const refundAmountFormatted = (Number(settlementData.refundAmount) / 1e6).toFixed(2);
+        const refundAmountFormatted = Number(settlementData.refundAmount.value).toFixed(2);
 
         await this.notificationService.create({
           userId: investorWallet,
@@ -315,7 +323,7 @@ export class BidTrackerService {
           actionMetadata: {
             assetId: dto.assetId,
             bidId: bid._id.toString(),
-            refundAmount: settlementData.refundAmount.toString(),
+            refundAmount: settlementData.refundAmount.value,
           },
         });
       }
@@ -336,12 +344,12 @@ export class BidTrackerService {
           throw new Error(`Asset ${dto.assetId} has no token address`);
         }
 
-        const tokensReceivedNum = Number(settlementData.tokensReceived) / 1e18;
-        const totalPaidUSDC = Number(settlementData.cost) / 1e6; // actual on-chain cost
-        // pricePerTokenWei is already computed above
+        const tokensReceivedNum = Number(settlementData.tokensReceived.value);
+        const totalPaidUSDC = Number(settlementData.cost.value); 
+        // pricePerTokenCanonical is already computed above
 
         this.logger.log(
-          `Creating purchase record for ${investorWallet}: ${tokensReceivedNum} tokens at clearing price ${Number(pricePerTokenWei) / 1e6} USDC`,
+          `Creating purchase record for ${investorWallet}: ${tokensReceivedNum} tokens at clearing price ${pricePerTokenCanonical.value} USDC`,
         );
 
         this.logger.log('✅ Settlement confirmed; creating purchase record for portfolio visibility');
@@ -350,9 +358,9 @@ export class BidTrackerService {
           assetId: dto.assetId,
           investorWallet: investorWallet.toLowerCase(),
           tokenAddress: asset.token.address,
-          amount: settlementData.tokensReceived.toString(), // Token amount in wei
-          price: pricePerTokenWei.toString(), // Clearing price per token in USDC wei
-          totalPayment: settlementData.cost.toString(), // Actual USDC paid in wei
+          amount: settlementData.tokensReceived.value, // Canonical
+          price: pricePerTokenCanonical.value, // Canonical
+          totalPayment: settlementData.cost.value, // Canonical
           status: 'CONFIRMED',
           source: 'PRIMARY_MARKET',
           network: asset.network || 'mantle',
@@ -374,7 +382,7 @@ export class BidTrackerService {
 
         // Send notification about successful token acquisition
         try {
-          const pricePerToken = Number(pricePerTokenWei) / 1e6;
+          const pricePerToken = Number(pricePerTokenCanonical.value);
           await this.notificationService.create({
             userId: investorWallet,
             walletAddress: investorWallet,

@@ -20,6 +20,7 @@ import { EvmWalletAdapter } from './evm-wallet.adapter';
 import { EvmContractAdapter } from './evm-contract-loader.adapter';
 import { Model } from 'mongoose';
 import { AssetDocument } from '../../../../database/schemas/asset.schema';
+import { toCanonical, fromCanonical } from '../../utils/numeric-conversion';
 
 export class EvmBlockchainAdapter implements BlockchainAdapter {
   private readonly logger = new Logger(EvmBlockchainAdapter.name);
@@ -201,11 +202,11 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
         dummyAssetId,
         tokenIdentifier as Address,
         listingTypeEnum,
-        BigInt(price),
-        BigInt(minPrice || '0'),
+        fromCanonical(price.toString(), 6), // USDC Price (6 decimals)
+        fromCanonical(minPrice || '0', 6), // Min Price (6 decimals)
         BigInt(duration),
-        BigInt(totalSupply),
-        BigInt(minInvestment),
+        fromCanonical(totalSupply.toString(), 18), // Token Amount (18 decimals)
+        fromCanonical(minInvestment.toString(), 6), // Min Investment (6 decimals)
       ],
     }), 'createListing write') as `0x${string}`;
 
@@ -239,7 +240,7 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
       address: address as Address,
       abi,
       functionName: 'endAuction',
-      args: [assetIdBytes32, BigInt(clearingPrice)],
+      args: [assetIdBytes32, fromCanonical(clearingPrice, 6)],
     }), 'endAuction write') as `0x${string}`;
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
@@ -296,9 +297,9 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
               buyer.toLowerCase() === expectedBuyer.toLowerCase()
             ) {
               return {
-                amount: amount.toString(),
-                price: price.toString(),
-                totalPayment: totalPayment.toString(),
+                amount: toCanonical(amount, 18),
+                price: toCanonical(price, 6),
+                totalPayment: toCanonical(totalPayment, 6),
                 blockNumber: Number(receipt.blockNumber),
                 timestamp: Number(block.timestamp),
               };
@@ -360,8 +361,8 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
               bidder.toLowerCase() === expectedBidder.toLowerCase()
             ) {
               return {
-                tokenAmount: tokenAmount.toString(),
-                price: price.toString(),
+                tokenAmount: toCanonical(tokenAmount, 18),
+                price: toCanonical(price, 6),
                 bidIndex: Number(bidIndex),
               };
             }
@@ -425,9 +426,9 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
               bidder.toLowerCase() === expectedBidder.toLowerCase()
             ) {
               return {
-                tokensReceived: tokensReceived.toString(),
-                refundAmount: refund.toString(),
-                cost: cost.toString(),
+                tokensReceived: toCanonical(tokensReceived, 18),
+                refundAmount: toCanonical(refund, 6),
+                cost: toCanonical(cost, 6),
               };
             }
           }
