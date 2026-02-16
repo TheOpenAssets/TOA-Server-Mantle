@@ -27,6 +27,8 @@ import {
 } from '../blockchain-adapter.interface';
 import { StellarWalletAdapter } from './stellar-wallet.adapter';
 import { StellarContractAdapter } from './stellar-contract-loader.adapter';
+import { Model } from 'mongoose';
+import { AssetDocument } from '../../../../database/schemas/asset.schema';
 
 export class StellarBlockchainAdapter implements BlockchainAdapter {
   private readonly logger = new Logger(StellarBlockchainAdapter.name);
@@ -37,6 +39,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     private readonly configService: ConfigService,
     private readonly walletAdapter: StellarWalletAdapter,
     private readonly contractAdapter: StellarContractAdapter,
+    private readonly assetModel: Model<AssetDocument>,
   ) {
     const rpcUrl = this.configService.get<string>('network.stellar.rpcUrl') || 'https://soroban-testnet.stellar.org';
     this.networkPassphrase = this.configService.get<string>('network.stellar.networkPassphrase') || 'Test SDF Network ; September 2015';
@@ -195,7 +198,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     return { txId: response.hash };
   }
 
-  async deactivateListing(tokenIdentifier: string): Promise<{ txId: string }> {
+  private async deactivateListing(tokenIdentifier: string): Promise<{ txId: string }> {
     const adminKeypair = this.walletAdapter.getAdminKeypair();
     const contractId = this.contractAdapter.getContractAddress('PrimaryMarket');
     const contract = new Contract(contractId);
@@ -224,6 +227,14 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     await this.confirmTransaction(response.hash);
 
     return { txId: response.hash };
+  }
+
+  async endAuction(
+    tokenIdentifier: string,
+    clearingPrice: string
+  ): Promise<{ txId: string }> {
+    this.logger.log(`Ending Stellar auction for ${tokenIdentifier}. Clearing price ${clearingPrice} is handled off-chain.`);
+    return this.deactivateListing(tokenIdentifier);
   }
 
   async deployToken(
@@ -468,10 +479,15 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
           const [evtAssetId, evtBuyer, evtAmount, evtPrice, evtTotalPayment] = args;
 
           if (evtAssetId === assetId && evtBuyer === expectedBuyer) {
+            // Price normalization: Soroban contract stores price divided by 10^10
+            const STELLAR_PRICE_MULTIPLIER = BigInt(10_000_000_000); // 10^10
+            const normalizedPrice = (BigInt(evtPrice) * STELLAR_PRICE_MULTIPLIER).toString();
+            const normalizedTotalPayment = (BigInt(evtTotalPayment) * STELLAR_PRICE_MULTIPLIER).toString();
+
             return {
               amount: evtAmount.toString(),
-              price: evtPrice.toString(),
-              totalPayment: evtTotalPayment.toString(),
+              price: normalizedPrice,
+              totalPayment: normalizedTotalPayment,
               blockNumber: response.ledger,
               timestamp: Number(response.createdAt),
             };
@@ -524,9 +540,14 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
           const [evtAssetId, evtBidder, evtTokenAmount, evtPrice, evtBidIndex] = args;
 
           if (evtAssetId === assetId && evtBidder === expectedBidder) {
+            // Price normalization: Soroban contract stores price divided by 10^10
+            // We must multiply back to restore canonical 6-decimal USDC form.
+            const STELLAR_PRICE_MULTIPLIER = BigInt(10_000_000_000); // 10^10
+            const normalizedPrice = (BigInt(evtPrice) * STELLAR_PRICE_MULTIPLIER).toString();
+
             return {
               tokenAmount: evtTokenAmount.toString(),
-              price: evtPrice.toString(),
+              price: normalizedPrice,
               bidIndex: Number(evtBidIndex),
             };
           }
@@ -578,10 +599,17 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
           const [evtAssetId, evtBidder, evtTokensReceived, evtCost, evtRefund] = args;
 
           if (evtAssetId === assetId && evtBidder === expectedBidder) {
+            // Price normalization: Soroban contract stores price divided by 10^10
+            // cost = (tokensReceived * price) / 10^18. 
+            // If evtCost is returned in Stellar format, we must normalize it too.
+            const STELLAR_PRICE_MULTIPLIER = BigInt(10_000_000_000); // 10^10
+            const normalizedCost = (BigInt(evtCost) * STELLAR_PRICE_MULTIPLIER).toString();
+            const normalizedRefund = (BigInt(evtRefund) * STELLAR_PRICE_MULTIPLIER).toString();
+
             return {
               tokensReceived: evtTokensReceived.toString(),
-              cost: evtCost.toString(),
-              refundAmount: evtRefund.toString(),
+              cost: normalizedCost,
+              refundAmount: normalizedRefund,
             };
           }
         }

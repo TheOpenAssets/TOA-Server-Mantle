@@ -7,14 +7,18 @@ The Marketplace module manages the primary market operations for Real-World Asse
 
 ### `PurchaseTrackerService`
 - **Purchase Recording**: Validates and records investor token purchases from the primary market.
-- **Portfolio Management**: Aggregates investor holdings across static purchases, auction wins, and secondary market activity.
+- **Portfolio Management**: Delegates portfolio updates to the `UserPortfolioModule` after successful purchases or yield claims.
 - **Yield Claims**: Records yield distribution events (burn-to-claim).
 - **Network Agnostic**: Delegates on-chain transaction verification to the `BlockchainAdapter`.
 
 ### `BidTrackerService`
 - **Auction Management**: Tracks bids placed on assets listed via Dutch auction.
-- **Settlement**: Validates and records auction settlement results (wins and refunds).
+- **Settlement**: Validates and records auction settlement results (wins and refunds). Triggers portfolio updates via `UserPortfolioModule` for auction winners.
 - **Network Agnostic**: Delegates on-chain bid and settlement verification to the `BlockchainAdapter`.
+
+### `AuctionService`
+- **Clearing Price Algorithm**: Implements the Dutch auction clearing logic (off-chain business logic).
+- **Strategy Delegation**: Delegates on-chain auction creation and ending to the active network strategy (Mantle or Stellar) via `ModuleRegistryService`.
 
 ### `MarketplaceService`
 - **Listings**: Provides endpoints for retrieving asset listings.
@@ -22,7 +26,7 @@ The Marketplace module manages the primary market operations for Real-World Asse
 
 ## Data Models
 - **Purchase**: Records confirmed token acquisitions.
-- **Bid**: Records auction bids.
+- **Bid**: Records auction bids. Includes `network` field for cross-chain tracking.
 - **Asset**: (Shared) Source of truth for listing status and sold counts.
 - **Settlement**: (Shared) Records auction clearing info.
 
@@ -30,9 +34,10 @@ The Marketplace module manages the primary market operations for Real-World Asse
 - **Idempotency**: All notify endpoints (`notifyPurchase`, `notifyBid`, `notifySettlement`) are idempotent based on the `txHash`.
 - **Canonical Amounts**: All monetary values (token amounts, prices, USDC payments) are stored as strings representing the raw integer values (18 decimals for tokens, 6 decimals for USDC) regardless of the underlying network.
 - **Verification**: No purchase or bid is recorded without on-chain verification via the adapter.
-- **No Direct Chain Access**: Services must not import `viem` or `stellar-sdk` directly. All chain interaction goes through `BLOCKCHAIN_ADAPTER`.
+- **No Direct Chain Access**: Services must not import `viem` or `stellar-sdk` directly. All chain interaction goes through `BLOCKCHAIN_ADAPTER` or strategies via `ModuleRegistryService`.
 
 ## Dependencies
 - **Blockchain Module**: Provides the `BLOCKCHAIN_ADAPTER` token for verification.
+- **User Portfolio Module**: Handles persistent user holding records.
 - **Notification Module**: Sends alerts to investors.
 - **Database**: MongoDB for persistence.

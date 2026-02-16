@@ -4,7 +4,7 @@ import { Model } from 'mongoose';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { AssetStatus } from '@openassets/types';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
-import { BlockchainService } from '../../blockchain/services/blockchain.service';
+import { ModuleRegistryService } from '../../registry/services/module-registry.service';
 import { CreateAuctionDto } from '../dto/create-auction.dto';
 
 @Injectable()
@@ -14,7 +14,7 @@ export class AuctionService {
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
-    private blockchainService: BlockchainService,
+    private moduleRegistry: ModuleRegistryService,
   ) {}
 
   async createAuction(dto: CreateAuctionDto) {
@@ -23,39 +23,22 @@ export class AuctionService {
       throw new HttpException('Asset or token not found', HttpStatus.NOT_FOUND);
     }
 
-    // Get minimum price from asset's price range (stored during asset creation)
-    const minPrice = asset.listing?.priceRange?.min || dto.reservePrice;
-
-    const txHash = await this.blockchainService.listOnMarketplace(
-      asset.token.address,
-      'AUCTION',
-      dto.reservePrice,
-      asset.tokenParams.minInvestment,
-      dto.duration,
-      minPrice,
-    );
-
-    // Update asset status in DB
-    await this.assetModel.updateOne(
-      { assetId: dto.assetId },
-      {
-        $set: {
-          status: AssetStatus.LISTED,
-          'listing.type': 'AUCTION',
-          'listing.reservePrice': dto.reservePrice,
-          'listing.active': true,
-          'listing.listedAt': new Date(),
-          'listing.duration': dto.duration,
-          'listing.phase': 'BIDDING',
-        },
-      },
-    );
+    const strategy = this.moduleRegistry.getAdminDomainStrategy();
+    
+    // Delegate to strategy for listing. 
+    // The strategy reads type and pricing from asset doc, but we pass duration from DTO.
+    // NOTE: AuctionService.createAuction is redundant with admin strategy list endpoint,
+    // but kept for backward compatibility.
+    const result = await strategy.listOnMarketplace({
+      assetId: dto.assetId,
+      duration: dto.duration.toString(),
+    });
 
     return {
       success: true,
       message: 'Auction created successfully',
       assetId: dto.assetId,
-      transactionHash: txHash,
+      transactionHash: result.transactionHash,
     };
   }
 
@@ -66,11 +49,14 @@ export class AuctionService {
       throw new HttpException('Auction not found or asset not tokenized', HttpStatus.NOT_FOUND);
     }
 
+    const strategy = this.moduleRegistry.getAdminDomainStrategy();
+
     const bids = await this.bidModel.find({ assetId }).sort({ price: -1 });
     if (bids.length === 0) {
       this.logger.warn(`No bids found for auction ${assetId}. Ending without a sale.`);
       // End auction with a zero clearing price if no bids
-      return this.blockchainService.endAuction(assetId, '0');
+      const result = await strategy.endAuctionOnChain(assetId, '0');
+      return result;
     }
     
     let cumulativeAmount = BigInt(0);
@@ -101,22 +87,22 @@ export class AuctionService {
         this.logger.error(`No valid clearing price found above reserve price ${reservePrice}. Auction failed.`);
         await this.assetModel.updateOne({ assetId }, { $set: { 'listing.phase': 'FAILED' } });
         // End the auction on-chain with a clearing price of 0 to signal failure
-        await this.blockchainService.endAuction(assetId, '0');
+        const result = await strategy.endAuctionOnChain(assetId, '0');
         throw new HttpException('Auction failed: No bids met the reserve price.', HttpStatus.BAD_REQUEST);
     }
 
 
     this.logger.log(`Calculated clearing price for ${assetId}: ${clearingPrice.toString()}`);
 
-    // Call blockchain service to end auction
-    const txHash = await this.blockchainService.endAuction(assetId, clearingPrice.toString());
+    // Call strategy to end auction on-chain and in DB
+    const result = await strategy.endAuctionOnChain(assetId, clearingPrice.toString());
     
     return {
       success: true,
       message: `Auction ended. Clearing price set to ${clearingPrice.toString()}`,
       assetId,
       clearingPrice: clearingPrice.toString(),
-      transactionHash: txHash,
+      transactionHash: result.transactionHash || result.txHash,
     };
   }
 }

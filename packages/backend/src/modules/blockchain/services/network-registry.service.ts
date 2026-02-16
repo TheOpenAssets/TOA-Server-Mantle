@@ -112,15 +112,12 @@ export class NetworkRegistryService implements OnModuleInit {
     );
   }
 
-  async deactivateListingOnMarketplace(tokenIdentifier: string) {
+  async endAuctionOnMarketplace(tokenIdentifier: string, clearingPrice: string) {
     if (!this.isAvailable('marketplace')) {
       return { completed: false, skipped: true, reason: 'MARKETPLACE_FEATURE_DISABLED' };
     }
     const adapter = await this.getBlockchainAdapter();
-    if (adapter && 'deactivateListing' in adapter) {
-      return await (adapter as any).deactivateListing(tokenIdentifier);
-    }
-    return { completed: false, skipped: true, reason: 'METHOD_NOT_SUPPORTED_BY_ADAPTER' };
+    return await adapter.endAuction(tokenIdentifier, clearingPrice);
   }
 
   async approveTrustlineForUser(userAddress: WalletAddress, assetIdentifier: string) {

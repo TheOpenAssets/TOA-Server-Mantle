@@ -40,6 +40,7 @@ import { StellarWalletAdapter } from './adapters/stellar/stellar-wallet.adapter'
 import { StellarContractAdapter } from './adapters/stellar/stellar-contract-loader.adapter';
 import { StellarAuthVerificationAdapter } from './adapters/stellar/stellar-auth-verification.adapter';
 import { Queue } from 'bullmq';
+import { getModelToken } from '@nestjs/mongoose';
 
 @Global()
 @Module({})
@@ -95,14 +96,14 @@ export class BlockchainModule {
         },
         {
           provide: BLOCKCHAIN_ADAPTER,
-          useFactory: (configService: ConfigService, wallet: any, contract: any) => {
+          useFactory: (configService: ConfigService, wallet: any, contract: any, assetModel: Model<AssetDocument>) => {
             const networkType = configService.get('network.networkType');
             if (networkType === 'stellar') {
-              return new StellarBlockchainAdapter(configService, wallet, contract);
+              return new StellarBlockchainAdapter(configService, wallet, contract, assetModel);
             }
-            return new EvmBlockchainAdapter(configService, wallet, contract);
+            return new EvmBlockchainAdapter(configService, wallet, contract, assetModel);
           },
-          inject: [ConfigService, WALLET_ADAPTER, CONTRACT_ADAPTER],
+          inject: [ConfigService, WALLET_ADAPTER, CONTRACT_ADAPTER, getModelToken(Asset.name)],
         },
         {
           provide: EVENT_ADAPTER,

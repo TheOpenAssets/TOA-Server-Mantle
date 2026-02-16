@@ -8,6 +8,7 @@ import { NotificationService } from '../../../notifications/services/notificatio
 import { IAdminDomainStrategy } from '../../../registry/interfaces/admin-domain.interface';
 import { DeployTokenDto } from '../../../blockchain/dto/deploy-token.dto';
 import { ListOnMarketplaceDto } from '../../../blockchain/dto/list-on-marketplace.dto';
+import { NetworkRegistryService } from '../../../blockchain/services/network-registry.service';
 import { 
   AssetStatus, 
   NotificationType, 
@@ -22,6 +23,7 @@ export class MantleAdminStrategy implements IAdminDomainStrategy {
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     private readonly blockchainService: BlockchainService,
+    private readonly networkRegistryService: NetworkRegistryService,
     private readonly assetLifecycleService: AssetLifecycleService,
     private readonly notificationService: NotificationService,
   ) { }
@@ -193,11 +195,16 @@ export class MantleAdminStrategy implements IAdminDomainStrategy {
   }
 
   async endAuctionOnChain(assetId: string, clearingPrice: string): Promise<any> {
-    const txHash = await this.blockchainService.endAuction(assetId, clearingPrice);
-    const result = await this.assetLifecycleService.endAuction(assetId, clearingPrice, txHash);
+    const asset = await this.assetModel.findOne({ assetId });
+    if (!asset || !asset.token?.address) {
+      throw new HttpException('Asset or token not found', HttpStatus.NOT_FOUND);
+    }
+
+    const { txId } = await this.networkRegistryService.endAuctionOnMarketplace(asset.token.address, clearingPrice);
+    const result = await this.assetLifecycleService.endAuction(assetId, clearingPrice, txId);
     return {
       ...result,
-      explorerUrl: `https://sepolia.mantlescan.xyz/tx/${txHash}`,
+      explorerUrl: `https://sepolia.mantlescan.xyz/tx/${txId}`,
     };
   }
 

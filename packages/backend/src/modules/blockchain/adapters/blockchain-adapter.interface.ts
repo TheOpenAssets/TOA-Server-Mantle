@@ -54,6 +54,11 @@ export interface BlockchainAdapter {
     totalSupply: string | number,
     minPrice?: string
   ): Promise<{ txId: string }>;
+
+  endAuction(
+    tokenIdentifier: string,
+    clearingPrice: string
+  ): Promise<{ txId: string }>;
   
   // Marketplace Verification
   verifyPurchaseTransaction(

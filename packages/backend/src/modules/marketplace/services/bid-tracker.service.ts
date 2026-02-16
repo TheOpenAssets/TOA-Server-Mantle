@@ -13,6 +13,7 @@ import { NotificationType, NotificationSeverity } from '../../notifications/enum
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 import { BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
 import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
+import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
 
 @Injectable()
 export class BidTrackerService {
@@ -25,6 +26,7 @@ export class BidTrackerService {
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     private notificationService: NotificationService,
+    private userPortfolioService: UserPortfolioService,
   ) {}
 
   /**
@@ -67,6 +69,8 @@ export class BidTrackerService {
     const priceBigInt = BigInt(bidData.price);
     const usdcDeposited = (priceBigInt * tokenAmountBigInt) / BigInt(10 ** 18);
 
+    const network = this.configService.get<string>('network.networkType') || 'mantle';
+
     // Record bid in database
     const bid = await this.bidModel.create({
       assetId: dto.assetId,
@@ -77,6 +81,7 @@ export class BidTrackerService {
       bidIndex: bidData.bidIndex,
       status: BidStatus.PLACED,
       transactionHash: dto.txHash,
+      network,
       // blockNumber: bidData.blockNumber,
     });
 
@@ -340,7 +345,7 @@ export class BidTrackerService {
         );
 
         this.logger.log('✅ Settlement confirmed; creating purchase record for portfolio visibility');
-        await this.purchaseModel.create({
+        const purchase = await this.purchaseModel.create({
           txHash: dto.txHash,
           assetId: dto.assetId,
           investorWallet: investorWallet.toLowerCase(),
@@ -350,12 +355,21 @@ export class BidTrackerService {
           totalPayment: settlementData.cost.toString(), // Actual USDC paid in wei
           status: 'CONFIRMED',
           source: 'PRIMARY_MARKET',
+          network: asset.network || 'mantle',
           metadata: {
             assetName: asset.metadata?.invoiceNumber,
             industry: asset.metadata?.industry,
           },
         });
         this.logger.log('Purchase record persisted; should surface in portfolio queries');
+
+        // Update portfolio
+        try {
+          await this.userPortfolioService.updateOnPurchase(purchase, asset.network || 'mantle');
+        } catch (error: any) {
+          this.logger.error(`Failed to update portfolio after auction settlement: ${error.message}`);
+        }
+
         await this.syncListingSold(dto.assetId);
 
         // Send notification about successful token acquisition

@@ -258,7 +258,7 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     this.logger.log(`Ending auction for ${assetId} on Stellar...`);
     
     // 1. Deactivate listing on-chain
-    const result: any = await this.networkRegistryService.deactivateListingOnMarketplace(asset.token.address);
+    const result: any = await this.networkRegistryService.endAuctionOnMarketplace(asset.token.address, clearingPrice);
 
     // 2. Delegate to shared lifecycle service for DB settlement
     const settlementResult = await this.assetLifecycleService.endAuction(assetId, clearingPrice, result.txId);

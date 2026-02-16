@@ -18,6 +18,8 @@ import {
 } from '../blockchain-adapter.interface';
 import { EvmWalletAdapter } from './evm-wallet.adapter';
 import { EvmContractAdapter } from './evm-contract-loader.adapter';
+import { Model } from 'mongoose';
+import { AssetDocument } from '../../../../database/schemas/asset.schema';
 
 export class EvmBlockchainAdapter implements BlockchainAdapter {
   private readonly logger = new Logger(EvmBlockchainAdapter.name);
@@ -27,6 +29,7 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     private readonly configService: ConfigService,
     private readonly walletAdapter: EvmWalletAdapter,
     private readonly contractAdapter: EvmContractAdapter,
+    private readonly assetModel: Model<AssetDocument>,
   ) {
     const rpcUrl = this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
     const chainId = this.configService.get<number>('blockchain.chainId') || 5003;
@@ -211,6 +214,40 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
       timeout: 180000,
     }), 'createListing receipt');
 
+    return { txId };
+  }
+
+  async endAuction(
+    tokenIdentifier: string,
+    clearingPrice: string
+  ): Promise<{ txId: string }> {
+    const wallet = this.walletAdapter.getAdminWallet();
+    const address = this.contractAdapter.getContractAddress('PrimaryMarketplace');
+    const abi = this.contractAdapter.getContractInterface('PrimaryMarketplace');
+
+    // Look up assetId from token address
+    const asset = await this.assetModel.findOne({ 'token.address': new RegExp(`^${tokenIdentifier}$`, 'i') });
+    if (!asset) {
+      throw new Error(`Asset not found for token ${tokenIdentifier}`);
+    }
+
+    const assetIdBytes32 = ('0x' + asset.assetId.replace(/-/g, '').padEnd(64, '0')) as `0x${string}`;
+
+    this.logger.log(`Ending EVM auction for asset ${asset.assetId} with clearing price ${clearingPrice}...`);
+
+    const txId = await this.executeWithRetry(() => (wallet as any).writeContract({
+      address: address as Address,
+      abi,
+      functionName: 'endAuction',
+      args: [assetIdBytes32, BigInt(clearingPrice)],
+    }), 'endAuction write') as `0x${string}`;
+
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
+      hash: txId,
+      timeout: 180000,
+    }), 'endAuction receipt');
+
+    this.logger.log(`EVM Auction ended in tx: ${txId}`);
     return { txId };
   }
 

@@ -12,7 +12,9 @@ This folder contains the concrete implementations of the blockchain adapter inte
 - **Token Management**: Implements native asset flag setting and deterministic token identifier generation.
 - **Revocation**: Supports multi-level revocation across AttestationRegistry, AssetRegistry, and PrimaryMarket.
 - **Identity**: Manages KYC registration on the Soroban IdentityRegistry.
-- **Transaction Verification**: Implements `verifyPurchaseTransaction`, `verifyBidTransaction`, and `verifyBidSettlement` by fetching transactions via Soroban RPC and decoding contract events. Validates 18-decimal/6-decimal canonical forms.
+- **Auction Flow**: `endAuction` calls `deactivateListing` on the Soroban PrimaryMarket contract. The clearing price is ignored on-chain (handled in the database settlement layer).
+- **Transaction Verification**: Implements `verifyPurchaseTransaction`, `verifyBidTransaction`, and `verifyBidSettlement` by fetching transactions via Soroban RPC and decoding contract events.
+- **Price Normalization**: Applies a `STELLAR_PRICE_MULTIPLIER` (10^10) when reading prices from Soroban events to restore the canonical 6-decimal USDC form (compensating for the scaling applied during listing).
 
 ### `StellarWalletAdapter`
 - Implements `WalletAdapter`.
