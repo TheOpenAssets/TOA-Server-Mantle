@@ -30,6 +30,7 @@ import { SolvencyModule } from './modules/solvency/solvency.module';
 import { PartnersModule } from './modules/partners/partners.module';
 import { ChangelogModule } from './modules/changelog/changelog.module';
 import { SecondaryMarketModule } from './modules/secondary-market/secondary-market.module';
+import { UserPortfolioModule } from './modules/user-portfolio/user-portfolio.module';
 
 @Module({})
 export class AppModule {
@@ -105,6 +106,7 @@ export class AppModule {
       AnnouncementsModule,
       YieldModule, // Enabled on both initially
       MarketplaceModule, // Enabled on both initially
+      UserPortfolioModule,
     ];
 
     // Conditional Modules

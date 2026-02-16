@@ -3,6 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { UserYieldClaim } from '../../../database/schemas/user-yield-claim.schema';
 import { YieldClaimStatus } from '@openassets/types';
+import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 
 @Injectable()
 export class UserYieldClaimService {
@@ -11,6 +13,9 @@ export class UserYieldClaimService {
   constructor(
     @InjectModel(UserYieldClaim.name)
     private userYieldClaimModel: Model<UserYieldClaim>,
+    @InjectModel(Asset.name)
+    private assetModel: Model<AssetDocument>,
+    private userPortfolioService: UserPortfolioService,
   ) {}
 
   /**
@@ -47,6 +52,14 @@ export class UserYieldClaimService {
       this.logger.log(
         `✅ Yield claim recorded: User ${data.userAddress} burned ${parseFloat(data.tokensBurned) / 1e18} tokens, received ${parseFloat(data.usdcReceived) / 1e6} USDC`,
       );
+
+      // Update portfolio
+      try {
+        const asset = await this.assetModel.findOne({ assetId: data.assetId });
+        await this.userPortfolioService.updateOnYieldClaim(claim, asset?.network || 'mantle');
+      } catch (error: any) {
+        this.logger.error(`Failed to update portfolio on yield claim: ${error.message}`);
+      }
 
       return claim;
     } catch (error) {

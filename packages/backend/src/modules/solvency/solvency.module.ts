@@ -15,6 +15,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
 import { LeverageModule } from '../leverage/leverage.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PartnersModule } from '../partners/partners.module';
+import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { PartnersModule } from '../partners/partners.module';
     LeverageModule, // For liquidating leverage positions via admin controller
     NotificationsModule,
     forwardRef(() => PartnersModule), // For accessing PartnerLoanService (circular dependency)
+    UserPortfolioModule,
   ],
   controllers: [SolvencyController, SolvencyAdminController],
   providers: [

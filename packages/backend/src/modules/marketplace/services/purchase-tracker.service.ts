@@ -13,6 +13,7 @@ import { NotificationType, NotificationSeverity } from '../../notifications/enum
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 import { BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
 import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
+import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
 
 @Injectable()
 export class PurchaseTrackerService {
@@ -26,6 +27,7 @@ export class PurchaseTrackerService {
     @InjectModel(Settlement.name) private settlementModel: Model<SettlementDocument>,
     @InjectModel(YieldClaim.name) private yieldClaimModel: Model<YieldClaimDocument>,
     private notificationService: NotificationService,
+    private userPortfolioService: UserPortfolioService,
     @InjectConnection() private connection: Connection,
   ) {}
 
@@ -84,6 +86,13 @@ export class PurchaseTrackerService {
 
       this.logger.log(`Token deposit recorded: ${purchase._id}, amount in wei: -${depositAmountInWei}`);
 
+      // Update portfolio
+      try {
+        await this.userPortfolioService.updateOnPurchase(purchase, asset.network || 'mantle');
+      } catch (error: any) {
+        this.logger.error(`Failed to update portfolio: ${error.message}`);
+      }
+
       return {
         success: true,
         purchaseId: purchase._id,
@@ -130,6 +139,13 @@ export class PurchaseTrackerService {
     });
 
     this.logger.log(`Purchase recorded: ${purchase._id}`);
+
+    // Update portfolio
+    try {
+      await this.userPortfolioService.updateOnPurchase(purchase, asset.network || 'mantle');
+    } catch (error: any) {
+      this.logger.error(`Failed to update portfolio: ${error.message}`);
+    }
 
     // Update asset.listing.sold with verified amount from transaction
     try {
@@ -234,6 +250,13 @@ export class PurchaseTrackerService {
     });
 
     this.logger.log(`Yield claim recorded: ${yieldClaim._id}`);
+
+    // Update portfolio
+    try {
+      await this.userPortfolioService.updateOnYieldClaim(yieldClaim, asset.network || 'mantle');
+    } catch (error: any) {
+      this.logger.error(`Failed to update portfolio on yield claim: ${error.message}`);
+    }
 
     // Mark all purchases for this asset and investor as CLAIMED
     const updateResult = await this.purchaseModel.updateMany(

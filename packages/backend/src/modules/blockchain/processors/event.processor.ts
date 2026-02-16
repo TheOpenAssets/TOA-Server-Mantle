@@ -22,6 +22,7 @@ import {
   SolvencyPositionStatus as PositionStatus 
 } from '@openassets/types';
 import { SolvencyPositionService } from '../../solvency/services/solvency-position.service';
+import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
 
 @Processor('event-processing')
 export class EventProcessor extends WorkerHost {
@@ -38,6 +39,7 @@ export class EventProcessor extends WorkerHost {
     private notificationService: NotificationService,
     private sseService: SseEmitterService,
     private solvencyPositionService: SolvencyPositionService,
+    private userPortfolioService: UserPortfolioService,
   ) {
     super();
   }
@@ -354,7 +356,7 @@ export class EventProcessor extends WorkerHost {
           const negativeAmount = '-' + amount; // Negative value to reduce portfolio balance
           const estimatedValue = (BigInt(amount) * BigInt(pricePerToken)) / BigInt(10 ** 18);
 
-          await this.purchaseModel.create({
+          const purchase = await this.purchaseModel.create({
             txHash: lockTxHash,
             assetId,
             investorWallet: maker.toLowerCase(),
@@ -375,6 +377,13 @@ export class EventProcessor extends WorkerHost {
           });
 
           this.logger.log(`[P2P Event Processor] ✅ Negative Purchase record created for seller (tokens locked): ${maker.substring(0, 8)}... - ${amountFmt} tokens`);
+
+          // Update portfolio
+          try {
+            await this.userPortfolioService.updateOnPurchase(purchase, asset.network || 'mantle');
+          } catch (error: any) {
+            this.logger.error(`[P2P Event Processor] Failed to update portfolio: ${error.message}`);
+          }
         }
       } catch (error: any) {
         this.logger.error(`[P2P Event Processor] Failed to create negative Purchase record: ${error.message}`);
@@ -471,7 +480,7 @@ export class EventProcessor extends WorkerHost {
       } : undefined;
 
       // Buyer receives tokens (positive Purchase record)
-      await this.purchaseModel.create({
+      const buyerPurchase = await this.purchaseModel.create({
         txHash: `${txHash}-buy`,
         assetId: order.assetId,
         investorWallet: trade.buyer,
@@ -488,6 +497,13 @@ export class EventProcessor extends WorkerHost {
       });
 
       this.logger.log(`[P2P Event Processor] ✅ Purchase record created for buyer: ${trade.buyer.substring(0, 8)}... (+${amountFmt} tokens)`);
+
+      // Update portfolio for buyer
+      try {
+        await this.userPortfolioService.updateOnPurchase(buyerPurchase, asset?.network || 'mantle');
+      } catch (error: any) {
+        this.logger.error(`[P2P Event Processor] Failed to update buyer portfolio: ${error.message}`);
+      }
 
       // CRITICAL: Handle seller's tokens
       if (!order.isBuy) {
@@ -511,10 +527,16 @@ export class EventProcessor extends WorkerHost {
 
         if (sellLockRecord) {
           this.logger.log(`[P2P Event Processor] ✅ Updated seller's (maker) lock record to SECONDARY_MARKET sale: ${trade.seller.substring(0, 8)}...`);
+          // Update portfolio for seller
+          try {
+            await this.userPortfolioService.updateOnPurchase(sellLockRecord as any, asset?.network || 'mantle');
+          } catch (error: any) {
+            this.logger.error(`[P2P Event Processor] Failed to update seller portfolio: ${error.message}`);
+          }
         } else {
           this.logger.error(`[P2P Event Processor] ❌ Could not find original sell lock record for order ${orderId} to update.`);
           // As a fallback, create a new record, though this indicates a potential issue.
-          await this.purchaseModel.create({
+          const fallbackPurchase = await this.purchaseModel.create({
             txHash: `${txHash}-sell`,
             assetId: order.assetId,
             investorWallet: trade.seller,
@@ -530,12 +552,18 @@ export class EventProcessor extends WorkerHost {
             metadata,
           });
           this.logger.warn(`[P2P Event Processor] Created fallback purchase record for seller.`);
+          
+          try {
+            await this.userPortfolioService.updateOnPurchase(fallbackPurchase, asset?.network || 'mantle');
+          } catch (error: any) {
+            this.logger.error(`[P2P Event Processor] Failed to update seller portfolio (fallback): ${error.message}`);
+          }
         }
       } else {
         // This was a BUY order, the seller is the TAKER.
         // Create a new negative purchase record for them as no lock existed.
         const negativeAmount = '-' + amountFilled;
-        await this.purchaseModel.create({
+        const takerPurchase = await this.purchaseModel.create({
           txHash: `${txHash}-sell`,
           assetId: order.assetId,
           investorWallet: trade.seller,
@@ -551,6 +579,12 @@ export class EventProcessor extends WorkerHost {
           metadata,
         });
         this.logger.log(`[P2P Event Processor] ✅ Created new purchase record for seller (taker): ${trade.seller.substring(0, 8)}... (-${amountFmt} tokens)`);
+
+        try {
+          await this.userPortfolioService.updateOnPurchase(takerPurchase, asset?.network || 'mantle');
+        } catch (error: any) {
+          this.logger.error(`[P2P Event Processor] Failed to update seller (taker) portfolio: ${error.message}`);
+        }
       }
 
     } catch (error: any) {
@@ -646,7 +680,7 @@ export class EventProcessor extends WorkerHost {
             const asset = await this.assetModel.findOne({ assetId: order.assetId });
 
             // Create positive Purchase record to offset the negative lock
-            await this.purchaseModel.create({
+            const purchase = await this.purchaseModel.create({
               txHash: cancelTxHash,
               assetId: order.assetId,
               investorWallet: order.maker,
@@ -667,6 +701,13 @@ export class EventProcessor extends WorkerHost {
             });
 
             this.logger.log(`[P2P Event Processor] ✅ Cancel reversal record created: ${order.maker.substring(0, 8)}... - ${remainingFmt} tokens returned`);
+
+            // Update portfolio
+            try {
+              await this.userPortfolioService.updateOnPurchase(purchase, asset?.network || 'mantle');
+            } catch (error: any) {
+              this.logger.error(`[P2P Event Processor] Failed to update portfolio: ${error.message}`);
+            }
           }
         } catch (error: any) {
           this.logger.error(`[P2P Event Processor] Failed to create cancel reversal record: ${error.message}`);
@@ -716,6 +757,8 @@ export class EventProcessor extends WorkerHost {
       // We need to sync the full position after borrow
       await this.solvencyPositionService.syncPositionWithBlockchain(positionId);
       this.logger.log(`✅ Position ${positionId} synced after borrow event`);
+      
+      await this.userPortfolioService.updateOnSolvencyEvent(positionId, 'mantle');
     } catch (error: any) {
       this.logger.error(`Failed to sync position ${positionId} after borrow: ${error.message}`);
     }
@@ -728,6 +771,8 @@ export class EventProcessor extends WorkerHost {
     try {
       await this.solvencyPositionService.recordRepayment(positionId, amountPaid, principal);
       this.logger.log(`✅ Position ${positionId} updated after repayment`);
+      
+      await this.userPortfolioService.updateOnSolvencyEvent(positionId, 'mantle');
     } catch (error: any) {
       this.logger.error(`Failed to process repayment for position ${positionId}: ${error.message}`);
     }
@@ -784,6 +829,7 @@ export class EventProcessor extends WorkerHost {
     try {
       await this.solvencyPositionService.markLiquidated(positionId, marketplaceListingId, txHash);
       this.logger.log(`✅ Position ${positionId} marked as liquidated`);
+      await this.userPortfolioService.updateOnSolvencyEvent(positionId, 'mantle');
     } catch (error: any) {
       this.logger.error(`Failed to process liquidation for position ${positionId}: ${error.message}`);
     }
@@ -800,6 +846,7 @@ export class EventProcessor extends WorkerHost {
       position.debtRecovered = debtRepaid;
       await position.save();
       this.logger.log(`✅ Position ${positionId} marked as settled`);
+      await this.userPortfolioService.updateOnSolvencyEvent(positionId, 'mantle');
     } catch (error: any) {
       this.logger.error(`Failed to process liquidation settlement for position ${positionId}: ${error.message}`);
     }
@@ -812,6 +859,7 @@ export class EventProcessor extends WorkerHost {
     try {
       await this.solvencyPositionService.recordWithdrawal(positionId, amount);
       this.logger.log(`✅ Position ${positionId} updated after withdrawal`);
+      await this.userPortfolioService.updateOnSolvencyEvent(positionId, 'mantle');
     } catch (error: any) {
       this.logger.error(`Failed to process withdrawal for position ${positionId}: ${error.message}`);
     }

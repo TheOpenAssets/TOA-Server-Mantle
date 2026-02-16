@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { execSync } from 'child_process';
 import {
   rpc,
   TransactionBuilder,
@@ -12,6 +13,7 @@ import {
   BASE_FEE,
   Keypair,
   scValToNative,
+  nativeToScVal,
   StrKey,
   Asset,
 } from '@stellar/stellar-sdk';
@@ -276,6 +278,26 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
       }
     }
 
+    // 3. Deploy the SAC (Stellar Asset Contract) for this classic asset.
+    //    The SAC must exist before listOnMarketplace can call set_authorized or mint on it.
+    const assetIdentifier = `${assetCode}:${platformKeypair.publicKey()}`;
+    const rpcUrl = this.configService.get<string>('network.stellar.rpcUrl') || 'https://soroban-testnet.stellar.org';
+    try {
+      const sacId = execSync(
+        `stellar contract asset deploy --asset "${assetIdentifier}" --rpc-url "${rpcUrl}" --network-passphrase "${this.networkPassphrase}" --source-account ${platformKeypair.secret()}`,
+        { encoding: 'utf8', stdio: 'pipe' },
+      ).trim();
+      this.logger.log(`SAC deployed for ${assetCode}: ${sacId}`);
+    } catch (err: any) {
+      const stderr = (err.stderr as string) || '';
+      if (stderr.includes('ExistingValue') || stderr.includes('already exists')) {
+        this.logger.warn(`SAC already deployed for ${assetCode} — skipping`);
+      } else {
+        // Non-fatal: log and continue. Listing will surface a clearer error if SAC is missing.
+        this.logger.error(`SAC deploy warning for ${assetCode}: ${stderr || (err as Error).message}`);
+      }
+    }
+
     return {
       primaryIdentifier: `${assetCode}:${platformKeypair.publicKey()}`,
       txId: flagsTxId,
@@ -294,60 +316,73 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     const adminKeypair = this.walletAdapter.getAdminKeypair();
     const platformKeypair = this.walletAdapter.getPlatformKeypair();
     const contractId = this.contractAdapter.getContractAddress('PrimaryMarket');
-    const contract = new Contract(contractId);
+    const primaryMarket = new Contract(contractId);
     
     // In Stellar, tokenIdentifier is "ASSET_CODE:ISSUER_PUBKEY"
     const [assetCode, issuerPublicKey] = tokenIdentifier.split(':');
 
-    // The PrimaryMarket contract stores asset_issuer and later calls token::Client::new(&env, &listing.asset_issuer).
-    // token::Client requires a contract address, not a Stellar account address.
-    // We must pass the SAC (Stellar Asset Contract) address derived from the classic asset.
+    // The SAC (Stellar Asset Contract) address derived from the classic asset.
     const sacContractId = new Asset(assetCode || '', issuerPublicKey || '').contractId(this.networkPassphrase);
-
-    // Every Soroban contract has a corresponding Stellar account ID (G...) for classic operations
-    const primaryMarketAccountId = StrKey.encodeEd25519PublicKey(StrKey.decodeContract(contractId));
+    const sacContract = new Contract(sacContractId);
 
     this.logger.log(`Listing ${assetCode} on Stellar Primary Market...`);
     this.logger.debug(`SAC: ${sacContractId}`);
-    this.logger.debug(`PrimaryMarket Account: ${primaryMarketAccountId}`);
+    this.logger.debug(`PrimaryMarket: ${contractId}`);
 
-    let source = await this.sorobanServer.getAccount(adminKeypair.publicKey());
-
-    // Step 1: Authorize and Fund the PrimaryMarket contract (Classic Operations)
-    // These are done in a separate transaction because Soroban simulation only supports 1 op (InvokeHostFunction)
+    // SAC operations (set_authorized, mint) require the issuer (platformKeypair) as both
+    // the source account and the Soroban auth signer.
     if (platformKeypair.publicKey() === issuerPublicKey) {
-      this.logger.log(`Authorizing PrimaryMarket trustline and transferring tokens for ${assetCode}...`);
-      
-      const classicTx = new TransactionBuilder(source, {
+      // Step 1: Authorize the PrimaryMarket balance entry on the SAC.
+      //         AUTH_REQUIRED is set, so any address (including contracts) must be authorized
+      //         via set_authorized() before it can receive tokens.
+      this.logger.log(`Authorizing PrimaryMarket balance on SAC...`);
+      let sacSource = await this.sorobanServer.getAccount(platformKeypair.publicKey());
+
+      const authTx = new TransactionBuilder(sacSource, {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
       })
-      .addOperation(Operation.allowTrust({
-        trustor: primaryMarketAccountId,
-        assetCode: assetCode || '',
-        authorize: true,
-        source: platformKeypair.publicKey(),
-      }))
-      .addOperation(Operation.payment({
-        destination: primaryMarketAccountId,
-        asset: new Asset(assetCode || '', issuerPublicKey || ''),
-        amount: (BigInt(totalSupply) / BigInt(10_000_000)).toString(), // Convert units to full tokens for classic payment
-        source: platformKeypair.publicKey(),
-      }))
+      .addOperation(sacContract.call(
+        'set_authorized',
+        new Address(contractId).toScVal(),
+        xdr.ScVal.scvBool(true),
+      ))
       .setTimeout(60)
       .build();
 
-      classicTx.sign(adminKeypair);
-      classicTx.sign(platformKeypair);
+      const preparedAuthTx = await this.prepareContractCall(authTx, platformKeypair);
+      const authResponse = await this.sorobanServer.sendTransaction(preparedAuthTx);
+      if (authResponse.status !== 'PENDING') {
+        this.logger.warn(`set_authorized may have failed: ${authResponse.status}`);
+      } else {
+        await this.confirmTransaction(authResponse.hash);
+      }
 
-      const classicResponse = await this.sorobanServer.sendTransaction(classicTx);
-      await this.confirmTransaction(classicResponse.hash);
-      
-      // Fetch updated account state (sequence number) for the next transaction
-      source = await this.sorobanServer.getAccount(adminKeypair.publicKey());
+      // Step 2: Mint total_supply tokens to the PrimaryMarket contract.
+      //         The issuer calls mint() (not transfer) since the issuer never "holds" tokens —
+      //         it emits them on demand via the SAC.
+      this.logger.log(`Minting ${totalSupply} token stroops to PrimaryMarket...`);
+      sacSource = await this.sorobanServer.getAccount(platformKeypair.publicKey());
+
+      const mintTx = new TransactionBuilder(sacSource, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+      .addOperation(sacContract.call(
+        'mint',
+        new Address(contractId).toScVal(),
+        nativeToScVal(BigInt(totalSupply), { type: 'i128' }),
+      ))
+      .setTimeout(60)
+      .build();
+
+      const preparedMintTx = await this.prepareContractCall(mintTx, platformKeypair);
+      const mintResponse = await this.sorobanServer.sendTransaction(preparedMintTx);
+      await this.confirmTransaction(mintResponse.hash);
     }
-    
-    // Step 2: Register the listing in the PrimaryMarket contract (Soroban Operation)
+
+    // Step 3: Register the listing in the PrimaryMarket contract
+    let source = await this.sorobanServer.getAccount(adminKeypair.publicKey());
     
     // Option<i64> in Soroban: None → scvVoid(), Some(x) → scvI64(x) directly
     let minPriceVal: xdr.ScVal;
@@ -361,12 +396,12 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     const listingTypeSymbol = listingType.toString().toUpperCase() === 'AUCTION' ? 'Auction' : 'Static';
     const listingTypeVal = xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(listingTypeSymbol)]);
 
-    const sorobanTx = new TransactionBuilder(source, {
+    const listTx = new TransactionBuilder(source, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
     })
     .addOperation(
-      contract.call(
+      primaryMarket.call(
         'list_asset',
         new Address(adminKeypair.publicKey()).toScVal(),
         xdr.ScVal.scvString(assetCode || ''),
@@ -381,8 +416,8 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     .setTimeout(60)
     .build();
 
-    const preparedTx = await this.prepareContractCall(sorobanTx, adminKeypair);
-    const response = await this.sorobanServer.sendTransaction(preparedTx);
+    const preparedListTx = await this.prepareContractCall(listTx, adminKeypair);
+    const response = await this.sorobanServer.sendTransaction(preparedListTx);
     await this.confirmTransaction(response.hash);
 
     return { txId: response.hash };
@@ -644,7 +679,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     return { txId: response.hash };
   }
 
-  private async confirmTransaction(hash: string, timeoutMs: number = 30000): Promise<rpc.Api.GetTransactionResponse> {
+  private async confirmTransaction(hash: string, timeoutMs: number = 60000): Promise<rpc.Api.GetTransactionResponse> {
     const start = Date.now();
     this.logger.log(`Waiting for Stellar transaction ${hash} to confirm...`);
 

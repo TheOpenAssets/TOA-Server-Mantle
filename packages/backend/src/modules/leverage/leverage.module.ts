@@ -13,6 +13,7 @@ import { LeverageAdminController } from './controllers/leverage-admin.controller
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuthModule } from '../auth/auth.module';
+import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AuthModule } from '../auth/auth.module';
     forwardRef(() => BlockchainModule),
     NotificationsModule,
     AuthModule, // For JwtAuthGuard
+    UserPortfolioModule,
   ],
   controllers: [LeverageController, LeverageAdminController],
   providers: [

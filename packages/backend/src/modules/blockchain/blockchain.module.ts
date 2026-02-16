@@ -21,6 +21,7 @@ import { YieldModule } from '../yield/yield.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SecondaryMarketModule } from '../secondary-market/secondary-market.module';
 import { SolvencyModule } from '../solvency/solvency.module';
+import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
 import { forwardRef } from '@nestjs/common';
 import { 
   BLOCKCHAIN_ADAPTER, 
@@ -63,6 +64,7 @@ export class BlockchainModule {
         forwardRef(() => NotificationsModule),
         forwardRef(() => SecondaryMarketModule),
         forwardRef(() => SolvencyModule),
+        UserPortfolioModule,
       ],
       providers: [
         // Registry
