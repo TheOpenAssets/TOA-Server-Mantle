@@ -47,6 +47,21 @@ export class Purchase {
   @Prop()
   soldP2PTradeId?: string; // Reference to P2PTrade when sold
 
+  @Prop({ type: String, enum: ['mantle', 'stellar'], default: 'mantle' })
+  network!: string;
+
+  @Prop({ type: Boolean })
+  rawPrecise?: boolean;
+
+  @Prop({ type: String })
+  rawAmount?: string;
+
+  @Prop({ type: String })
+  rawPrice?: string;
+
+  @Prop({ type: String })
+  rawTotalPayment?: string;
+
   @Prop({ type: Object })
   metadata?: {
     assetName?: string;

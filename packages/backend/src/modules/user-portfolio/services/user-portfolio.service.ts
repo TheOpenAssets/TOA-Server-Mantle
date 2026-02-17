@@ -80,7 +80,7 @@ export class UserPortfolioService {
           assetName: `${asset.metadata?.invoiceNumber || 'N/A'} - ${asset.metadata?.buyerName || 'N/A'}`,
           industry: asset.metadata?.industry,
           riskTier: asset.metadata?.riskTier,
-          assetType: asset.metadata?.type,
+          assetType: asset.assetType,
         } : {};
 
         // Domain specific enrichment
@@ -324,20 +324,22 @@ export class UserPortfolioService {
        investmentDeltaRaw = -totalPaymentRaw;
     }
 
-    const currentBalanceRaw = fromCanonical(holding.tokenBalance, 18);
-    const currentInvestedRaw = fromCanonical(holding.totalInvested, 6);
+    const currentBalanceRaw = fromCanonical(holding?.tokenBalance || '0', 18);
+    const currentInvestedRaw = fromCanonical(holding?.totalInvested || '0', 6);
 
-    holding.tokenBalance = toCanonical(currentBalanceRaw + amountRaw, 18).value;
-    holding.totalInvested = toCanonical(currentInvestedRaw + investmentDeltaRaw, 6).value;
-    holding.lastActivityAt = new Date();
-    
-    if (!holding.purchaseIds) holding.purchaseIds = [];
-    if (!holding.purchaseIds.some(id => id.toString() === purchase._id.toString())) {
-      holding.purchaseIds.push(purchase._id as any);
-    }
+    if (holding) {
+      holding.tokenBalance = toCanonical(currentBalanceRaw + amountRaw, 18).value;
+      holding.totalInvested = toCanonical(currentInvestedRaw + investmentDeltaRaw, 6).value;
+      holding.lastActivityAt = new Date();
+      
+      if (!holding.purchaseIds) holding.purchaseIds = [];
+      if (!holding.purchaseIds.some(id => id.toString() === purchase._id.toString())) {
+        holding.purchaseIds.push(purchase._id as any);
+      }
 
-    if (fromCanonical(holding.tokenBalance, 18) > 0n && holding.status === HoldingStatus.CLAIMED) {
-      holding.status = HoldingStatus.ACTIVE;
+      if (fromCanonical(holding.tokenBalance, 18) > 0n && holding.status === HoldingStatus.CLAIMED) {
+        holding.status = HoldingStatus.ACTIVE;
+      }
     }
 
     const activityStub = {
@@ -542,13 +544,17 @@ export class UserPortfolioService {
         timestamp: p.createdAt 
       })),
       ...yieldClaims.map(c => ({ 
-        txHash: c.transactionHash || (c as any).txHash, 
+        txHash: (c as any).transactionHash || (c as any).txHash, 
         source: 'YIELD_CLAIM', 
-        assetId: c.assetId, 
-        amount: c.usdcReceived.toString().includes('.') ? c.usdcReceived.toString() : toCanonical(c.usdcReceived, 6).value, 
-        timestamp: c.claimTimestamp || c.createdAt 
+        assetId: (c as any).assetId, 
+        amount: (c as any).usdcReceived.toString().includes('.') ? (c as any).usdcReceived.toString() : toCanonical((c as any).usdcReceived, 6).value, 
+        timestamp: (c as any).claimTimestamp || (c as any).createdAt || new Date()
       })),
-    ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 20);
+    ].sort((a, b) => {
+      const timeA = (a.timestamp ? (a.timestamp instanceof Date ? a.timestamp : new Date(a.timestamp)) : new Date(0)).getTime();
+      const timeB = (b.timestamp ? (b.timestamp instanceof Date ? b.timestamp : new Date(b.timestamp)) : new Date(0)).getTime();
+      return timeB - timeA;
+    }).slice(0, 20);
 
     portfolio.recentActivity = allActivity as any;
 
@@ -593,17 +599,19 @@ export class UserPortfolioService {
        investmentDeltaRaw = -totalPaymentRaw;
     }
 
-    const currentBalanceRaw = fromCanonical(holding.tokenBalance, 18);
-    const currentInvestedRaw = fromCanonical(holding.totalInvested, 6);
+    const currentBalanceRaw = fromCanonical(holding?.tokenBalance || '0.0000', 18);
+    const currentInvestedRaw = fromCanonical(holding?.totalInvested || '0.0000', 6);
 
-    holding.tokenBalance = toCanonical(currentBalanceRaw + amountRaw, 18).value;
-    holding.totalInvested = toCanonical(currentInvestedRaw + investmentDeltaRaw, 6).value;
-    if (purchase.createdAt && purchase.createdAt > holding.lastActivityAt) {
-      holding.lastActivityAt = purchase.createdAt;
+    if (holding) {
+      holding.tokenBalance = toCanonical(currentBalanceRaw + amountRaw, 18).value;
+      holding.totalInvested = toCanonical(currentInvestedRaw + investmentDeltaRaw, 6).value;
+      if (purchase.createdAt && purchase.createdAt > holding.lastActivityAt) {
+        holding.lastActivityAt = purchase.createdAt;
+      }
+      
+      if (!holding.purchaseIds) holding.purchaseIds = [];
+      holding.purchaseIds.push(purchase._id as any);
     }
-    
-    if (!holding.purchaseIds) holding.purchaseIds = [];
-    holding.purchaseIds.push(purchase._id as any);
   }
 
   /**

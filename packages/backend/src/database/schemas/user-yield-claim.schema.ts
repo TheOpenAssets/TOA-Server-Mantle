@@ -2,8 +2,10 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 import { YieldClaimStatus, WalletAddress } from '@openassets/types';
 
+export type UserYieldClaimDocument = UserYieldClaim & Document;
+
 @Schema({ timestamps: true })
-export class UserYieldClaim extends Document {
+export class UserYieldClaim {
   @Prop({ required: true, index: true, type: String })
   userAddress!: WalletAddress; // Investor who claimed
 
@@ -36,6 +38,9 @@ export class UserYieldClaim extends Document {
 
   @Prop({ default: false })
   notificationSent!: boolean; // Whether user was notified
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const UserYieldClaimSchema = SchemaFactory.createForClass(UserYieldClaim);

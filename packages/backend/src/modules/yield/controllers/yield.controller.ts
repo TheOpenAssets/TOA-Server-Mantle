@@ -77,7 +77,7 @@ export class YieldController {
           },
         });
 
-        await this.userYieldClaimService.markNotificationSent(claim._id.toString());
+        await this.userYieldClaimService.markNotificationSent((claim as any)._id.toString());
 
         this.logger.log(
           `✅ Yield claim recorded and notification sent to ${investorWallet}`,
@@ -91,7 +91,7 @@ export class YieldController {
         success: true,
         message: 'Yield claim recorded successfully',
         claim: {
-          id: claim._id,
+          id: (claim as any)._id,
           tokensBurned: dto.tokensBurned,
           usdcReceived: dto.usdcReceived,
           transactionHash: dto.txHash,
@@ -121,7 +121,7 @@ export class YieldController {
         success: true,
         count: claims.length,
         claims: claims.map(claim => ({
-          id: claim._id,
+          id: (claim as any)._id,
           assetId: claim.assetId,
           tokenAddress: claim.tokenAddress,
           tokensBurned: claim.tokensBurned,

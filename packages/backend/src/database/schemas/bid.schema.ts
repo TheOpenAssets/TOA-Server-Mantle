@@ -42,6 +42,9 @@ export class Bid {
   @Prop({ type: Date })
   settledAt?: Date; // When the bid was settled
 
+  @Prop({ type: Boolean })
+  rawPrecise?: boolean; // Precise representation for calculations
+
   // Timestamps added by Mongoose
   createdAt?: Date;
   updatedAt?: Date;

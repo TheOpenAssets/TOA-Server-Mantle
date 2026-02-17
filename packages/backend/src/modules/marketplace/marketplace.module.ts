@@ -13,7 +13,7 @@ import { AuctionService } from './services/auction.service';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
-import { ModuleRegistryModule } from '../registry/module-registry.module';
+import { RegistryModule } from '../registry/registry.module';
 
 @Module({
   imports: [
@@ -28,7 +28,7 @@ import { ModuleRegistryModule } from '../registry/module-registry.module';
     BlockchainModule,
     NotificationsModule,
     UserPortfolioModule,
-    ModuleRegistryModule,
+    RegistryModule,
   ],
   controllers: [MarketplaceController],
   providers: [PurchaseTrackerService, BidTrackerService, AuctionService],

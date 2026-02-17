@@ -200,7 +200,13 @@ export class MantleAdminStrategy implements IAdminDomainStrategy {
       throw new HttpException('Asset or token not found', HttpStatus.NOT_FOUND);
     }
 
-    const { txId } = await this.networkRegistryService.endAuctionOnMarketplace(asset.token.address, clearingPrice);
+    const resultOrStatus: any = await this.networkRegistryService.endAuctionOnMarketplace(asset.token.address, clearingPrice);
+    
+    if (resultOrStatus.skipped) {
+      throw new HttpException(`Auction end skipped: ${resultOrStatus.reason}`, HttpStatus.BAD_REQUEST);
+    }
+
+    const txId = resultOrStatus.txId;
     const result = await this.assetLifecycleService.endAuction(assetId, clearingPrice, txId);
     return {
       ...result,

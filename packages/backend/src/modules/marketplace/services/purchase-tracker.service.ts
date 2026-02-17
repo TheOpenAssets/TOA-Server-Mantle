@@ -99,9 +99,9 @@ export class PurchaseTrackerService {
 
       return {
         success: true,
-        purchaseId: purchase._id,
+        purchaseId: (purchase as any)._id,
         assetId: dto.assetId,
-        amount: '-' + depositAmountInWei,
+        amount: '-' + depositAmount,
         totalPayment: '0',
         tokenAddress: asset.token?.address,
         type: 'DEPOSIT',
@@ -147,11 +147,11 @@ export class PurchaseTrackerService {
       },
     });
 
-    this.logger.log(`Purchase recorded: ${purchase._id}`);
+    this.logger.log(`Purchase recorded: ${(purchase as any)._id}`);
 
     // Update portfolio
     try {
-      await this.userPortfolioService.updateOnPurchase(purchase, asset.network || 'mantle');
+      await this.userPortfolioService.updateOnPurchase(purchase as any, asset.network || 'mantle');
     } catch (error: any) {
       this.logger.error(`Failed to update portfolio: ${error.message}`);
     }
@@ -213,7 +213,7 @@ export class PurchaseTrackerService {
 
     return {
       success: true,
-      purchaseId: purchase._id,
+      purchaseId: (purchase as any)._id,
       assetId: dto.assetId,
       amount: purchaseData.amount.value,
       totalPayment: purchaseData.totalPayment.value,
@@ -255,7 +255,7 @@ export class PurchaseTrackerService {
       tokensBurned: tokensBurnedCanonical.value,
       usdcReceived: usdcReceivedCanonical.value,
       // Companion fields for precision
-      rawPrecise: tokensBurnedCanonical.rawPrecise || usdcReceivedCanonical.rawPrecise,
+      rawPrecise: (tokensBurnedCanonical as any).rawPrecise || (usdcReceivedCanonical as any).rawPrecise,
       rawTokensBurned: tokensBurnedCanonical.rawPrice,
       rawUsdcReceived: usdcReceivedCanonical.rawPrice,
       blockNumber: dto.blockNumber ? parseInt(dto.blockNumber) : undefined,
@@ -267,11 +267,11 @@ export class PurchaseTrackerService {
       },
     });
 
-    this.logger.log(`Yield claim recorded: ${yieldClaim._id}`);
+    this.logger.log(`Yield claim recorded: ${(yieldClaim as any)._id}`);
 
     // Update portfolio
     try {
-      await this.userPortfolioService.updateOnYieldClaim(yieldClaim, asset.network || 'mantle');
+      await this.userPortfolioService.updateOnYieldClaim(yieldClaim as any, asset.network || 'mantle');
     } catch (error: any) {
       this.logger.error(`Failed to update portfolio on yield claim: ${error.message}`);
     }
@@ -320,7 +320,7 @@ export class PurchaseTrackerService {
     return {
       success: true,
       message: 'Yield claim recorded successfully',
-      yieldClaimId: yieldClaim._id,
+      yieldClaimId: (yieldClaim as any)._id,
       assetId: dto.assetId,
       tokensBurned: tokensBurnedCanonical.value,
       usdcReceived: usdcReceivedCanonical.value,

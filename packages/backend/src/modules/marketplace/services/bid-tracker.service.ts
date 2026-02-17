@@ -90,7 +90,7 @@ export class BidTrackerService {
       // blockNumber: bidData.blockNumber,
     });
 
-    this.logger.log(`Bid recorded: ${bid._id}`);
+    this.logger.log(`Bid recorded: ${(bid as any)._id}`);
 
     // Send notification to bidder
     try {
@@ -107,7 +107,7 @@ export class BidTrackerService {
         action: NotificationAction.VIEW_ASSET,
         actionMetadata: {
           assetId: dto.assetId,
-          bidId: bid._id.toString(),
+          bidId: (bid as any)._id.toString(),
           tokenAmount: bidData.tokenAmount.value,
           price: bidData.price.value,
           usdcDeposited: usdcDepositedCanonical.value,
@@ -120,11 +120,11 @@ export class BidTrackerService {
 
     return {
       success: true,
-      bidId: bid._id,
+      bidId: (bid as any)._id,
       assetId: dto.assetId,
       tokenAmount: bidData.tokenAmount,
       price: bidData.price,
-      usdcDeposited: usdcDeposited.toString(),
+      usdcDeposited: usdcDepositedCanonical.value,
       bidIndex: bidData.bidIndex,
     };
   }
@@ -149,7 +149,7 @@ export class BidTrackerService {
       success: true,
       count: bids.length,
       bids: bids.map(b => ({
-        bidId: b._id,
+        bidId: (b as any)._id,
         assetId: b.assetId,
         tokenAmount: b.tokenAmount,
         price: b.price,
@@ -265,7 +265,7 @@ export class BidTrackerService {
     this.logger.log(`Bid outcome resolved: ${newStatus}`);
 
     await this.bidModel.updateOne(
-      { _id: bid._id },
+      { _id: (bid as any)._id },
       {
         $set: {
           status: newStatus,
@@ -275,7 +275,7 @@ export class BidTrackerService {
       },
     );
 
-    this.logger.log(`DB updated for bid ${bid._id} with status ${newStatus}`);
+    this.logger.log(`DB updated for bid ${(bid as any)._id} with status ${newStatus}`);
 
     // NOTE: listing.sold is updated automatically by the event processor
     // when it processes the BidSettled blockchain event (event.processor.ts)
@@ -302,7 +302,7 @@ export class BidTrackerService {
           action: NotificationAction.VIEW_PORTFOLIO,
           actionMetadata: {
             assetId: dto.assetId,
-            bidId: bid._id.toString(),
+            bidId: (bid as any)._id.toString(),
             tokensReceived: settlementData.tokensReceived.value,
             clearingPrice: pricePerTokenCanonical.value,
           },
@@ -322,7 +322,7 @@ export class BidTrackerService {
           action: NotificationAction.VIEW_MARKETPLACE,
           actionMetadata: {
             assetId: dto.assetId,
-            bidId: bid._id.toString(),
+            bidId: (bid as any)._id.toString(),
             refundAmount: settlementData.refundAmount.value,
           },
         });
@@ -413,7 +413,7 @@ export class BidTrackerService {
 
     return {
       success: true,
-      bidId: bid._id,
+      bidId: (bid as any)._id,
       assetId: dto.assetId,
       bidIndex: dto.bidIndex,
       status: newStatus,
