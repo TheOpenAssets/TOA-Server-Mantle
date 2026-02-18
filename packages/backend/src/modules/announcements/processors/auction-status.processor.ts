@@ -8,13 +8,14 @@ import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { AnnouncementService } from '../services/announcement.service';
-import { BlockchainService } from '../../blockchain/services/blockchain.service';
+import { NetworkRegistryService } from '../../blockchain/services/network-registry.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { 
-  UserRole, 
-  NotificationType, 
-  NotificationSeverity, 
-  NotificationAction 
+import {
+  UserRole,
+  NotificationType,
+  NotificationSeverity,
+  NotificationAction,
+  ListingType,
 } from '@openassets/types';
 import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
 import { toISTISOString } from '../../../utils/date.utils';
@@ -48,7 +49,7 @@ export class AuctionStatusProcessor extends WorkerHost {
     @InjectQueue('auction-status-check')
     private auctionStatusQueue: Queue,
     private announcementService: AnnouncementService,
-    private blockchainService: BlockchainService,
+    private networkRegistryService: NetworkRegistryService,
     private notificationService: NotificationService,
     private assetLifecycleService: AssetLifecycleService,
   ) {
@@ -134,15 +135,19 @@ export class AuctionStatusProcessor extends WorkerHost {
         `Creating on-chain auction listing for ${assetId}: token=${tokenAddress}, reserve=${reservePrice}, minPrice=${minPrice}, duration=${duration}s`,
       );
 
-      // Create the auction listing on-chain
-      const txHash = await this.blockchainService.listOnMarketplace(
+      // Create the auction listing on-chain via the network-agnostic adapter
+      const totalSupply = asset.tokenParams?.totalSupply || '0';
+      const listingResult = await this.networkRegistryService.listAssetOnMarketplace(
         tokenAddress,
-        'AUCTION',
+        ListingType.AUCTION,
         reservePrice,
         minInvestment,
-        duration.toString(),
+        duration,
+        totalSupply,
         minPrice,
       );
+
+      const txHash = (listingResult as any)?.txId ?? 'unknown';
 
       this.logger.log(`Auction listing created on-chain in tx: ${txHash}`);
 

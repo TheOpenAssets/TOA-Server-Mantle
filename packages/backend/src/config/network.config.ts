@@ -47,6 +47,8 @@ export default registerAs('network', () => {
         primaryMarket: process.env.STELLAR_PRIMARY_MARKET_CONTRACT_ID,
         yieldVault: process.env.STELLAR_YIELD_VAULT_CONTRACT_ID,
         trustedIssuersRegistry: process.env.STELLAR_TRUSTED_ISSUERS_REGISTRY_CONTRACT_ID,
+        // Circle USDC SAC address on Stellar testnet (used for auction bid deposits)
+        usdcContract: process.env.STELLAR_USDC_CONTRACT,
       },
     } : null,
   };

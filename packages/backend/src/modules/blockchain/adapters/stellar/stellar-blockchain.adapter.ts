@@ -416,6 +416,17 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     const listingTypeSymbol = listingType.toString().toUpperCase() === 'AUCTION' ? 'Auction' : 'Static';
     const listingTypeVal = xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(listingTypeSymbol)]);
 
+    // usdc_contract: Option<Address> — required for auctions, None for static
+    let usdcContractVal: xdr.ScVal;
+    if (listingTypeSymbol === 'Auction') {
+      // Read USDC SAC from config; fall back to deriving from Circle's testnet issuer
+      const usdcContractId = this.configService.get<string>('network.stellar.contracts.usdcContract')
+        || new Asset('USDC', 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5').contractId(this.networkPassphrase);
+      usdcContractVal = new Address(usdcContractId).toScVal();
+    } else {
+      usdcContractVal = xdr.ScVal.scvVoid();
+    }
+
     const listTx = new TransactionBuilder(source, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
@@ -431,6 +442,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         minPriceVal,
         xdr.ScVal.scvU64(xdr.Uint64.fromString(duration.toString())),
         xdr.ScVal.scvI64(xdr.Int64.fromString(totalSupplyRaw.toString())),
+        usdcContractVal,
       )
     )
     .setTimeout(60)
