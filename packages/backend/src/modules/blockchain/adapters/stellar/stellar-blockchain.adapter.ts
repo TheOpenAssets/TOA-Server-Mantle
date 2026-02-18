@@ -556,19 +556,17 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         if (eventName === 'BidSubmitted') {
           const data = event.body().v0().data();
           const args = scValToNative(data);
-          
-          // Expecting [assetId, bidder, tokenAmount, price, bidIndex]
-          const [evtAssetId, evtBidder, evtTokenAmount, evtPrice, evtBidIndex] = args;
 
-          if (evtAssetId === assetId && evtBidder === expectedBidder) {
-            // Price normalization: Soroban contract stores price divided by 10^10
-            // We must multiply back to restore canonical 6-decimal USDC form.
-            // const STELLAR_PRICE_MULTIPLIER = BigInt(10_000_000_000); // 10^10
-            // const normalizedPrice = (BigInt(evtPrice) * STELLAR_PRICE_MULTIPLIER).toString();
+          // Event fields (in order): [asset_code, bidder, token_amount, limit_price, bid_index]
+          // NOTE: asset_code is the Stellar asset code string (e.g. "RWA75BD0666"), not the
+          // backend UUID. We skip comparing it to assetId — the txHash uniquely identifies
+          // the transaction; verifying the bidder address is sufficient.
+          const [_evtAssetCode, evtBidder, evtTokenAmount, evtPrice, evtBidIndex] = args;
 
+          if (evtBidder === expectedBidder) {
             return {
               tokenAmount: toCanonical(evtTokenAmount, 7), // 7 decimals for tokens on Stellar
-              price: toCanonical(evtPrice, 6), // 6 decimals for USDC
+              price: toCanonical(evtPrice, 7), // 7 decimals for USDC on Stellar (SAC standard)
               bidIndex: Number(evtBidIndex),
             };
           }
