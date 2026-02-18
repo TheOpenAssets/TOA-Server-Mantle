@@ -341,6 +341,14 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     this.logger.debug(`SAC: ${sacContractId}`);
     this.logger.debug(`PrimaryMarket: ${contractId}`);
 
+    // Convert canonical inputs to raw integer stroops/USDC FIRST
+    // This must happen before any blockchain operations that use these values
+    const priceRaw = fromCanonical(price.toString(), 6); // USDC Price (6 decimals)
+    const minPriceRaw = minPrice && minPrice !== '0' && minPrice !== 'null'
+      ? fromCanonical(minPrice.toString(), 6)
+      : 0n;
+    const totalSupplyRaw = fromCanonical(totalSupply.toString(), 7); // Token Amount (7 decimals)
+
     // SAC operations (set_authorized, mint) require the issuer (platformKeypair) as both
     // the source account and the Soroban auth signer.
     if (platformKeypair.publicKey() === issuerPublicKey) {
@@ -373,7 +381,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
       // Step 2: Mint total_supply tokens to the PrimaryMarket contract.
       //         The issuer calls mint() (not transfer) since the issuer never "holds" tokens —
       //         it emits them on demand via the SAC.
-      this.logger.log(`Minting ${totalSupply} token stroops to PrimaryMarket...`);
+      this.logger.log(`Minting ${totalSupplyRaw} token stroops to PrimaryMarket...`);
       sacSource = await this.sorobanServer.getAccount(platformKeypair.publicKey());
 
       const mintTx = new TransactionBuilder(sacSource, {
@@ -383,7 +391,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
       .addOperation(sacContract.call(
         'mint',
         new Address(contractId).toScVal(),
-        nativeToScVal(BigInt(totalSupply), { type: 'i128' }),
+        nativeToScVal(totalSupplyRaw, { type: 'i128' }),
       ))
       .setTimeout(60)
       .build();
@@ -395,13 +403,6 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
 
     // Step 3: Register the listing in the PrimaryMarket contract
     let source = await this.sorobanServer.getAccount(adminKeypair.publicKey());
-    
-    // Convert canonical inputs to raw integer stroops/USDC
-    const priceRaw = fromCanonical(price.toString(), 6); // USDC Price (6 decimals)
-    const minPriceRaw = minPrice && minPrice !== '0' && minPrice !== 'null'
-      ? fromCanonical(minPrice.toString(), 6)
-      : 0n;
-    const totalSupplyRaw = fromCanonical(totalSupply.toString(), 7); // Token Amount (7 decimals)
 
     // Option<i64> in Soroban: None → scvVoid(), Some(x) → scvI64(x) directly
     let minPriceVal: xdr.ScVal;

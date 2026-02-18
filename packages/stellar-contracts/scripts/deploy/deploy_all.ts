@@ -19,6 +19,12 @@
  * # OR with specific network
  * STELLAR_NETWORK=testnet npm run deploy:all
  *
+ * Environment Variables:
+ * ----------------------
+ * - STELLAR_NETWORK: Network to deploy to (default: testnet)
+ * - STELLAR_ACCOUNT: Account alias or secret key for deployment (default: default)
+ * - STELLAR_PLATFORM_TREASURY: Treasury address for auction payments (default: deployer address)
+ *
  * Requirements:
  * -------------
  * - soroban CLI installed: https://soroban.stellar.org/docs/getting-started/setup
@@ -272,12 +278,17 @@ async function main() {
   // Deploy PrimaryMarket
   let primaryMarketAddress = existingContracts.PrimaryMarket;
   if (!primaryMarketAddress) {
+    // Get platform treasury address from env or use deployer as default
+    const platformTreasury = process.env.STELLAR_PLATFORM_TREASURY || deployerAddress;
+    log(`Platform Treasury: ${platformTreasury}`, 'info');
+    
     primaryMarketAddress = deployContract(
       'PrimaryMarket',
       'primary_market.wasm',
       [
         `--admin ${deployerAddress}`,
         `--asset_registry ${assetRegistryAddress}`,
+        `--platform_treasury ${platformTreasury}`,
       ]
     );
     setContractAddress(deployed, 'PrimaryMarket', primaryMarketAddress);
