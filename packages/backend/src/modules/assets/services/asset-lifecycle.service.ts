@@ -27,7 +27,7 @@ import { AnnouncementService } from '../../announcements/services/announcement.s
 import { NotificationService } from '../../notifications/services/notification.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { detectNetworkType } from '../../auth/utils/wallet.util';
-import { toCanonical } from '../../blockchain/utils/numeric-conversion';
+import { toCanonical, fromCanonical } from '../../blockchain/utils/numeric-conversion';
 import { PAYMENT_ADAPTER, BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
 import { PaymentAdapter } from '../../blockchain/adapters/payment-adapter.interface';
 import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
@@ -109,58 +109,55 @@ export class AssetLifecycleService {
     const assetId = uuidv4();
     this.logger.log(`Creating ${dto.assetType} asset ${assetId} for originator ${userWallet}`);
 
-    // Detect network type and set appropriate decimal precision
+    // Detect network type (for future adapter usage)
     const network = detectNetworkType(userWallet);
-    const isStellar = network === 'stellar';
 
-    // Stellar uses 7 decimals for everything; EVM uses 18 for tokens, 6 for USDC
-    const tokenDecimals = isStellar ? 7 : 18;
-    const usdcDecimals = isStellar ? 7 : 6;
+    // All DTO values are now in canonical 4-decimal format
+    // Parse them as floats for calculations
+    const faceValue = parseFloat(dto.faceValue);
+    const totalSupply = parseFloat(dto.totalSupply);
+    const minRaisePercentage = parseFloat(dto.minRaisePercentage);
+    const maxRaisePercentage = parseFloat(dto.maxRaisePercentage || '95.0000'); // Default 95%
 
-    // Calculate price ranges based on face value and percentages
-    const faceValue = BigInt(dto.faceValue);
-    const totalSupply = BigInt(dto.totalSupply);
-    const minRaisePercentage = BigInt(dto.minRaisePercentage);
-    const maxRaisePercentage = BigInt(dto.maxRaisePercentage || '95'); // Default 95%
+    // Calculate minimum and maximum raise amounts (in USDC, canonical format)
+    const minRaiseUSD = (faceValue * minRaisePercentage) / 100;
+    const maxRaiseUSD = (faceValue * maxRaisePercentage) / 100;
 
-    // Calculate minimum and maximum raise amounts (in USD, no decimals yet)
-    const minRaiseUSD = (faceValue * minRaisePercentage) / BigInt(100);
-    const maxRaiseUSD = (faceValue * maxRaisePercentage) / BigInt(100);
+    // Format to canonical 4-decimal strings
+    const minRaise = minRaiseUSD.toFixed(4);
+    const maxRaise = maxRaiseUSD.toFixed(4);
 
-    // Convert to USDC with network-specific decimals
-    const minRaise = minRaiseUSD * BigInt(10 ** usdcDecimals);
-    const maxRaise = maxRaiseUSD * BigInt(10 ** usdcDecimals);
-
-    // Calculate min and max price per token (network-aware)
-    // totalSupply is in network-specific decimals (7 for Stellar, 18 for EVM)
-    // Price = (raiseAmount * 10^tokenDecimals) / totalSupply
-    // Result is in USDC decimals per full token
-    const minPricePerToken = (minRaise * BigInt(10 ** tokenDecimals)) / totalSupply;
-    const maxPricePerToken = (maxRaise * BigInt(10 ** tokenDecimals)) / totalSupply;
+    // Calculate min and max price per token
+    // Price = raiseAmount / totalSupply (both in canonical format)
+    const minPricePerToken = (minRaiseUSD / totalSupply).toFixed(4);
+    const maxPricePerToken = (maxRaiseUSD / totalSupply).toFixed(4);
 
     // Calculate average price per token (midpoint between min and max)
-    const avgPricePerToken = (minPricePerToken + maxPricePerToken) / BigInt(2);
+    const avgPricePerToken = ((parseFloat(minPricePerToken) + parseFloat(maxPricePerToken)) / 2).toFixed(4);
 
     // For STATIC assets, validate custom price if provided
     let finalPricePerToken: string | undefined;
     if (dto.assetType === 'STATIC') {
       if (dto.pricePerToken) {
-        const customPrice = BigInt(dto.pricePerToken);
+        const customPrice = parseFloat(dto.pricePerToken);
+        const minPrice = parseFloat(minPricePerToken);
+        const maxPrice = parseFloat(maxPricePerToken);
+
         // Validate that custom price is within calculated range
-        if (customPrice < minPricePerToken || customPrice > maxPricePerToken) {
+        if (customPrice < minPrice || customPrice > maxPrice) {
           throw new Error(
-            `Price per token must be between ${minPricePerToken.toString()} and ${maxPricePerToken.toString()} wei. ` +
-            `Provided: ${customPrice.toString()} wei. This ensures the raise amount is between ${minRaisePercentage}% and ${maxRaisePercentage}% of face value.`
+            `Price per token must be between ${minPricePerToken} and ${maxPricePerToken} USDC. ` +
+            `Provided: ${dto.pricePerToken}. This ensures the raise amount is between ${minRaisePercentage}% and ${maxRaisePercentage}% of face value.`
           );
         }
         finalPricePerToken = dto.pricePerToken;
       } else {
         // Use average price by default for static listings (average of min and max raise)
-        finalPricePerToken = avgPricePerToken.toString();
+        finalPricePerToken = avgPricePerToken;
       }
     }
 
-    // Create Asset Record
+    // Create Asset Record - all values already in canonical format
     const asset = new this.assetModel({
       assetId,
       originator: userWallet,
@@ -169,7 +166,7 @@ export class AssetLifecycleService {
       network,
       metadata: {
         invoiceNumber: dto.invoiceNumber,
-        faceValue: dto.faceValue,
+        faceValue: dto.faceValue, // Already canonical
         currency: dto.currency,
         issueDate: new Date(dto.issueDate),
         dueDate: new Date(dto.dueDate),
@@ -178,10 +175,10 @@ export class AssetLifecycleService {
         riskTier: dto.riskTier,
       },
       tokenParams: {
-        totalSupply: toCanonical(dto.totalSupply, tokenDecimals).value,
-        pricePerToken: finalPricePerToken ? toCanonical(finalPricePerToken, usdcDecimals).value : undefined,
-        minInvestment: toCanonical(dto.minInvestment, tokenDecimals).value,
-        minRaise: toCanonical(minRaise.toString(), usdcDecimals).value,
+        totalSupply: dto.totalSupply, // Already canonical
+        pricePerToken: finalPricePerToken, // Already canonical
+        minInvestment: dto.minInvestment, // Already canonical
+        minRaise: minRaise, // Calculated in canonical
       },
       files: {
         invoice: {
@@ -199,13 +196,13 @@ export class AssetLifecycleService {
     if (dto.assetType === 'AUCTION') {
       asset.listing = {
         type: 'AUCTION',
-        reservePrice: toCanonical(avgPricePerToken.toString(), usdcDecimals).value,
+        reservePrice: avgPricePerToken, // Already canonical
         priceRange: {
-          min: toCanonical(minPricePerToken.toString(), usdcDecimals).value,
-          max: toCanonical(maxPricePerToken.toString(), usdcDecimals).value,
+          min: minPricePerToken, // Already canonical
+          max: maxPricePerToken, // Already canonical
         },
         duration: parseInt(dto.auctionDuration),
-        sold: '0',
+        sold: '0.0000', // Initialize as canonical
         active: false, // Will be activated when admin approves and deploys
         listedAt: new Date(),
         phase: 'BIDDING',
@@ -238,11 +235,11 @@ export class AssetLifecycleService {
       assetType: dto.assetType,
       message: `${dto.assetType} asset uploaded successfully. Processing started.`,
       priceRange: {
-        min: minPricePerToken.toString(),
-        max: maxPricePerToken.toString(),
-        avg: avgPricePerToken.toString(), // Average price (used as default)
-        minRaise: minRaise.toString(),
-        maxRaise: maxRaise.toString(),
+        min: minPricePerToken, // Canonical format
+        max: maxPricePerToken, // Canonical format
+        avg: avgPricePerToken, // Canonical format
+        minRaise: minRaise, // Canonical format
+        maxRaise: maxRaise, // Canonical format
       },
     };
   }
@@ -964,7 +961,11 @@ export class AssetLifecycleService {
     });
 
     for (const purchase of confirmedPurchases) {
-      totalUsdcRaised += BigInt(purchase.totalPayment);
+      // Handle both old (wei) and new (canonical) format purchases
+      const totalPayment = purchase.totalPayment.includes('.')
+        ? fromCanonical(purchase.totalPayment, 6)  // New canonical format
+        : BigInt(purchase.totalPayment);  // Old wei format
+      totalUsdcRaised += totalPayment;
     }
 
     this.logger.log(`Found ${confirmedPurchases.length} confirmed PRIMARY_MARKET purchases`);
@@ -993,10 +994,11 @@ export class AssetLifecycleService {
         this.logger.log(`📊 Found ${leveragePositions.length} leverage position(s)`);
         
         for (const position of leveragePositions) {
-          const usdcBorrowed = BigInt(position.usdcBorrowed);
+          // LeveragePosition schema now stores canonical format - convert to wei for calculation
+          const usdcBorrowed = fromCanonical(position.usdcBorrowed, 6);
           totalUsdcRaised += usdcBorrowed;
           this.logger.log(
-            `   Position ${position.positionId}: ${Number(usdcBorrowed) / 1e6} USDC borrowed (${position.status})`
+            `   Position ${position.positionId}: ${position.usdcBorrowed} USDC borrowed (${position.status})`
           );
         }
       } else {
@@ -1307,8 +1309,9 @@ export class AssetLifecycleService {
         // Calculate effective price: totalPayment / tokenAmount
         // Total payment for leverage = mETH collateral value + USDC borrowed
         // For simplicity, we'll use USDC borrowed as the payment amount
-        const usdcBorrowed = BigInt(position.usdcBorrowed);
-        const rwaTokenAmount = BigInt(position.rwaTokenAmount);
+        // LeveragePosition schema now stores canonical format - convert to wei for calculation
+        const usdcBorrowed = fromCanonical(position.usdcBorrowed, 6);
+        const rwaTokenAmount = fromCanonical(position.rwaTokenAmount, 18);
 
         // Calculate price per token: (usdcBorrowed * 10^18) / rwaTokenAmount
         // This gives us USDC (6 decimals) per token (18 decimals)

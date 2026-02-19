@@ -664,11 +664,12 @@ export class PurchaseTrackerService {
             harvestHistory,
             leverageInfo: {
               type: 'ACTIVE',
-              mETHCollateralFormatted: `${(Number(position.mETHCollateral) / 1e18).toFixed(4)} mETH`,
-              usdcBorrowedFormatted: `${(Number(position.usdcBorrowed) / 1e6).toFixed(2)} USDC`,
+              // Schema now stores canonical 4-decimal format - format directly
+              mETHCollateralFormatted: `${Number(position.mETHCollateral).toFixed(4)} mETH`,
+              usdcBorrowedFormatted: `${Number(position.usdcBorrowed).toFixed(2)} USDC`,
               healthFactorFormatted: `${(position.currentHealthFactor / 10000).toFixed(2)}%`,
               healthStatus: position.healthStatus,
-              totalInterestPaidFormatted: `${(Number(position.totalInterestPaid) / 1e6).toFixed(2)} USDC`,
+              totalInterestPaidFormatted: `${Number(position.totalInterestPaid).toFixed(2)} USDC`,
               claimableYield: '0', // Active positions haven't settled yet
               claimableYieldFormatted: '0.00 USDC',
               totalHarvests: harvestHistory.length,
@@ -684,9 +685,10 @@ export class PurchaseTrackerService {
             harvestHistory,
             leverageInfo: {
               type: 'SETTLED',
-              mETHCollateralFormatted: `${(Number(position.mETHCollateral) / 1e18).toFixed(4)} mETH`,
-              usdcBorrowedFormatted: `${(Number(position.usdcBorrowed) / 1e6).toFixed(2)} USDC`,
-              totalInterestPaidFormatted: `${(Number(position.totalInterestPaid) / 1e6).toFixed(2)} USDC`,
+              // Schema now stores canonical 4-decimal format - format directly
+              mETHCollateralFormatted: `${Number(position.mETHCollateral).toFixed(4)} mETH`,
+              usdcBorrowedFormatted: `${Number(position.usdcBorrowed).toFixed(2)} USDC`,
+              totalInterestPaidFormatted: `${Number(position.totalInterestPaid).toFixed(2)} USDC`,
               userYield: position.userYieldDistributed || '0',
               userYieldFormatted: `${(Number(position.userYieldDistributed || '0') / 1e6).toFixed(2)} USDC`,
               mETHReturned: position.mETHReturnedToUser || '0',
@@ -709,17 +711,18 @@ export class PurchaseTrackerService {
             harvestHistory,
             leverageInfo: {
               type: 'LIQUIDATED',
-              mETHCollateralFormatted: `${(Number(position.mETHCollateral) / 1e18).toFixed(4)} mETH`,
-              usdcBorrowedFormatted: `${(Number(position.usdcBorrowed) / 1e6).toFixed(2)} USDC`,
-              totalInterestPaidFormatted: `${(Number(position.totalInterestPaid) / 1e6).toFixed(2)} USDC`,
+              // Schema now stores canonical 4-decimal format - format directly
+              mETHCollateralFormatted: `${Number(position.mETHCollateral).toFixed(4)} mETH`,
+              usdcBorrowedFormatted: `${Number(position.usdcBorrowed).toFixed(2)} USDC`,
+              totalInterestPaidFormatted: `${Number(position.totalInterestPaid).toFixed(2)} USDC`,
               healthFactorAtLiquidation: position.currentHealthFactor,
               healthFactorAtLiquidationFormatted: `${(position.currentHealthFactor / 10000).toFixed(2)}%`,
               liquidationDate: position.liquidatedAt,
               liquidationTxHash: position.liquidationTxHash,
-              debtRecovered: position.debtRecovered || '0',
-              debtRecoveredFormatted: `${(Number(position.debtRecovered || '0') / 1e6).toFixed(2)} USDC`,
-              userRefund: position.userRefund || '0',
-              userRefundFormatted: `${(Number(position.userRefund || '0') / 1e6).toFixed(2)} USDC`,
+              debtRecovered: position.debtRecovered || '0.0000',
+              debtRecoveredFormatted: `${Number(position.debtRecovered || '0').toFixed(2)} USDC`,
+              userRefund: position.userRefund || '0.0000',
+              userRefundFormatted: `${Number(position.userRefund || '0').toFixed(2)} USDC`,
               totalHarvests: harvestHistory.length,
             },
           };

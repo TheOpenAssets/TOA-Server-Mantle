@@ -40,7 +40,7 @@ import { PaymentAdapter, PaymentTransferResult } from '../payment-adapter.interf
 @Injectable()
 export class StellarPaymentAdapter implements PaymentAdapter {
   private readonly logger = new Logger(StellarPaymentAdapter.name);
-  private readonly USDC_DECIMALS = 6; // USDC has 6 decimals
+  private readonly USDC_DECIMALS = 7; // USDC on Stellar (SAC) has 7 decimals
   private readonly rpcServer: rpc.Server;
   private readonly networkPassphrase: string;
 

@@ -807,22 +807,32 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
 
     const adminKeypair = this.walletAdapter.getAdminKeypair();
     const platformKeypair = this.walletAdapter.getPlatformKeypair();
-    
+
     // Get custody wallet address (where unsold tokens are held)
     // On Stellar, this is typically the platform wallet itself
     const custodyAddress = platformKeypair.publicKey();
     this.logger.log(`   Custody Address: ${custodyAddress}`);
 
-    const tokenContract = new Contract(tokenIdentifier);
+    // Convert tokenIdentifier from "ASSETCODE:ISSUER" format to SAC contract ID
+    const [assetCode, assetIssuer] = tokenIdentifier.split(':');
+    if (!assetCode || !assetIssuer) {
+      throw new Error(`Invalid tokenIdentifier format. Expected "CODE:ISSUER", got: ${tokenIdentifier}`);
+    }
+
+    const assetForBurn = new Asset(assetCode, assetIssuer);
+    const tokenContractId = assetForBurn.contractId(this.networkPassphrase);
+    this.logger.log(`   Token Contract ID (SAC): ${tokenContractId}`);
+
+    const tokenContract = new Contract(tokenContractId);
 
     // Query old total supply
     this.logger.log(`   Querying old total supply...`);
-    const oldTotalSupply = await this.queryTokenTotalSupply(tokenIdentifier);
+    const oldTotalSupply = await this.queryTokenTotalSupply(tokenContractId);
     this.logger.log(`   Old Total Supply: ${oldTotalSupply} (${Number(oldTotalSupply) / 1e7} tokens)`);
 
     // Query custody balance
     this.logger.log(`   Querying custody balance...`);
-    const custodyBalance = await this.queryTokenBalance(tokenIdentifier, custodyAddress);
+    const custodyBalance = await this.queryTokenBalance(tokenContractId, custodyAddress);
     this.logger.log(`   Custody Balance: ${custodyBalance} (${Number(custodyBalance) / 1e7} tokens)`);
 
     if (BigInt(custodyBalance) === 0n) {
@@ -889,7 +899,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     this.logger.log(`   ✅ Burn transaction confirmed in ledger ${ledgerSequence}`);
 
     // Query new total supply
-    const newTotalSupply = await this.queryTokenTotalSupply(tokenIdentifier);
+    const newTotalSupply = await this.queryTokenTotalSupply(tokenContractId);
     this.logger.log(`   New Total Supply: ${newTotalSupply} (${Number(newTotalSupply) / 1e7} tokens)`);
 
     const tokensBurnedFormatted = `${(Number(custodyBalance) / 1e7).toFixed(4)} tokens`;
@@ -929,6 +939,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         new Address(address).toScVal(),
       )
     )
+    .setTimeout(60)
     .build();
 
     const response = await this.sorobanServer.simulateTransaction(tx);
@@ -959,6 +970,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     .addOperation(
       contract.call('total_supply')
     )
+    .setTimeout(60)
     .build();
 
     const response = await this.sorobanServer.simulateTransaction(tx);
@@ -1017,15 +1029,21 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
       throw new Error(`Invalid tokenIdentifier format. Expected "CODE:ISSUER", got: ${tokenIdentifier}`);
     }
 
-    // Query current total supply from the asset (for snapshot)
-    // Use Stellar classic asset interface
-    const assetForQuery = new Asset(assetCode, assetIssuer);
-    const assetContractId = assetForQuery.contractId(this.networkPassphrase);
-    const totalSupply = await this.queryTokenTotalSupply(assetContractId);
+    // Query total supply from database (SACs don't support total_supply() query)
+    // For classic Stellar assets, total supply is stored in the Asset model
+    const asset = await this.assetModel.findOne({ 'token.address': tokenIdentifier });
+    if (!asset || !asset.token) {
+      throw new Error(`Asset not found for token: ${tokenIdentifier}`);
+    }
+
+    // Convert total supply from canonical to raw (7 decimals)
+    const totalSupplyCanonical = asset.token.supply;
+    const totalSupplyRaw = fromCanonical(totalSupplyCanonical, 7);
+    const totalSupply = totalSupplyRaw.toString();
 
     this.logger.log(`   Asset Code: ${assetCode}`);
     this.logger.log(`   Asset Issuer: ${assetIssuer}`);
-    this.logger.log(`   Total Supply Snapshot: ${totalSupply}`);
+    this.logger.log(`   Total Supply Snapshot: ${totalSupply} stroops (${totalSupplyCanonical} tokens)`);
 
     // Get USDC contract address for the transfer (YieldVault will do the transfer internally)
     const usdcAsset = new Asset('USDC', 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5');

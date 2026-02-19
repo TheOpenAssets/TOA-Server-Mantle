@@ -27,6 +27,7 @@ import { LeverageBlockchainService } from '../../leverage/services/leverage-bloc
 import { SolvencyPositionService } from '../../solvency/services/solvency-position.service';
 import { SolvencyBlockchainService } from '../../solvency/services/solvency-blockchain.service';
 import { SecondaryMarketService } from '../../secondary-market/services/secondary-market.service';
+import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
 @Injectable()
 export class YieldDistributionService {
@@ -95,9 +96,9 @@ export class YieldDistributionService {
 
     const settlementAmount = dto.settlementAmount; // e.g., $100 USD
 
-    // FIX: amountRaised is stored in USDC WEI (6 decimals), convert to USD
-    const amountRaisedWei = parseFloat(asset.listing?.amountRaised || '0');
-    const amountRaised = amountRaisedWei / 1e6; // Convert USDC WEI to USD
+    // Asset schema now stores amountRaised in canonical 4-decimal format
+    const amountRaisedCanonical = asset.listing?.amountRaised || '0';
+    const amountRaised = parseFloat(amountRaisedCanonical); // Already in USD
 
     const platformFeeRate = 0.015; // 1.5% platform fee
     const platformFee = settlementAmount * platformFeeRate; // e.g., $1.5
@@ -276,7 +277,8 @@ export class YieldDistributionService {
             this.logger.log(`🔄 Processing Position ${position.positionId}...`);
             this.logger.log(`   User: ${position.userAddress}`);
             this.logger.log(`   Status: ${position.status}`);
-            this.logger.log(`   RWA Tokens: ${Number(position.rwaTokenAmount) / 1e18}`);
+            // Schema now stores canonical format, display directly
+            this.logger.log(`   RWA Tokens: ${position.rwaTokenAmount}`);
 
             // Check if position was liquidated
             const isLiquidated = position.status === 'LIQUIDATED';
@@ -341,9 +343,11 @@ export class YieldDistributionService {
 
               // Step 1: Claim yield by burning RWA tokens
               this.logger.log(`\n🔥 Step 1: Burning RWA tokens to claim USDC from YieldVault...`);
+              // Convert canonical format to wei for blockchain call
+              const rwaTokenAmountWei = fromCanonical(position.rwaTokenAmount, 18);
               const claimResult = await this.leverageBlockchainService.claimYieldFromBurn(
                 position.positionId,
-                BigInt(position.rwaTokenAmount), // Burn ALL RWA tokens
+                rwaTokenAmountWei, // Burn ALL RWA tokens
               );
 
               this.logger.log(`✅ Tokens burned: ${Number(claimResult.tokensBurned) / 1e18} RWA`);

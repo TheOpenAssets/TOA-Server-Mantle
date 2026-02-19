@@ -20,13 +20,31 @@ export class SolvencyPosition {
   collateralTokenType!: TokenType;
 
   @Prop({ required: true })
-  collateralAmount!: string; // Wei (18 decimals)
+  collateralAmount!: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseCollateralAmount?: boolean;
+
+  @Prop()
+  rawCollateralAmount?: string;
 
   @Prop({ required: true })
-  tokenValueUSD!: string; // Wei (6 decimals) - valuation at deposit
+  tokenValueUSD!: string; // Canonical 4-decimal format - valuation at deposit
 
-  @Prop({ required: true, default: '0' })
-  usdcBorrowed!: string; // Wei (6 decimals)
+  @Prop()
+  rawPreciseTokenValueUSD?: boolean;
+
+  @Prop()
+  rawTokenValueUSD?: string;
+
+  @Prop({ required: true, default: '0.0000' })
+  usdcBorrowed!: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseUsdcBorrowed?: boolean;
+
+  @Prop()
+  rawUsdcBorrowed?: string;
 
   @Prop({ required: true })
   initialLTV!: number; // Basis points (7000 = 70%)
@@ -41,8 +59,14 @@ export class SolvencyPosition {
   status!: SolvencyPositionStatus;
 
   // Repayment tracking
-  @Prop({ default: '0' })
-  totalRepaid!: string; // Total USDC repaid (principal + interest)
+  @Prop({ default: '0.0000' })
+  totalRepaid!: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseTotalRepaid?: boolean;
+
+  @Prop()
+  rawTotalRepaid?: string;
 
   @Prop({ type: Date })
   lastRepaymentTime?: Date;
@@ -69,7 +93,9 @@ export class SolvencyPosition {
   repaymentSchedule?: Array<{
     installmentNumber: number;
     dueDate: Date;
-    amount: string;
+    amount: string; // Canonical 4-decimal format
+    rawPreciseAmount?: boolean;
+    rawAmount?: string;
     status: 'PENDING' | 'PAID' | 'MISSED';
     paidAt?: Date;
     txHash?: string;
@@ -89,7 +115,13 @@ export class SolvencyPosition {
   marketplaceListingId?: string; // bytes32 assetId of liquidation listing
 
   @Prop({ type: String })
-  debtRecovered?: string; // USDC recovered from liquidation sale
+  debtRecovered?: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseDebtRecovered?: boolean;
+
+  @Prop()
+  rawDebtRecovered?: string;
 
   // OAID integration
   @Prop({ type: Number })
@@ -103,12 +135,20 @@ export class SolvencyPosition {
   partnerLoans!: Array<{
     partnerId: string;
     partnerLoanId: string;              // Reference to PartnerLoan.internalLoanId
-    borrowedAmount: string;             // USDC borrowed via this partner (6 decimals)
+    borrowedAmount: string;             // Canonical 4-decimal format
+    rawPreciseBorrowedAmount?: boolean;
+    rawBorrowedAmount?: string;
     active: boolean;
   }>;
 
-  @Prop({ default: '0' })
-  totalPartnerDebt!: string;            // Sum of all active partner loans (6 decimals)
+  @Prop({ default: '0.0000' })
+  totalPartnerDebt!: string;            // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseTotalPartnerDebt?: boolean;
+
+  @Prop()
+  rawTotalPartnerDebt?: string;
 
   // Transaction details
   @Prop({ required: true })

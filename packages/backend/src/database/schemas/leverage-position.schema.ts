@@ -10,19 +10,49 @@ export class HarvestRecord {
   timestamp!: Date;
 
   @Prop({ required: true })
-  mETHSwapped!: string; // Wei format (18 decimals)
+  mETHSwapped!: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseMETHSwapped?: boolean; // True if precision lost in canonical conversion
+
+  @Prop()
+  rawMETHSwapped?: string; // Full-precision value if rawPreciseMETHSwapped is true
 
   @Prop({ required: true })
-  usdcReceived!: string; // Wei format (6 decimals)
+  usdcReceived!: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseUsdcReceived?: boolean;
+
+  @Prop()
+  rawUsdcReceived?: string;
 
   @Prop({ required: true })
-  interestPaid!: string; // Wei format (6 decimals)
+  interestPaid!: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseInterestPaid?: boolean;
+
+  @Prop()
+  rawInterestPaid?: string;
 
   @Prop({ required: true })
-  interestAccrued!: string; // Wei format (6 decimals) - Outstanding interest at time of harvest
+  interestAccrued!: string; // Canonical 4-decimal format - Outstanding interest at time of harvest
+
+  @Prop()
+  rawPreciseInterestAccrued?: boolean;
+
+  @Prop()
+  rawInterestAccrued?: string;
 
   @Prop({ required: true })
-  mETHPrice!: string; // Wei format (6 decimals) - Price at time of harvest
+  mETHPrice!: string; // Canonical 4-decimal format - Price at time of harvest
+
+  @Prop()
+  rawPreciseMETHPrice?: boolean;
+
+  @Prop()
+  rawMETHPrice?: string;
 
   @Prop({ required: true })
   transactionHash!: string;
@@ -51,13 +81,31 @@ export class LeveragePosition extends Document {
   rwaTokenAddress!: string; // RWA token contract address
 
   @Prop({ required: true })
-  rwaTokenAmount!: string; // RWA tokens held (wei format, 18 decimals)
+  rwaTokenAmount!: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseRwaTokenAmount?: boolean;
+
+  @Prop()
+  rawRwaTokenAmount?: string;
 
   @Prop({ required: true })
-  mETHCollateral!: string; // mETH deposited (wei format, 18 decimals)
+  mETHCollateral!: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseMETHCollateral?: boolean;
+
+  @Prop()
+  rawMETHCollateral?: string;
 
   @Prop({ required: true })
-  usdcBorrowed!: string; // USDC borrowed from SeniorPool (wei format, 6 decimals)
+  usdcBorrowed!: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseUsdcBorrowed?: boolean;
+
+  @Prop()
+  rawUsdcBorrowed?: string;
 
   @Prop({ required: true })
   initialLTV!: number; // Initial LTV in basis points (e.g., 15000 = 150%)
@@ -77,11 +125,23 @@ export class LeveragePosition extends Document {
   @Prop({ required: true })
   lastHarvestTime!: Date;
 
-  @Prop({ default: 0 })
-  totalInterestPaid!: string; // Cumulative interest paid (wei format, 6 decimals)
+  @Prop({ default: '0.0000' })
+  totalInterestPaid!: string; // Canonical 4-decimal format
 
-  @Prop({ default: 0 })
-  totalMETHHarvested!: string; // Cumulative mETH harvested (wei format, 18 decimals)
+  @Prop()
+  rawPreciseTotalInterestPaid?: boolean;
+
+  @Prop()
+  rawTotalInterestPaid?: string;
+
+  @Prop({ default: '0.0000' })
+  totalMETHHarvested!: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseTotalMETHHarvested?: boolean;
+
+  @Prop()
+  rawTotalMETHHarvested?: string;
 
   @Prop({ type: [HarvestRecordSchema], default: [] })
   harvestHistory!: HarvestRecord[];
@@ -94,13 +154,31 @@ export class LeveragePosition extends Document {
   liquidationTxHash?: string;
 
   @Prop()
-  mETHSoldInLiquidation?: string; // Wei format
+  mETHSoldInLiquidation?: string; // Canonical 4-decimal format
 
   @Prop()
-  usdcRecoveredInLiquidation?: string; // Wei format
+  rawPreciseMETHSoldInLiquidation?: boolean;
 
   @Prop()
-  liquidationShortfall?: string; // Wei format (if any)
+  rawMETHSoldInLiquidation?: string;
+
+  @Prop()
+  usdcRecoveredInLiquidation?: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseUsdcRecoveredInLiquidation?: boolean;
+
+  @Prop()
+  rawUsdcRecoveredInLiquidation?: string;
+
+  @Prop()
+  liquidationShortfall?: string; // Canonical 4-decimal format (if any)
+
+  @Prop()
+  rawPreciseLiquidationShortfall?: boolean;
+
+  @Prop()
+  rawLiquidationShortfall?: string;
 
   // Settlement details (if settled)
   @Prop()
@@ -110,19 +188,49 @@ export class LeveragePosition extends Document {
   settlementTxHash?: string;
 
   @Prop()
-  settlementUSDCReceived?: string; // Total USDC from RWA settlement (wei format)
+  settlementUSDCReceived?: string; // Canonical 4-decimal format
 
   @Prop()
-  seniorRepayment?: string; // Principal repaid to SeniorPool (wei format)
+  rawPreciseSettlementUSDCReceived?: boolean;
 
   @Prop()
-  interestRepayment?: string; // Interest repaid to SeniorPool (wei format)
+  rawSettlementUSDCReceived?: string;
 
   @Prop()
-  userYieldDistributed?: string; // USDC distributed to user (wei format)
+  seniorRepayment?: string; // Canonical 4-decimal format
 
   @Prop()
-  mETHReturnedToUser?: string; // Remaining mETH returned (wei format)
+  rawPreciseSeniorRepayment?: boolean;
+
+  @Prop()
+  rawSeniorRepayment?: string;
+
+  @Prop()
+  interestRepayment?: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseInterestRepayment?: boolean;
+
+  @Prop()
+  rawInterestRepayment?: string;
+
+  @Prop()
+  userYieldDistributed?: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseUserYieldDistributed?: boolean;
+
+  @Prop()
+  rawUserYieldDistributed?: string;
+
+  @Prop()
+  mETHReturnedToUser?: string; // Canonical 4-decimal format
+
+  @Prop()
+  rawPreciseMETHReturnedToUser?: boolean;
+
+  @Prop()
+  rawMETHReturnedToUser?: string;
 
   // Notifications
   @Prop({ default: false })
