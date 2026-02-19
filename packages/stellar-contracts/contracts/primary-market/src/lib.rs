@@ -150,8 +150,11 @@ impl PrimaryMarket {
         }
 
         // Calculate payment
+        // price: USDC per token (stroops with 7 decimals)
+        // amount_i64: token amount (stroops with 7 decimals)
+        // total_payment = (price * amount) / 10^7 to get USDC stroops
         let price = listing.price_or_reserve;
-        let total_payment = price * amount_i64;
+        let total_payment = ((price as i128) * (amount_i64 as i128)) / 10000000;
 
         // Collect USDC payment from buyer if price > 0
         if price > 0 {
@@ -161,7 +164,7 @@ impl PrimaryMarket {
             let usdc_token = token::Client::new(&env, &usdc_address);
 
             // Transfer USDC from buyer to platform treasury
-            usdc_token.transfer(&buyer, &treasury, &(total_payment as i128));
+            usdc_token.transfer(&buyer, &treasury, &total_payment);
         }
 
         // Transfer RWA tokens from contract to buyer

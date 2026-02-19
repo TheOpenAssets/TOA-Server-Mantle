@@ -9,7 +9,7 @@ import { NetworkRegistryService } from '../../../blockchain/services/network-reg
 import { IAdminDomainStrategy } from '../../../registry/interfaces/admin-domain.interface';
 import { DeployTokenDto } from '../../../blockchain/dto/deploy-token.dto';
 import { ListOnMarketplaceDto } from '../../../blockchain/dto/list-on-marketplace.dto';
-import { toCanonical } from '../../../blockchain/utils/numeric-conversion';
+import { fromCanonical } from '../../../blockchain/utils/numeric-conversion';
 import { ConfigService } from '@nestjs/config';
 import { 
   AssetStatus, 
@@ -79,8 +79,10 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     if (!asset) throw new HttpException('Asset not found', HttpStatus.NOT_FOUND);
 
     this.logger.log(`Deploying Stellar native asset for ${dto.assetId}...`);
-    
-    const totalSupply = dto.totalSupply || asset.tokenParams?.totalSupply || '0';
+
+    // Get totalSupply in canonical format from DB, convert to raw Stellar stroops (7 decimals)
+    const totalSupplyCanonical = dto.totalSupply || asset.tokenParams?.totalSupply || '0';
+    const totalSupplyRaw = fromCanonical(totalSupplyCanonical, 7);
 
     // Convert UUID to bytes32 format (same format used in AttestationRegistry)
     const assetIdBytes32 = '0x' + dto.assetId.replace(/-/g, '').padEnd(64, '0');
@@ -95,7 +97,7 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     // Stellar deployment involves AssetRegistry registration which needs attestation data
     const result: any = await this.networkRegistryService.deployAssetToken(
       assetIdBytes32,
-      totalSupply,
+      totalSupplyRaw.toString(),
       {
         attestationHash: asset.attestation?.hash || '0x' + '0'.repeat(64),
         blobId: (asset.attestation as any)?.blobId || asset.attestation?.hash || '0x' + '0'.repeat(64),
@@ -113,7 +115,7 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
           'token.address': result.primaryIdentifier, // assetCode:issuerPubKey
           'token.deployedAt': new Date(),
           'token.transactionHash': result.txId,
-          'token.supply': dto.totalSupply,
+          'token.supply': totalSupplyCanonical, // Keep in canonical format in DB
           'registry.assetCode': assetCode,
           'checkpoints.tokenized': true,
         },
@@ -151,27 +153,22 @@ export class StellarAdminStrategy implements IAdminDomainStrategy {
     // Use asset.listing.type if available, otherwise fall back to assetType
     const listingType = (asset.listing?.type as unknown as ListingType) || (asset.assetType as unknown as ListingType);
 
-    // Convert raw integer values from DB to canonical 4-decimal format
-    // For Stellar, all values use 7-decimal stroops (tokens and USDC)
-    const rawPrice = asset.tokenParams?.pricePerToken || '0';
-    const priceCanonical = toCanonical(rawPrice, 7).value;
-
-    const minInvestmentRaw = asset.tokenParams?.minInvestment || '0';
-    const minInvestmentCanonical = toCanonical(minInvestmentRaw, 7).value;
+    // DB stores values in canonical 4-decimal format - use them directly
+    // The blockchain adapter will convert FROM canonical TO network-specific format (7 decimals for Stellar)
+    const priceCanonical = asset.tokenParams?.pricePerToken || '0';
+    const minInvestmentCanonical = asset.tokenParams?.minInvestment || '0';
 
     const duration = dto.duration ? parseInt(dto.duration) : (asset.listing?.duration || 0);
 
-    const totalSupplyRaw = asset.token?.supply || asset.tokenParams?.totalSupply || '0';
-    const totalSupplyCanonical = toCanonical(totalSupplyRaw, 7).value;
+    const totalSupplyCanonical = asset.token?.supply || asset.tokenParams?.totalSupply || '0';
 
     if (listingType === ListingType.AUCTION && !duration) {
       throw new HttpException('Duration is required for AUCTION listings', HttpStatus.BAD_REQUEST);
     }
 
-    const rawMinPrice = listingType === ListingType.AUCTION
-      ? (asset.listing?.priceRange?.min || rawPrice)
+    const minPriceCanonical = listingType === ListingType.AUCTION
+      ? (asset.listing?.priceRange?.min || priceCanonical)
       : '0';
-    const minPriceCanonical = toCanonical(rawMinPrice, 7).value;
 
     this.logger.log(`Listing asset ${dto.assetId} on Stellar PrimaryMarket using canonical prices...`);
     const result: any = await this.networkRegistryService.listAssetOnMarketplace(

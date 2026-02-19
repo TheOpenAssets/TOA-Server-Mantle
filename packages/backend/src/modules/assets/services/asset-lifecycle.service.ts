@@ -27,6 +27,7 @@ import { AnnouncementService } from '../../announcements/services/announcement.s
 import { NotificationService } from '../../notifications/services/notification.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { detectNetworkType } from '../../auth/utils/wallet.util';
+import { toCanonical } from '../../blockchain/utils/numeric-conversion';
 import { PAYMENT_ADAPTER, BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
 import { PaymentAdapter } from '../../blockchain/adapters/payment-adapter.interface';
 import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
@@ -108,6 +109,14 @@ export class AssetLifecycleService {
     const assetId = uuidv4();
     this.logger.log(`Creating ${dto.assetType} asset ${assetId} for originator ${userWallet}`);
 
+    // Detect network type and set appropriate decimal precision
+    const network = detectNetworkType(userWallet);
+    const isStellar = network === 'stellar';
+
+    // Stellar uses 7 decimals for everything; EVM uses 18 for tokens, 6 for USDC
+    const tokenDecimals = isStellar ? 7 : 18;
+    const usdcDecimals = isStellar ? 7 : 6;
+
     // Calculate price ranges based on face value and percentages
     const faceValue = BigInt(dto.faceValue);
     const totalSupply = BigInt(dto.totalSupply);
@@ -118,18 +127,16 @@ export class AssetLifecycleService {
     const minRaiseUSD = (faceValue * minRaisePercentage) / BigInt(100);
     const maxRaiseUSD = (faceValue * maxRaisePercentage) / BigInt(100);
 
-    // Convert to USDC (6 decimals) for blockchain
-    const minRaise = minRaiseUSD * BigInt(10 ** 6);
-    const maxRaise = maxRaiseUSD * BigInt(10 ** 6);
+    // Convert to USDC with network-specific decimals
+    const minRaise = minRaiseUSD * BigInt(10 ** usdcDecimals);
+    const maxRaise = maxRaiseUSD * BigInt(10 ** usdcDecimals);
 
-    // Calculate min and max price per token
-    // totalSupply is in wei (18 decimals), e.g., 100000 * 10^18
-    // raiseAmount is in USDC wei (6 decimals), e.g., 80000 * 10^6
-    // Price formula: (raiseAmount * 10^18) / totalSupply
-    // Result is in USDC wei (6 decimals) per full token (10^18 wei)
-    // Example: (80000 * 10^6 * 10^18) / (100000 * 10^18) = 800000 USDC wei = 0.8 USDC
-    const minPricePerToken = (minRaise * BigInt(10 ** 18)) / totalSupply;
-    const maxPricePerToken = (maxRaise * BigInt(10 ** 18)) / totalSupply;
+    // Calculate min and max price per token (network-aware)
+    // totalSupply is in network-specific decimals (7 for Stellar, 18 for EVM)
+    // Price = (raiseAmount * 10^tokenDecimals) / totalSupply
+    // Result is in USDC decimals per full token
+    const minPricePerToken = (minRaise * BigInt(10 ** tokenDecimals)) / totalSupply;
+    const maxPricePerToken = (maxRaise * BigInt(10 ** tokenDecimals)) / totalSupply;
 
     // Calculate average price per token (midpoint between min and max)
     const avgPricePerToken = (minPricePerToken + maxPricePerToken) / BigInt(2);
@@ -159,7 +166,7 @@ export class AssetLifecycleService {
       originator: userWallet,
       status: AssetStatus.UPLOADED,
       assetType: dto.assetType,
-      network: detectNetworkType(userWallet),
+      network,
       metadata: {
         invoiceNumber: dto.invoiceNumber,
         faceValue: dto.faceValue,
@@ -171,10 +178,10 @@ export class AssetLifecycleService {
         riskTier: dto.riskTier,
       },
       tokenParams: {
-        totalSupply: dto.totalSupply,
-        pricePerToken: finalPricePerToken,
-        minInvestment: dto.minInvestment,
-        minRaise: minRaise.toString(),
+        totalSupply: toCanonical(dto.totalSupply, tokenDecimals).value,
+        pricePerToken: finalPricePerToken ? toCanonical(finalPricePerToken, usdcDecimals).value : undefined,
+        minInvestment: toCanonical(dto.minInvestment, tokenDecimals).value,
+        minRaise: toCanonical(minRaise.toString(), usdcDecimals).value,
       },
       files: {
         invoice: {
@@ -192,10 +199,10 @@ export class AssetLifecycleService {
     if (dto.assetType === 'AUCTION') {
       asset.listing = {
         type: 'AUCTION',
-        reservePrice: avgPricePerToken.toString(), // Use average of min and max
+        reservePrice: toCanonical(avgPricePerToken.toString(), usdcDecimals).value,
         priceRange: {
-          min: minPricePerToken.toString(),
-          max: maxPricePerToken.toString(),
+          min: toCanonical(minPricePerToken.toString(), usdcDecimals).value,
+          max: toCanonical(maxPricePerToken.toString(), usdcDecimals).value,
         },
         duration: parseInt(dto.auctionDuration),
         sold: '0',
