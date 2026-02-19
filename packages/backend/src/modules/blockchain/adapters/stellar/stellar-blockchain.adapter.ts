@@ -471,9 +471,33 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
       // response.resultMetaXdr is typed as TransactionMeta in new SDKs when using getTransaction
       // We cast to any to avoid TS issues if types are mismatched in older/newer versions
       const meta = response.resultMetaXdr as unknown as xdr.TransactionMeta;
-      
-      const events = meta.v3()?.sorobanMeta()?.events();
-      if (!events) {
+
+      // Support both V3 (Protocol 20) and V4 (Protocol 21+)
+      let events: xdr.ContractEvent[] = [];
+
+      try {
+        const metaV4 = meta.v4();
+        if (metaV4) {
+          const wrappedEvents = metaV4.diagnosticEvents() || [];
+          events = wrappedEvents.map((wrapper: any) =>
+            typeof wrapper.event === 'function' ? wrapper.event() : wrapper
+          );
+          this.logger.debug(`Using V4 meta: ${events.length} events from diagnosticEvents()`);
+        }
+      } catch {
+        try {
+          const metaV3 = meta.v3();
+          if (metaV3) {
+            events = metaV3.sorobanMeta()?.events() || [];
+            this.logger.debug(`Using V3 meta: ${events.length} events from sorobanMeta()`);
+          }
+        } catch (v3Error: any) {
+          this.logger.error(`Failed to access both V3 and V4 meta: ${v3Error.message}`);
+          return null;
+        }
+      }
+
+      if (!events || events.length === 0) {
         this.logger.warn(`No events found in transaction ${txHash}`);
         return null;
       }
@@ -538,9 +562,38 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
       }
 
       const meta = response.resultMetaXdr as unknown as xdr.TransactionMeta;
-      const events = meta.v3()?.sorobanMeta()?.events();
 
-      if (!events) return null;
+      // Support both V3 (Protocol 20) and V4 (Protocol 21+)
+      let events: xdr.ContractEvent[] = [];
+
+      try {
+        const metaV4 = meta.v4();
+        if (metaV4) {
+          // Protocol 21+: Contract events are in diagnosticEvents(), wrapped with .event()
+          const wrappedEvents = metaV4.diagnosticEvents() || [];
+          events = wrappedEvents.map((wrapper: any) =>
+            typeof wrapper.event === 'function' ? wrapper.event() : wrapper
+          );
+          this.logger.debug(`Using V4 meta: ${events.length} events from diagnosticEvents()`);
+        }
+      } catch {
+        // Fall back to V3
+        try {
+          const metaV3 = meta.v3();
+          if (metaV3) {
+            events = metaV3.sorobanMeta()?.events() || [];
+            this.logger.debug(`Using V3 meta: ${events.length} events from sorobanMeta()`);
+          }
+        } catch (v3Error: any) {
+          this.logger.error(`Failed to access both V3 and V4 meta: ${v3Error.message}`);
+          return null;
+        }
+      }
+
+      if (!events || events.length === 0) {
+        this.logger.warn(`No events found in transaction ${txHash}`);
+        return null;
+      }
 
       const contractIdStr = this.contractAdapter.getContractAddress('PrimaryMarket');
 
@@ -595,9 +648,36 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
       }
 
       const meta = response.resultMetaXdr as unknown as xdr.TransactionMeta;
-      const events = meta.v3()?.sorobanMeta()?.events();
 
-      if (!events) return null;
+      // Support both V3 (Protocol 20) and V4 (Protocol 21+)
+      let events: xdr.ContractEvent[] = [];
+
+      try {
+        const metaV4 = meta.v4();
+        if (metaV4) {
+          const wrappedEvents = metaV4.diagnosticEvents() || [];
+          events = wrappedEvents.map((wrapper: any) =>
+            typeof wrapper.event === 'function' ? wrapper.event() : wrapper
+          );
+          this.logger.debug(`Using V4 meta: ${events.length} events from diagnosticEvents()`);
+        }
+      } catch {
+        try {
+          const metaV3 = meta.v3();
+          if (metaV3) {
+            events = metaV3.sorobanMeta()?.events() || [];
+            this.logger.debug(`Using V3 meta: ${events.length} events from sorobanMeta()`);
+          }
+        } catch (v3Error: any) {
+          this.logger.error(`Failed to access both V3 and V4 meta: ${v3Error.message}`);
+          return null;
+        }
+      }
+
+      if (!events || events.length === 0) {
+        this.logger.warn(`No events found in transaction ${txHash}`);
+        return null;
+      }
 
       const contractIdStr = this.contractAdapter.getContractAddress('PrimaryMarket');
 
