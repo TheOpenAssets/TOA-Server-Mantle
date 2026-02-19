@@ -9,6 +9,7 @@ import { User, UserSchema } from '../../database/schemas/user.schema';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SolvencyModule } from '../solvency/solvency.module';
+import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { SolvencyModule } from '../solvency/solvency.module';
     forwardRef(() => BlockchainModule),
     forwardRef(() => SolvencyModule),
     NotificationsModule,
+    UserPortfolioModule,
   ],
   controllers: [KycController],
   providers: [

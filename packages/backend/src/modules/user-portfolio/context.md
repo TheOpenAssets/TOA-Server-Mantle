@@ -10,11 +10,12 @@
 ## Public Interfaces
 
 ### UserPortfolioService
+- `initializePortfolio(walletAddress: string, network: string)`: Creates an empty portfolio document when an investor is KYC-verified and registered on-chain. Called by KYC module. Idempotent (no-op if portfolio already exists).
 - `getPortfolio(walletAddress: string, network: string)`: Builds the full runtime portfolio for a user.
-- `updateOnPurchase(purchase: any)`: Atomic update triggered by a new purchase.
-- `updateOnYieldClaim(claim: any)`: Atomic update triggered by a yield claim.
-- `updateOnLeverageEvent(event: any)`: Atomic update triggered by leverage position changes.
-- `updateOnSolvencyEvent(event: any)`: Atomic update triggered by solvency position changes.
+- `updateOnPurchase(purchase: any, network: string)`: Atomic update triggered by a new purchase (primary market, auction, or secondary P2P trade).
+- `updateOnYieldClaim(claim: any, network: string)`: Atomic update triggered by a yield claim.
+- `updateOnLeverageEvent(positionId: number, network: string)`: Atomic update triggered by leverage position changes.
+- `updateOnSolvencyEvent(positionId: number, network: string)`: Atomic update triggered by solvency position changes.
 - `rebuildPortfolio(walletAddress: string, network: string)`: Reconstructs the portfolio document from source-of-truth records.
 
 ### UserPortfolioController
@@ -29,8 +30,9 @@
 - One portfolio document exists per `(walletAddress, network)` pair.
 
 ## Dependencies
-- `MarketplaceModule`: For purchase, yield claim, and asset records.
-- `LeverageModule`: For leverage position data.
-- `SolvencyModule`: For solvency position data.
-- `BlockchainModule`: For network context and event processing.
-- `AssetsModule`: For asset metadata.
+- `KYCModule`: The portfolio is initialized when an investor is KYC-verified. KYC module calls `initializePortfolio()` after successful blockchain identity registration.
+- `MarketplaceModule`: For purchase, yield claim, and asset records. Calls `updateOnPurchase()` after recording each purchase.
+- `LeverageModule`: For leverage position data. Calls `updateOnLeverageEvent()` after position state changes.
+- `SolvencyModule`: For solvency position data. Calls `updateOnSolvencyEvent()` after position state changes.
+- `BlockchainModule`: For network context and event processing. Event processor calls update methods when processing on-chain events (OrderFilled, OrderCancelled, etc.).
+- `AssetsModule`: For asset metadata enrichment during portfolio building.

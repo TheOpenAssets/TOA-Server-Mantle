@@ -263,6 +263,44 @@ export class UserPortfolioService {
   }
 
   /**
+   * Initialize an empty portfolio for a newly registered investor
+   * Called when KYC is approved and investor is registered on-chain
+   */
+  async initializePortfolio(walletAddress: string, network: string): Promise<UserPortfolioDocument> {
+    const investorWallet = walletAddress.toLowerCase();
+    
+    // Check if portfolio already exists
+    let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network });
+    if (portfolio) {
+      this.logger.log(`Portfolio already exists for ${investorWallet} on ${network}`);
+      return portfolio;
+    }
+
+    // Create new empty portfolio
+    portfolio = new this.portfolioModel({
+      walletAddress: investorWallet,
+      network,
+      holdings: [],
+      totals: {
+        totalUSDCInvested: '0',
+        totalYieldReceived: '0',
+        totalActivePositions: 0,
+        totalCompletedPositions: 0,
+        totalActiveLeveragePositions: 0,
+        totalActiveSolvencyPositions: 0,
+        networks: [network],
+      },
+      recentActivity: [],
+      lastUpdated: new Date(),
+      version: 1,
+    });
+
+    await portfolio.save();
+    this.logger.log(`✅ Initialized portfolio for ${investorWallet} on ${network}`);
+    return portfolio;
+  }
+
+  /**
    * Update or create portfolio on new purchase
    */
   async updateOnPurchase(purchase: PurchaseDocument, network: string) {

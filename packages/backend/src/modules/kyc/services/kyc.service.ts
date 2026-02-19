@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -10,6 +11,7 @@ import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { DocumentStorageService } from './document-storage.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { NotificationService } from '../../notifications/services/notification.service';
+import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
 import { NotificationType } from '../../notifications/enums/notification-type.enum';
 import { NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
@@ -24,6 +26,8 @@ export class KycService {
     @InjectQueue('kyc-verification') private kycQueue: Queue,
     private blockchainService: BlockchainService,
     private notificationService: NotificationService,
+    private userPortfolioService: UserPortfolioService,
+    private configService: ConfigService,
   ) {}
 
   async uploadDocument(user: UserDocument, file: Express.Multer.File) {
@@ -151,29 +155,50 @@ export class KycService {
       },
     );
 
-    // Register investor identity on blockchain
-    try {
-      this.logger.log(`🔗 Registering investor ${fullUser.walletAddress} on blockchain...`);
-      const txHash = await this.blockchainService.registerIdentity(fullUser.walletAddress);
-      this.logger.log(`✅ Investor registered on blockchain: ${txHash}`);
+    // Register investor identity on blockchain (skip for Stellar)
+    const network = this.configService.get<string>('NETWORK') || 'mantle';
+    let txHash: string | undefined;
 
-      // Send success notification
+    try {
+      // Stellar network uses trustlines for compliance - skip on-chain identity registration
+      if (network !== 'stellar') {
+        this.logger.log(`🔗 Registering investor ${fullUser.walletAddress} on blockchain (${network})...`);
+        txHash = await this.blockchainService.registerIdentity(fullUser.walletAddress);
+        this.logger.log(`✅ Investor registered on blockchain: ${txHash}`);
+      } else {
+        this.logger.log(`ℹ️ Stellar network detected - skipping on-chain identity registration (trustline-based compliance)`);
+      }
+
+      // Initialize portfolio for the newly verified investor (all networks)
+      try {
+        await this.userPortfolioService.initializePortfolio(fullUser.walletAddress, network);
+        this.logger.log(`✅ Portfolio initialized for ${fullUser.walletAddress} on ${network}`);
+      } catch (portfolioError) {
+        this.logger.error(`⚠️ Failed to initialize portfolio: ${portfolioError}`);
+        // Don't fail the whole operation if portfolio initialization fails
+      }
+
+      // Send success notification (all networks)
       await this.notificationService.create({
         userId: fullUser.walletAddress,
         walletAddress: fullUser.walletAddress,
         header: 'KYC Verified - Ready to Invest!',
-        detail: 'Your KYC has been approved and your identity has been registered on-chain. You can now purchase RWA tokens!',
+        detail: network === 'stellar'
+          ? 'Your KYC has been approved. You can now request trustline approval for Stellar assets!'
+          : 'Your KYC has been approved and your identity has been registered on-chain. You can now purchase RWA tokens!',
         type: NotificationType.KYC_STATUS,
         severity: NotificationSeverity.SUCCESS,
         action: NotificationAction.VIEW_MARKETPLACE,
         actionMetadata: {
+          network,
           txHash,
+          manualApproval: true,
         },
       });
 
       this.logger.log(`📧 Notification sent to ${fullUser.walletAddress}`);
     } catch (error) {
-      this.logger.error(`Failed to register investor on blockchain: ${error}`);
+      this.logger.error(`Failed to process post-KYC operations: ${error}`);
       // Don't fail the whole operation if blockchain registration fails
       // KYC is still approved in database
     }
