@@ -16,6 +16,9 @@
  *    - AssetRegistry
  *    - PrimaryMarket
  *
+ * 3) STACK=settlement
+ *    - YieldVault
+ *
  * Usage:
  * ------
  * STACK=<stackName> npm run deploy:stack
@@ -54,7 +57,7 @@ if (!STACK) {
   process.exit(1);
 }
 
-const VALID_STACKS = ['identity', 'issuance'];
+const VALID_STACKS = ['identity', 'issuance', 'settlement'];
 if (!VALID_STACKS.includes(STACK)) {
   console.error(`❌ Invalid STACK. Valid options: ${VALID_STACKS.join(', ')}`);
   process.exit(1);
@@ -267,6 +270,39 @@ async function main() {
       ]
     );
     setContractAddress(deployed, 'PrimaryMarket', primaryMarketAddress);
+  }
+
+  // ------------------------------------------------------------------
+  // SETTLEMENT STACK
+  // ------------------------------------------------------------------
+  if (STACK === 'settlement') {
+    log('[SETTLEMENT STACK] Deploying Yield Distribution layer', 'header');
+
+    wipeContracts(deployed, ['YieldVault']);
+
+    const existingContracts = deployed.networks?.[networkKey]?.contracts || {};
+    const assetRegistryAddress = existingContracts.AssetRegistry;
+
+    if (!assetRegistryAddress) {
+      log('Missing AssetRegistry. Deploy issuance stack first.', 'error');
+      process.exit(1);
+    }
+
+    // For USDC, we'll use a placeholder. In production, this should be the actual USDC SAC address
+    // On testnet, you can deploy a test USDC token or use native USDC if available
+    const USDC_PLACEHOLDER = 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC'; // Example Stellar asset contract ID
+    log(`Using USDC asset: ${USDC_PLACEHOLDER}`, 'info');
+
+    // Deploy YieldVault
+    const yieldVaultAddress = deployContract(
+      'YieldVault',
+      'yield_vault.wasm',
+      [
+        `--platform ${deployerAddress}`,
+        `--usdc_asset ${USDC_PLACEHOLDER}`,
+      ]
+    );
+    setContractAddress(deployed, 'YieldVault', yieldVaultAddress);
   }
 
   console.log('\n═══════════════════════════════════════════════');
