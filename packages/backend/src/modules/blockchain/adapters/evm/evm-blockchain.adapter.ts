@@ -596,5 +596,77 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
       timestamp: Math.floor(Date.now() / 1000),
     };
   }
+
+  async depositYieldToVault(tokenIdentifier: string, usdcAmount: string): Promise<{ txId: string }> {
+    const wallet = this.walletAdapter.getPlatformWallet();
+    const yieldVaultAddress = this.contractAdapter.getContractAddress('YieldVault');
+    const yieldVaultAbi = this.contractAdapter.getContractInterface('YieldVault');
+
+    // Step 1: Approve USDC for YieldVault to spend
+    const usdcAddress = this.contractAdapter.getContractAddress('USDC');
+    const usdcAbi = this.contractAdapter.getContractInterface('USDC');
+
+    this.logger.log(`[EVM] Approving YieldVault to spend ${usdcAmount} USDC...`);
+
+    const approvalHash = await this.executeWithRetry(() => (wallet as any).writeContract({
+      address: usdcAddress as Address,
+      abi: usdcAbi,
+      functionName: 'approve',
+      args: [yieldVaultAddress, BigInt(usdcAmount)],
+    }), 'approve USDC write') as Hash;
+
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
+      hash: approvalHash,
+      timeout: 180000,
+      pollingInterval: 2000,
+    }), 'approve USDC receipt');
+    
+    this.logger.log(`[EVM] USDC approved in tx: ${approvalHash}`);
+
+    // Step 2: Deposit yield to vault
+    this.logger.log(`[EVM] Depositing ${usdcAmount} USDC to YieldVault for token ${tokenIdentifier}...`);
+
+    const depositHash = await this.executeWithRetry(() => (wallet as any).writeContract({
+      address: yieldVaultAddress as Address,
+      abi: yieldVaultAbi,
+      functionName: 'depositYield',
+      args: [tokenIdentifier, BigInt(usdcAmount)],
+    }), 'depositYield write') as Hash;
+
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
+      hash: depositHash,
+      timeout: 180000,
+      pollingInterval: 2000,
+    }), 'depositYield receipt');
+    
+    this.logger.log(`[EVM] Yield deposited in tx: ${depositHash}`);
+    
+    return { txId: depositHash };
+  }
+
+  async transferUSDC(recipientAddress: string, usdcAmount: string): Promise<{ txId: string }> {
+    const wallet = this.walletAdapter.getPlatformWallet();
+    const usdcAddress = this.contractAdapter.getContractAddress('USDC');
+    const usdcAbi = this.contractAdapter.getContractInterface('USDC');
+
+    this.logger.log(`[EVM] Transferring ${usdcAmount} USDC to ${recipientAddress}...`);
+
+    const hash = await this.executeWithRetry(() => (wallet as any).writeContract({
+      address: usdcAddress as Address,
+      abi: usdcAbi,
+      functionName: 'transfer',
+      args: [recipientAddress as Address, BigInt(usdcAmount)],
+    }), 'USDC transfer write') as Hash;
+
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 180000,
+      pollingInterval: 2000,
+    }), 'USDC transfer receipt');
+    
+    this.logger.log(`[EVM] USDC transferred in tx: ${hash}`);
+    
+    return { txId: hash };
+  }
 }
 

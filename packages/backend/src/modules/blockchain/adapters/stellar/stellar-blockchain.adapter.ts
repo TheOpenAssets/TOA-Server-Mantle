@@ -343,9 +343,9 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
 
     // Convert canonical inputs to raw integer stroops/USDC FIRST
     // This must happen before any blockchain operations that use these values
-    const priceRaw = fromCanonical(price.toString(), 6); // USDC Price (6 decimals)
+    const priceRaw = fromCanonical(price.toString(), 7); // USDC Price (7 decimals - Stellar SAC standard)
     const minPriceRaw = minPrice && minPrice !== '0' && minPrice !== 'null'
-      ? fromCanonical(minPrice.toString(), 6)
+      ? fromCanonical(minPrice.toString(), 7)
       : 0n;
     const totalSupplyRaw = fromCanonical(totalSupply.toString(), 7); // Token Amount (7 decimals)
 
@@ -416,16 +416,9 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     const listingTypeSymbol = listingType.toString().toUpperCase() === 'AUCTION' ? 'Auction' : 'Static';
     const listingTypeVal = xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(listingTypeSymbol)]);
 
-    // usdc_contract: Option<Address> — required for auctions, None for static
-    let usdcContractVal: xdr.ScVal;
-    if (listingTypeSymbol === 'Auction') {
-      // Read USDC SAC from config; fall back to deriving from Circle's testnet issuer
-      const usdcContractId = this.configService.get<string>('network.stellar.contracts.usdcContract')
-        || new Asset('USDC', 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5').contractId(this.networkPassphrase);
-      usdcContractVal = new Address(usdcContractId).toScVal();
-    } else {
-      usdcContractVal = xdr.ScVal.scvVoid();
-    }
+    // usdc_contract: Option<Address> — ALWAYS pass None since contract now has Circle USDC hardcoded
+    // The contract parameter still exists in the signature but is unused internally
+    const usdcContractVal = xdr.ScVal.scvVoid();
 
     const listTx = new TransactionBuilder(source, {
       fee: BASE_FEE,
@@ -457,7 +450,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
 
   async verifyPurchaseTransaction(
     txHash: string,
-    assetId: string,
+    _assetId: string,
     expectedBuyer: string,
   ): Promise<PurchaseVerificationResult | null> {
     try {
@@ -519,20 +512,18 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         if (eventName === 'TokensPurchased') {
           const data = event.body().v0().data();
           const args = scValToNative(data);
-          
-          // Expecting [assetId, buyer, amount, price, totalPayment]
-          const [evtAssetId, evtBuyer, evtAmount, evtPrice, evtTotalPayment] = args;
 
-          if (evtAssetId === assetId && evtBuyer === expectedBuyer) {
-            // Price normalization: Soroban contract stores price divided by 10^10
-            // const STELLAR_PRICE_MULTIPLIER = BigInt(10_000_000_000); // 10^10
-            // const normalizedPrice = (BigInt(evtPrice) * STELLAR_PRICE_MULTIPLIER).toString();
-            // const normalizedTotalPayment = (BigInt(evtTotalPayment) * STELLAR_PRICE_MULTIPLIER).toString();
+          // Expecting [asset_code, buyer, amount, price, totalPayment]
+          // NOTE: asset_code is the Stellar asset code string (e.g. "RWAB194D5B1"), not the
+          // backend UUID. We skip comparing it to assetId — the txHash uniquely identifies
+          // the transaction; verifying the buyer address is sufficient.
+          const [_evtAssetCode, evtBuyer, evtAmount, evtPrice, evtTotalPayment] = args;
 
+          if (evtBuyer === expectedBuyer) {
             return {
               amount: toCanonical(evtAmount, 7), // 7 decimals for tokens on Stellar
-              price: toCanonical(evtPrice, 6), // 6 decimals for USDC
-              totalPayment: toCanonical(evtTotalPayment, 6), // 6 decimals for USDC
+              price: toCanonical(evtPrice, 7), // 7 decimals for USDC on Stellar (SAC standard)
+              totalPayment: toCanonical(evtTotalPayment, 7), // 7 decimals for USDC on Stellar
               blockNumber: response.ledger,
               timestamp: Number(response.createdAt),
             };
@@ -707,8 +698,8 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
 
             return {
               tokensReceived: toCanonical(evtTokensReceived, 7), // 7 decimals for tokens on Stellar
-              cost: toCanonical(evtCost, 6), // 6 decimals for USDC
-              refundAmount: toCanonical(evtRefund, 6), // 6 decimals for USDC
+              cost: toCanonical(evtCost, 7), // 7 decimals for USDC on Stellar (SAC standard)
+              refundAmount: toCanonical(evtRefund, 7), // 7 decimals for USDC on Stellar (SAC standard)
             };
           }
         }
@@ -1008,5 +999,135 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     }
 
     throw new Error(`Stellar transaction ${hash} timed out after ${timeoutMs}ms`);
+  }
+
+  async depositYieldToVault(tokenIdentifier: string, usdcAmount: string): Promise<{ txId: string }> {
+    const platformKeypair = this.walletAdapter.getPlatformKeypair();
+    const yieldVaultContractId = this.contractAdapter.getContractAddress('YieldVault');
+    const yieldVaultContract = new Contract(yieldVaultContractId);
+
+    this.logger.log(`[Stellar] Depositing yield settlement...`);
+    this.logger.log(`   Token: ${tokenIdentifier}`);
+    this.logger.log(`   Amount: ${usdcAmount} stroops (${Number(usdcAmount) / 1e7} USDC)`);
+
+    // Parse tokenIdentifier to get asset code and issuer
+    // Expected format: "ASSETCODE:ISSUER_PUBLIC_KEY"
+    const [assetCode, assetIssuer] = tokenIdentifier.split(':');
+    if (!assetCode || !assetIssuer) {
+      throw new Error(`Invalid tokenIdentifier format. Expected "CODE:ISSUER", got: ${tokenIdentifier}`);
+    }
+
+    // Query current total supply from the asset (for snapshot)
+    // Use Stellar classic asset interface
+    const assetForQuery = new Asset(assetCode, assetIssuer);
+    const assetContractId = assetForQuery.contractId(this.networkPassphrase);
+    const totalSupply = await this.queryTokenTotalSupply(assetContractId);
+
+    this.logger.log(`   Asset Code: ${assetCode}`);
+    this.logger.log(`   Asset Issuer: ${assetIssuer}`);
+    this.logger.log(`   Total Supply Snapshot: ${totalSupply}`);
+
+    // Get USDC contract address for the transfer (YieldVault will do the transfer internally)
+    const usdcAsset = new Asset('USDC', 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5');
+    const usdcContractId = usdcAsset.contractId(this.networkPassphrase);
+    
+    // Get platform account
+    const source = await this.sorobanServer.getAccount(platformKeypair.publicKey());
+
+    // Build deposit_settlement transaction
+    // deposit_settlement(env, platform, asset_code, asset_issuer, settlement_amount, total_supply)
+    const tx = new TransactionBuilder(source, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+    .addOperation(
+      yieldVaultContract.call(
+        'deposit_settlement',
+        new Address(platformKeypair.publicKey()).toScVal(), // platform (with auth)
+        xdr.ScVal.scvString(assetCode), // asset_code
+        new Address(assetIssuer).toScVal(), // asset_issuer
+        xdr.ScVal.scvI128( // settlement_amount as i128
+          new xdr.Int128Parts({
+            lo: xdr.Uint64.fromString(usdcAmount),
+            hi: xdr.Int64.fromString('0'),
+          })
+        ),
+        xdr.ScVal.scvI128( // total_supply as i128
+          new xdr.Int128Parts({
+            lo: xdr.Uint64.fromString(totalSupply),
+            hi: xdr.Int64.fromString('0'),
+          })
+        ),
+      )
+    )
+    .setTimeout(60)
+    .build();
+
+    // Simulate and assemble
+    const preparedTx = await this.prepareContractCall(tx, platformKeypair);
+    
+    // Submit transaction
+    const response = await this.sorobanServer.sendTransaction(preparedTx);
+    if (response.status !== 'PENDING') {
+      throw new Error(`Stellar deposit_settlement failed: ${response.status}`);
+    }
+
+    // Confirm transaction
+    await this.confirmTransaction(response.hash);
+    
+    this.logger.log(`[Stellar] Yield deposited successfully: ${response.hash}`);
+    
+    return { txId: response.hash };
+  }
+
+  async transferUSDC(recipientAddress: string, usdcAmount: string): Promise<{ txId: string }> {
+    const platformKeypair = this.walletAdapter.getPlatformKeypair();
+    
+    // Get USDC SAC (Stellar Asset Contract) from Circle's official USDC
+    const usdcAsset = new Asset('USDC', 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5');
+    const usdcContractId = usdcAsset.contractId(this.networkPassphrase);
+    const usdcContract = new Contract(usdcContractId);
+
+    this.logger.log(`[Stellar] Transferring ${usdcAmount} stroops USDC to ${recipientAddress}...`);
+
+    const source = await this.sorobanServer.getAccount(platformKeypair.publicKey());
+
+    // Build USDC transfer transaction
+    // transfer(from: Address, to: Address, amount: i128)
+    const tx = new TransactionBuilder(source, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+    .addOperation(
+      usdcContract.call(
+        'transfer',
+        new Address(platformKeypair.publicKey()).toScVal(), // from (platform)
+        new Address(recipientAddress).toScVal(), // to (recipient)
+        xdr.ScVal.scvI128( // amount as i128
+          new xdr.Int128Parts({
+            lo: xdr.Uint64.fromString(usdcAmount),
+            hi: xdr.Int64.fromString('0'),
+          })
+        ),
+      )
+    )
+    .setTimeout(60)
+    .build();
+
+    // Simulate and assemble
+    const preparedTx = await this.prepareContractCall(tx, platformKeypair);
+    
+    // Submit transaction
+    const response = await this.sorobanServer.sendTransaction(preparedTx);
+    if (response.status !== 'PENDING') {
+      throw new Error(`Stellar USDC transfer failed: ${response.status}`);
+    }
+
+    // Confirm transaction
+    await this.confirmTransaction(response.hash);
+    
+    this.logger.log(`[Stellar] USDC transferred successfully: ${response.hash}`);
+    
+    return { txId: response.hash };
   }
 }

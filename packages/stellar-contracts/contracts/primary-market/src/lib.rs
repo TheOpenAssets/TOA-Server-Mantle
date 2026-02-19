@@ -7,6 +7,11 @@ mod asset_registry {
     );
 }
 
+// Circle USDC on Stellar Testnet (official)
+// Classic Asset: USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+// This compiles to the SAC address: CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA
+const USDC_SAC_ADDRESS: &str = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ListingType {
@@ -96,10 +101,10 @@ impl PrimaryMarket {
             if min_price.is_none() {
                 panic!("auction requires min_price");
             }
-            if usdc_contract.is_none() {
-                panic!("auction requires usdc_contract");
-            }
         }
+
+        // Note: USDC payments use the official Circle USDC SAC (hardcoded constant)
+        // No need to pass usdc_contract parameter
 
         let listing = Listing {
             asset_code: asset_code.clone(),
@@ -126,34 +131,48 @@ impl PrimaryMarket {
 
     pub fn buy_tokens(env: Env, buyer: Address, asset_code: String, amount: i128) {
         buyer.require_auth();
-        
+
         let mut listing: Listing = env.storage().persistent().get(&DataKey::Listing(asset_code.clone())).expect("listing not found");
-        
+
         if !listing.active {
             panic!("listing inactive");
         }
-        
-        let amount_i64 = amount as i64; 
+
+        // Only allow purchases for Static listings
+        if !matches!(listing.listing_type, ListingType::Static) {
+            panic!("use submit_bid for auction listings");
+        }
+
+        let amount_i64 = amount as i64;
 
         if listing.sold_amount + amount_i64 > listing.total_supply {
             panic!("insufficient supply");
         }
 
-        // Transfer tokens from contract to buyer
-        // Note: The contract must hold the tokens or have allowance. 
-        // For this phase, we assume the contract was funded or has rights.
+        // Calculate payment
+        let price = listing.price_or_reserve;
+        let total_payment = price * amount_i64;
+
+        // Collect USDC payment from buyer if price > 0
+        if price > 0 {
+            // Use official Circle USDC SAC
+            let usdc_address = Address::from_string(&String::from_str(&env, USDC_SAC_ADDRESS));
+            let treasury: Address = env.storage().instance().get(&DataKey::PlatformTreasury).unwrap();
+            let usdc_token = token::Client::new(&env, &usdc_address);
+
+            // Transfer USDC from buyer to platform treasury
+            usdc_token.transfer(&buyer, &treasury, &(total_payment as i128));
+        }
+
+        // Transfer RWA tokens from contract to buyer
         let token_client = token::Client::new(&env, &listing.asset_issuer);
         let contract_address = env.current_contract_address();
-        
-        // Transfer from contract to buyer
         token_client.transfer(&contract_address, &buyer, &amount);
-        
+
+        // Update sold amount
         listing.sold_amount += amount_i64;
         env.storage().persistent().set(&DataKey::Listing(asset_code.clone()), &listing);
 
-        let price = listing.price_or_reserve;
-        let total_payment = price * amount_i64; 
-        
         // Emit event for backend tracker
         // Topics: ["TokensPurchased"]
         // Data: [asset_code, buyer, amount, price, total_payment]
@@ -233,8 +252,9 @@ impl PrimaryMarket {
             panic!("usdc deposit must be positive");
         }
 
-        let usdc_contract_addr = listing.usdc_contract.as_ref().unwrap();
-        let usdc_token = token::Client::new(&env, usdc_contract_addr);
+        // Use official Circle USDC SAC
+        let usdc_address = Address::from_string(&String::from_str(&env, USDC_SAC_ADDRESS));
+        let usdc_token = token::Client::new(&env, &usdc_address);
         let contract_address = env.current_contract_address();
         usdc_token.transfer(&bidder, &contract_address, &(usdc_deposit as i128));
 
@@ -324,8 +344,10 @@ impl PrimaryMarket {
 
         let contract_address = env.current_contract_address();
         let treasury: Address = env.storage().instance().get(&DataKey::PlatformTreasury).unwrap();
-        let usdc_contract_addr = listing.usdc_contract.as_ref().unwrap();
-        let usdc_token = token::Client::new(&env, usdc_contract_addr);
+
+        // Use official Circle USDC SAC
+        let usdc_address = Address::from_string(&String::from_str(&env, USDC_SAC_ADDRESS));
+        let usdc_token = token::Client::new(&env, &usdc_address);
         let rwa_token = token::Client::new(&env, &listing.asset_issuer);
 
         let wins_price = bid.limit_price >= clearing_price;

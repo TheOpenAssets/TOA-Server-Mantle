@@ -31,4 +31,16 @@ export interface IAdminDomainStrategy {
    * Approve marketplace to spend tokens (EVM specific, but can be stubbed for others)
    */
   approveMarketplace(assetId: string): Promise<any>;
+
+  /**
+   * Supply yield settlement on-chain
+   * Transfers platform fee to admin wallet and deposits net yield to YieldVault
+   */
+  supplyYieldSettlement(settlementId: string): Promise<{
+    success: boolean;
+    feeTransferTxHash?: string;
+    vaultDepositTxHash?: string;
+    feeSkipped?: boolean;
+    vaultSkipped?: boolean;
+  }>;
 }

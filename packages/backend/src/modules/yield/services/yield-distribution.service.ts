@@ -9,7 +9,7 @@ import { DistributionHistory, DistributionHistoryDocument } from '../../../datab
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { TokenHolderTrackingService } from './token-holder-tracking.service';
 import { TransferEventBackfillService } from './transfer-event-backfill.service';
-import { BlockchainService } from '../../blockchain/services/blockchain.service';
+import { ModuleRegistryService } from '../../registry/services/module-registry.service';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { 
   SettlementStatus, 
@@ -38,7 +38,7 @@ export class YieldDistributionService {
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     private holderTrackingService: TokenHolderTrackingService,
     private backfillService: TransferEventBackfillService,
-    private blockchainService: BlockchainService,
+    private moduleRegistryService: ModuleRegistryService,
     private notificationService: NotificationService,
     private configService: ConfigService,
     @Inject(forwardRef(() => LeveragePositionService))
@@ -178,9 +178,14 @@ export class YieldDistributionService {
       `Investors will burn their tokens to claim their pro-rata share`,
     );
 
-    // Simply deposit the settlement to YieldVault
-    // Investors will claim directly by burning tokens (no backend distribution needed!)
-    await this.blockchainService.depositYield(tokenAddress, settlement.usdcAmount!);
+    // Use admin domain strategy to supply yield settlement (network-agnostic)
+    // This handles both fee transfer AND vault deposit
+    const adminStrategy = this.moduleRegistryService.getAdminDomainStrategy();
+    const result = await adminStrategy.supplyYieldSettlement(settlementId);
+
+    this.logger.log(`Yield settlement supplied on-chain:`);
+    this.logger.log(`  Fee Transfer: ${result.feeTransferTxHash} (skipped: ${result.feeSkipped || false})`);
+    this.logger.log(`  Vault Deposit: ${result.vaultDepositTxHash} (skipped: ${result.vaultSkipped || false})`);
 
     // Update Settlement Status
     settlement.status = SettlementStatus.DISTRIBUTED;

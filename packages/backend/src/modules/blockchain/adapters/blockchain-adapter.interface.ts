@@ -108,6 +108,30 @@ export interface BlockchainAdapter {
     assetId: string,
   ): Promise<TokenBurnResult | null>;
   
+  /**
+   * Deposit yield settlement to YieldVault
+   * 
+   * @param tokenIdentifier - EVM: Token contract address, Stellar: Asset code
+   * @param usdcAmount - Amount of USDC to deposit (in smallest units)
+   * @returns Transaction ID
+   */
+  depositYieldToVault(
+    tokenIdentifier: string,
+    usdcAmount: string,
+  ): Promise<{ txId: string }>;
+  
+  /**
+   * Transfer USDC to a recipient (for platform fee payment)
+   * 
+   * @param recipientAddress - Recipient wallet address
+   * @param usdcAmount - Amount of USDC to transfer (in smallest units)
+   * @returns Transaction ID
+   */
+  transferUSDC(
+    recipientAddress: string,
+    usdcAmount: string,
+  ): Promise<{ txId: string }>;
+  
   // Stellar specific (gracefully ignored on EVM)
   approveTrustline?(walletAddress: WalletAddress, assetIdentifier: string): Promise<{ txId: string; skipped?: boolean }>;
 }

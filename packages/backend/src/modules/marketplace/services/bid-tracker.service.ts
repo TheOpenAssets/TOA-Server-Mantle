@@ -374,8 +374,12 @@ export class BidTrackerService {
         // Update portfolio
         try {
           await this.userPortfolioService.updateOnPurchase(purchase, asset.network || 'mantle');
+          this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || 'mantle'}`);
         } catch (error: any) {
-          this.logger.error(`Failed to update portfolio after auction settlement: ${error.message}`);
+          this.logger.error(`❌ CRITICAL: Failed to update portfolio after auction settlement for ${investorWallet}: ${error.message}`);
+          this.logger.error(`Error stack: ${error.stack}`);
+          this.logger.error(`Purchase details - assetId: ${dto.assetId}, amount: ${settlementData.tokensReceived.value}, network: ${asset.network || 'mantle'}`);
+          // Continue operation - portfolio can be rebuilt later via admin endpoint
         }
 
         await this.syncListingSold(dto.assetId);

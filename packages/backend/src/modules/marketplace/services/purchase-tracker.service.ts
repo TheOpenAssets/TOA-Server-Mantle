@@ -93,8 +93,12 @@ export class PurchaseTrackerService {
       // Update portfolio
       try {
         await this.userPortfolioService.updateOnPurchase(purchase, asset.network || 'mantle');
+        this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || 'mantle'}`);
       } catch (error: any) {
-        this.logger.error(`Failed to update portfolio: ${error.message}`);
+        this.logger.error(`❌ CRITICAL: Failed to update portfolio for ${investorWallet}: ${error.message}`);
+        this.logger.error(`Error stack: ${error.stack}`);
+        this.logger.error(`Purchase details - assetId: ${purchase.assetId}, amount: ${purchase.amount}, network: ${asset.network || 'mantle'}`);
+        // Continue operation - portfolio can be rebuilt later via admin endpoint
       }
 
       return {
@@ -152,8 +156,12 @@ export class PurchaseTrackerService {
     // Update portfolio
     try {
       await this.userPortfolioService.updateOnPurchase(purchase as any, asset.network || 'mantle');
+      this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || 'mantle'}`);
     } catch (error: any) {
-      this.logger.error(`Failed to update portfolio: ${error.message}`);
+      this.logger.error(`❌ CRITICAL: Failed to update portfolio for ${investorWallet}: ${error.message}`);
+      this.logger.error(`Error stack: ${error.stack}`);
+      this.logger.error(`Purchase details - assetId: ${dto.assetId}, amount: ${purchaseData.amount.value}, network: ${asset.network || 'mantle'}`);
+      // Continue operation - portfolio can be rebuilt later via admin endpoint
     }
 
     // Update asset.listing.sold with verified amount from transaction

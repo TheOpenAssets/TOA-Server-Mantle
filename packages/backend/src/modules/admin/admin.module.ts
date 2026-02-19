@@ -15,6 +15,7 @@ import { TrustlineApprovalService } from './services/trustline-approval.service'
 import { AuthModule } from '../auth/auth.module';
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
+import { Settlement, SettlementSchema } from '../../database/schemas/settlement.schema';
 import { TrustlineRequest, TrustlineRequestSchema } from '../../database/schemas/trustline-request.schema';
 import { MarketplaceModule } from '../marketplace/marketplace.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -29,6 +30,7 @@ import { MANTLE_ADMIN_STRATEGY_TOKEN, STELLAR_ADMIN_STRATEGY_TOKEN } from '../re
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: Asset.name, schema: AssetSchema },
+      { name: Settlement.name, schema: SettlementSchema },
       { name: TrustlineRequest.name, schema: TrustlineRequestSchema },
     ]),
     AssetModule,

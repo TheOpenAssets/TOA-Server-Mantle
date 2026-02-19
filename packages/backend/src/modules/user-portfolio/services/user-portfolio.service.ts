@@ -304,101 +304,117 @@ export class UserPortfolioService {
    * Update or create portfolio on new purchase
    */
   async updateOnPurchase(purchase: PurchaseDocument, network: string) {
-    this.logger.log(`Updating portfolio for ${purchase.investorWallet} on ${network} for purchase ${purchase.txHash}`);
+    try {
+      this.logger.log(`🔄 Updating portfolio for ${purchase.investorWallet} on ${network} for purchase ${purchase.txHash}`);
 
-    const investorWallet = purchase.investorWallet.toLowerCase();
-    const assetId = purchase.assetId;
-    
-    let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network });
-    if (!portfolio) {
-      portfolio = new this.portfolioModel({
-        walletAddress: investorWallet,
-        network,
-        holdings: [],
-        totals: {
-          totalUSDCInvested: '0',
-          totalYieldReceived: '0',
-          totalActivePositions: 0,
-          totalCompletedPositions: 0,
-          totalActiveLeveragePositions: 0,
-          totalActiveSolvencyPositions: 0,
-          networks: [network],
-        },
-        recentActivity: [],
-      });
-    }
+      const investorWallet = purchase.investorWallet.toLowerCase();
+      const assetId = purchase.assetId;
 
-    let holding = portfolio.holdings.find(h => h.assetId === assetId && h.holdingType === HoldingType.STATIC);
-    if (!holding) {
-      const newHolding = {
-        assetId,
-        tokenIdentifier: purchase.tokenAddress,
-        network,
-        holdingType: HoldingType.STATIC,
-        status: HoldingStatus.ACTIVE,
-        tokenBalance: '0',
-        totalInvested: '0',
-        purchaseIds: [],
-        firstEntryAt: new Date(),
-        lastActivityAt: new Date(),
+      this.logger.log(`Looking up portfolio: walletAddress=${investorWallet}, network=${network}`);
+      let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network });
+
+      if (!portfolio) {
+        this.logger.warn(`⚠️  No portfolio found for ${investorWallet} on ${network}. Creating new portfolio document.`);
+        portfolio = new this.portfolioModel({
+          walletAddress: investorWallet,
+          network,
+          holdings: [],
+          totals: {
+            totalUSDCInvested: '0',
+            totalYieldReceived: '0',
+            totalActivePositions: 0,
+            totalCompletedPositions: 0,
+            totalActiveLeveragePositions: 0,
+            totalActiveSolvencyPositions: 0,
+            networks: [network],
+          },
+          recentActivity: [],
+        });
+      } else {
+        this.logger.log(`✓ Found existing portfolio with ${portfolio.holdings.length} holdings`);
+      }
+
+      let holding = portfolio.holdings.find(h => h.assetId === assetId && h.holdingType === HoldingType.STATIC);
+      if (!holding) {
+        this.logger.log(`Creating new holding for assetId=${assetId}`);
+        const newHolding = {
+          assetId,
+          tokenIdentifier: purchase.tokenAddress,
+          network,
+          holdingType: HoldingType.STATIC,
+          status: HoldingStatus.ACTIVE,
+          tokenBalance: '0',
+          totalInvested: '0',
+          purchaseIds: [],
+          firstEntryAt: new Date(),
+          lastActivityAt: new Date(),
+        };
+        portfolio.holdings.push(newHolding as any);
+        holding = portfolio.holdings[portfolio.holdings.length - 1];
+      } else {
+        this.logger.log(`Found existing holding for assetId=${assetId}, current balance: ${holding.tokenBalance}`);
+      }
+
+      const amountCanonical = purchase.amount.includes('.') ? purchase.amount : toCanonical(purchase.amount, 18).value;
+      const priceCanonical = purchase.price.includes('.') ? purchase.price : toCanonical(purchase.price, 6).value;
+      const totalPaymentCanonical = purchase.totalPayment.includes('.') ? purchase.totalPayment : toCanonical(purchase.totalPayment, 6).value;
+
+      const amountRaw = fromCanonical(amountCanonical, 18);
+      const totalPaymentRaw = fromCanonical(totalPaymentCanonical, 6);
+
+      let investmentDeltaRaw = 0n;
+      if (purchase.source === 'PRIMARY_MARKET' || purchase.source === 'AUCTION') {
+        investmentDeltaRaw = totalPaymentRaw;
+      } else if (purchase.source === 'SECONDARY_MARKET') {
+        investmentDeltaRaw = amountRaw < 0n ? -totalPaymentRaw : totalPaymentRaw;
+      } else if (purchase.source === 'P2P_ORDER_CANCELLED') {
+         investmentDeltaRaw = -totalPaymentRaw;
+      }
+
+      const currentBalanceRaw = fromCanonical(holding?.tokenBalance || '0', 18);
+      const currentInvestedRaw = fromCanonical(holding?.totalInvested || '0', 6);
+
+      if (holding) {
+        holding.tokenBalance = toCanonical(currentBalanceRaw + amountRaw, 18).value;
+        holding.totalInvested = toCanonical(currentInvestedRaw + investmentDeltaRaw, 6).value;
+        holding.lastActivityAt = new Date();
+
+        if (!holding.purchaseIds) holding.purchaseIds = [];
+        if (!holding.purchaseIds.some(id => id.toString() === purchase._id.toString())) {
+          holding.purchaseIds.push(purchase._id as any);
+        }
+
+        if (fromCanonical(holding.tokenBalance, 18) > 0n && holding.status === HoldingStatus.CLAIMED) {
+          holding.status = HoldingStatus.ACTIVE;
+        }
+      }
+
+      const activityStub = {
+        txHash: purchase.txHash,
+        source: purchase.source,
+        assetId: purchase.assetId,
+        amount: amountCanonical,
+        timestamp: purchase.createdAt || new Date(),
       };
-      portfolio.holdings.push(newHolding as any);
-      holding = portfolio.holdings[portfolio.holdings.length - 1];
-    }
 
-    const amountCanonical = purchase.amount.includes('.') ? purchase.amount : toCanonical(purchase.amount, 18).value;
-    const priceCanonical = purchase.price.includes('.') ? purchase.price : toCanonical(purchase.price, 6).value;
-    const totalPaymentCanonical = purchase.totalPayment.includes('.') ? purchase.totalPayment : toCanonical(purchase.totalPayment, 6).value;
-
-    const amountRaw = fromCanonical(amountCanonical, 18);
-    const totalPaymentRaw = fromCanonical(totalPaymentCanonical, 6);
-    
-    let investmentDeltaRaw = 0n;
-    if (purchase.source === 'PRIMARY_MARKET' || purchase.source === 'AUCTION') {
-      investmentDeltaRaw = totalPaymentRaw;
-    } else if (purchase.source === 'SECONDARY_MARKET') {
-      investmentDeltaRaw = amountRaw < 0n ? -totalPaymentRaw : totalPaymentRaw;
-    } else if (purchase.source === 'P2P_ORDER_CANCELLED') {
-       investmentDeltaRaw = -totalPaymentRaw;
-    }
-
-    const currentBalanceRaw = fromCanonical(holding?.tokenBalance || '0', 18);
-    const currentInvestedRaw = fromCanonical(holding?.totalInvested || '0', 6);
-
-    if (holding) {
-      holding.tokenBalance = toCanonical(currentBalanceRaw + amountRaw, 18).value;
-      holding.totalInvested = toCanonical(currentInvestedRaw + investmentDeltaRaw, 6).value;
-      holding.lastActivityAt = new Date();
-      
-      if (!holding.purchaseIds) holding.purchaseIds = [];
-      if (!holding.purchaseIds.some(id => id.toString() === purchase._id.toString())) {
-        holding.purchaseIds.push(purchase._id as any);
+      portfolio.recentActivity.unshift(activityStub);
+      if (portfolio.recentActivity.length > 20) {
+        portfolio.recentActivity.pop();
       }
 
-      if (fromCanonical(holding.tokenBalance, 18) > 0n && holding.status === HoldingStatus.CLAIMED) {
-        holding.status = HoldingStatus.ACTIVE;
-      }
+      this.recalculateTotals(portfolio);
+
+      portfolio.lastUpdated = new Date();
+      portfolio.version += 1;
+
+      this.logger.log(`💾 Saving portfolio: holdings=${portfolio.holdings.length}, totalInvested=${portfolio.totals.totalUSDCInvested}`);
+      await portfolio.save();
+      this.logger.log(`✅ Portfolio saved successfully for ${investorWallet}`);
+    } catch (error: any) {
+      this.logger.error(`❌ Error in updateOnPurchase: ${error.message}`);
+      this.logger.error(`Stack trace: ${error.stack}`);
+      throw error; // Re-throw to be caught by caller
     }
-
-    const activityStub = {
-      txHash: purchase.txHash,
-      source: purchase.source,
-      assetId: purchase.assetId,
-      amount: amountCanonical,
-      timestamp: purchase.createdAt || new Date(),
-    };
-    
-    portfolio.recentActivity.unshift(activityStub);
-    if (portfolio.recentActivity.length > 20) {
-      portfolio.recentActivity.pop();
-    }
-
-    this.recalculateTotals(portfolio);
-    
-    portfolio.lastUpdated = new Date();
-    portfolio.version += 1;
-
-    await portfolio.save();
   }
 
   /**
@@ -812,7 +828,7 @@ export class UserPortfolioService {
    */
   async hasTrustlineApproved(walletAddress: string, network: string, assetId: string): Promise<boolean> {
     const investorWallet = walletAddress.toLowerCase();
-    
+
     const portfolio = await this.portfolioModel.findOne({
       walletAddress: investorWallet,
       network,
@@ -823,6 +839,161 @@ export class UserPortfolioService {
     }
 
     return portfolio.approved_trustlines?.includes(assetId) || false;
+  }
+
+  /**
+   * Validate portfolio sync - compares portfolio data with actual purchases and bids
+   * Returns discrepancies for debugging
+   */
+  async validatePortfolioSync(walletAddress: string, network: string) {
+    const investorWallet = walletAddress.toLowerCase();
+
+    this.logger.log(`🔍 Validating portfolio sync for ${investorWallet} on ${network}`);
+
+    // Get portfolio document
+    const portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network });
+
+    // Get all purchases for this wallet
+    const purchases = await this.purchaseModel.find({
+      investorWallet,
+      status: { $in: ['CONFIRMED', 'CLAIMED'] },
+    }).sort({ createdAt: 1 });
+
+    // Get all bids for this wallet (from Bid model if available)
+    let bids = [];
+    try {
+      const BidModel = this.purchaseModel.db.model('Bid');
+      bids = await BidModel.find({
+        bidder: investorWallet,
+        status: { $in: ['SETTLED', 'PLACED'] },
+      }).sort({ createdAt: 1 });
+    } catch (error) {
+      this.logger.warn('Bid model not available for validation');
+    }
+
+    const issues: any[] = [];
+    const summary = {
+      portfolioExists: !!portfolio,
+      portfolioNetwork: portfolio?.network,
+      purchaseCount: purchases.length,
+      bidCount: bids.length,
+      holdingsCount: portfolio?.holdings.length || 0,
+      issues: [] as string[],
+    };
+
+    if (!portfolio && purchases.length > 0) {
+      issues.push({
+        severity: 'CRITICAL',
+        message: `Portfolio document missing but ${purchases.length} purchases exist`,
+        action: 'Run rebuild endpoint to create portfolio from purchases',
+      });
+      summary.issues.push('MISSING_PORTFOLIO');
+    }
+
+    if (portfolio) {
+      // Group purchases by assetId
+      const purchasesByAsset = new Map<string, any[]>();
+      for (const purchase of purchases) {
+        if (!purchasesByAsset.has(purchase.assetId)) {
+          purchasesByAsset.set(purchase.assetId, []);
+        }
+        purchasesByAsset.get(purchase.assetId)!.push(purchase);
+      }
+
+      // Check if each asset with purchases has a corresponding holding
+      for (const [assetId, assetPurchases] of purchasesByAsset) {
+        const holding = portfolio.holdings.find(h => h.assetId === assetId && h.holdingType === HoldingType.STATIC);
+
+        if (!holding) {
+          issues.push({
+            severity: 'HIGH',
+            assetId,
+            message: `Asset has ${assetPurchases.length} purchases but no holding in portfolio`,
+            purchaseIds: assetPurchases.map(p => p._id.toString()),
+            action: 'Run rebuild endpoint to sync holdings',
+          });
+          summary.issues.push(`MISSING_HOLDING_${assetId}`);
+        } else {
+          // Calculate expected balance from purchases
+          let expectedBalanceRaw = 0n;
+          let expectedInvestedRaw = 0n;
+
+          for (const purchase of assetPurchases) {
+            const amountCanonical = purchase.amount.includes('.') ? purchase.amount : toCanonical(purchase.amount, 18).value;
+            const totalPaymentCanonical = purchase.totalPayment.includes('.') ? purchase.totalPayment : toCanonical(purchase.totalPayment, 6).value;
+
+            const amountRaw = fromCanonical(amountCanonical, 18);
+            const totalPaymentRaw = fromCanonical(totalPaymentCanonical, 6);
+
+            expectedBalanceRaw += amountRaw;
+
+            if (purchase.source === 'PRIMARY_MARKET' || purchase.source === 'AUCTION') {
+              expectedInvestedRaw += totalPaymentRaw;
+            } else if (purchase.source === 'SECONDARY_MARKET') {
+              expectedInvestedRaw += amountRaw < 0n ? -totalPaymentRaw : totalPaymentRaw;
+            } else if (purchase.source === 'P2P_ORDER_CANCELLED') {
+              expectedInvestedRaw -= totalPaymentRaw;
+            }
+          }
+
+          const expectedBalance = toCanonical(expectedBalanceRaw, 18).value;
+          const expectedInvested = toCanonical(expectedInvestedRaw, 6).value;
+
+          const actualBalanceRaw = fromCanonical(holding.tokenBalance, 18);
+          const actualInvestedRaw = fromCanonical(holding.totalInvested, 6);
+
+          if (actualBalanceRaw !== expectedBalanceRaw) {
+            issues.push({
+              severity: 'HIGH',
+              assetId,
+              message: 'Token balance mismatch',
+              expected: expectedBalance,
+              actual: holding.tokenBalance,
+              difference: toCanonical(actualBalanceRaw - expectedBalanceRaw, 18).value,
+            });
+            summary.issues.push(`BALANCE_MISMATCH_${assetId}`);
+          }
+
+          if (actualInvestedRaw !== expectedInvestedRaw) {
+            issues.push({
+              severity: 'MEDIUM',
+              assetId,
+              message: 'Total invested mismatch',
+              expected: expectedInvested,
+              actual: holding.totalInvested,
+              difference: toCanonical(actualInvestedRaw - expectedInvestedRaw, 6).value,
+            });
+            summary.issues.push(`INVESTED_MISMATCH_${assetId}`);
+          }
+
+          // Check if purchaseIds match
+          const expectedPurchaseIds = new Set(assetPurchases.map(p => p._id.toString()));
+          const actualPurchaseIds = new Set((holding.purchaseIds || []).map(id => id.toString()));
+
+          const missingPurchaseIds = [...expectedPurchaseIds].filter(id => !actualPurchaseIds.has(id));
+          if (missingPurchaseIds.length > 0) {
+            issues.push({
+              severity: 'LOW',
+              assetId,
+              message: `${missingPurchaseIds.length} purchase IDs not linked to holding`,
+              missingPurchaseIds,
+            });
+            summary.issues.push(`MISSING_PURCHASE_IDS_${assetId}`);
+          }
+        }
+      }
+    }
+
+    return {
+      walletAddress: investorWallet,
+      network,
+      timestamp: new Date(),
+      summary,
+      issues,
+      recommendations: issues.length > 0
+        ? ['Run /portfolio/rebuild/:walletAddress endpoint to fix sync issues']
+        : ['Portfolio is in sync with purchases'],
+    };
   }
 }
 

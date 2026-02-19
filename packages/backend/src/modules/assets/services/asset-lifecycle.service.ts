@@ -562,26 +562,65 @@ export class AssetLifecycleService {
       throw new Error('Asset is not an auction type');
     }
 
+    // Determine the decimal precision based on network type
+    // Stellar uses 7 decimals, EVM uses 6 decimals
+    const decimals = asset.network === 'stellar' ? 7 : 6;
+
+    // Normalize clearing price: if it's a decimal string (canonical format), convert to integer
+    // Otherwise, assume it's already in integer format (wei/stroops)
+    let clearingPriceBigInt: bigint;
+    if (clearingPrice.includes('.')) {
+      // Decimal format (e.g., "0.8600") - convert to integer
+      clearingPriceBigInt = BigInt(Math.round(parseFloat(clearingPrice) * Math.pow(10, decimals)));
+      this.logger.log(`Converted decimal clearing price ${clearingPrice} to ${clearingPriceBigInt.toString()}`);
+    } else {
+      // Already integer format (e.g., "8600000")
+      clearingPriceBigInt = BigInt(clearingPrice);
+    }
+
     // Check if results are already declared (idempotent behavior)
     // Only check idempotency if clearing price is ALREADY SET
     // If listing.active = false but clearingPrice is undefined, we're in ENDED stage waiting for admin to declare results
     if (asset.listing?.clearingPrice) {
       // Clearing price already set - check if it matches (idempotent)
-      if (asset.listing.clearingPrice === clearingPrice) {
-        this.logger.log(`Auction ${assetId} results already declared with clearing price ${clearingPrice} - skipping duplicate processing`);
+      // Compare as BigInt to handle both decimal and integer formats
+      const existingClearingPrice = asset.listing.clearingPrice.includes('.')
+        ? BigInt(Math.round(parseFloat(asset.listing.clearingPrice) * Math.pow(10, decimals)))
+        : BigInt(asset.listing.clearingPrice);
+
+      if (existingClearingPrice === clearingPriceBigInt) {
+        this.logger.log(`Auction ${assetId} results already declared with clearing price ${clearingPriceBigInt.toString()} - skipping duplicate processing`);
 
         // Get all bids to calculate results for response
         const bids = await this.bidModel.find({ assetId }).exec();
-        const clearingPriceBigInt = BigInt(clearingPrice);
         let tokensSold = BigInt(0);
         let wonCount = 0;
         let lostCount = 0;
 
         // Update bid statuses if not already done (idempotent)
         for (const bid of bids) {
-          const bidPrice = BigInt(bid.price);
+          // Normalize bid price: if it's a decimal string (canonical format), convert to integer
+          let bidPrice: bigint;
+          if (bid.price.includes('.')) {
+            // Decimal format (e.g., "0.8900") - convert to integer
+            bidPrice = BigInt(Math.round(parseFloat(bid.price) * Math.pow(10, decimals)));
+          } else {
+            // Already integer format
+            bidPrice = BigInt(bid.price);
+          }
+
+          // Normalize token amount: if it's a decimal string, convert to integer
+          let tokenAmount: bigint;
+          if (bid.tokenAmount.includes('.')) {
+            // Token amounts use 7 decimals on Stellar, 18 on EVM
+            const tokenDecimals = asset.network === 'stellar' ? 7 : 18;
+            tokenAmount = BigInt(Math.round(parseFloat(bid.tokenAmount) * Math.pow(10, tokenDecimals)));
+          } else {
+            tokenAmount = BigInt(bid.tokenAmount);
+          }
+
           if (bidPrice > clearingPriceBigInt) {
-            tokensSold += BigInt(bid.tokenAmount);
+            tokensSold += tokenAmount;
             // Update to WON if not already
             if (bid.status === 'FINALIZED') {
               await this.bidModel.updateOne(
@@ -612,7 +651,7 @@ export class AssetLifecycleService {
         return {
           success: true,
           assetId,
-          clearingPrice,
+          clearingPrice: clearingPriceBigInt.toString(),
           tokensSold: tokensSold.toString(),
           tokensRemaining: tokensRemaining.toString(),
           totalBids: bids.length,
@@ -620,16 +659,17 @@ export class AssetLifecycleService {
           message: 'Auction already ended (idempotent)',
         };
       } else {
-        throw new Error(`Auction already ended with different clearing price: ${asset.listing?.clearingPrice}`);
+        throw new Error(`Auction already ended with different clearing price: ${existingClearingPrice.toString()} (received: ${clearingPriceBigInt.toString()})`);
       }
     }
 
     // Update asset with clearing price and mark as ended
+    // Store clearing price in integer format for consistency
     await this.assetModel.updateOne(
       { assetId },
       {
         $set: {
-          'listing.clearingPrice': clearingPrice,
+          'listing.clearingPrice': clearingPriceBigInt.toString(),
           'listing.active': false,
           'listing.phase': 'ENDED',
           'listing.endedAt': new Date(),
@@ -638,22 +678,42 @@ export class AssetLifecycleService {
       },
     );
 
-    this.logger.log(`Auction ${assetId} ended with clearing price ${clearingPrice}`);
+    this.logger.log(`Auction ${assetId} ended with clearing price ${clearingPriceBigInt.toString()}`);
 
     // Get all bids to calculate results
     const bids = await this.bidModel.find({ assetId }).exec();
     this.logger.log(`Found ${bids.length} bids for auction ${assetId}`);
 
-    // Calculate tokens sold and update bid statuses (bids >= clearing price = WON, else LOST)
-    const clearingPriceBigInt = BigInt(clearingPrice);
+    // Calculate tokens sold and update bid statuses (bids > clearing price = WON, else LOST)
     let tokensSold = BigInt(0);
     let wonCount = 0;
     let lostCount = 0;
 
     for (const bid of bids) {
-      const bidPrice = BigInt(bid.price);
+      // Normalize bid price: if it's a decimal string (canonical format), convert to integer
+      let bidPrice: bigint;
+      if (bid.price.includes('.')) {
+        // Decimal format (e.g., "0.8900") - convert to integer
+        bidPrice = BigInt(Math.round(parseFloat(bid.price) * Math.pow(10, decimals)));
+        this.logger.debug(`Converted bid price ${bid.price} to ${bidPrice.toString()}`);
+      } else {
+        // Already integer format
+        bidPrice = BigInt(bid.price);
+      }
+
+      // Normalize token amount: if it's a decimal string, convert to integer
+      let tokenAmount: bigint;
+      if (bid.tokenAmount.includes('.')) {
+        // Token amounts use 7 decimals on Stellar, 18 on EVM
+        const tokenDecimals = asset.network === 'stellar' ? 7 : 18;
+        tokenAmount = BigInt(Math.round(parseFloat(bid.tokenAmount) * Math.pow(10, tokenDecimals)));
+        this.logger.debug(`Converted token amount ${bid.tokenAmount} to ${tokenAmount.toString()}`);
+      } else {
+        tokenAmount = BigInt(bid.tokenAmount);
+      }
+
       if (bidPrice > clearingPriceBigInt) {
-        tokensSold += BigInt(bid.tokenAmount);
+        tokensSold += tokenAmount;
         // Update bid status to WON (only bids > clearing price win)
         await this.bidModel.updateOne(
           { _id: bid._id },
@@ -677,7 +737,7 @@ export class AssetLifecycleService {
     const tokensRemaining = totalSupply - tokensSold;
 
     this.logger.log(
-      `Auction results: Clearing price: ${clearingPrice}, Sold: ${tokensSold.toString()}, Remaining: ${tokensRemaining.toString()}`,
+      `Auction results: Clearing price: ${clearingPriceBigInt.toString()}, Sold: ${tokensSold.toString()}, Remaining: ${tokensRemaining.toString()}`,
     );
 
     // Update asset status to AUCTION_DECLARED (results declared by admin)
@@ -693,7 +753,7 @@ export class AssetLifecycleService {
     // Create AUCTION_RESULTS_DECLARED announcement
     await this.announcementService.createAuctionResultsDeclaredAnnouncement(
       assetId,
-      clearingPrice,
+      clearingPriceBigInt.toString(),
       tokensSold.toString(),
       tokensRemaining.toString(),
     );
@@ -705,7 +765,8 @@ export class AssetLifecycleService {
 
       for (const bidderAddress of uniqueBidders) {
         try {
-          const clearingPriceUSDC = Number(clearingPrice) / 1e6;
+          // Convert clearing price to USDC for display (use appropriate decimals)
+          const clearingPriceUSDC = Number(clearingPriceBigInt) / Math.pow(10, decimals);
           await this.notificationService.create({
             userId: bidderAddress,
             walletAddress: bidderAddress,
@@ -716,7 +777,7 @@ export class AssetLifecycleService {
             action: NotificationAction.VIEW_PORTFOLIO,
             actionMetadata: {
               assetId,
-              clearingPrice,
+              clearingPrice: clearingPriceBigInt.toString(),
               clearingPriceUSDC: clearingPriceUSDC.toFixed(2),
               resultsDeclared: true,
               needsSettlement: true,
@@ -738,8 +799,8 @@ export class AssetLifecycleService {
         { assetId },
         {
           $set: {
-            'listing.staticPrice': clearingPrice, // Set static price to clearing price
-            'listing.price': clearingPrice, // Also set price field
+            'listing.staticPrice': clearingPriceBigInt.toString(), // Set static price to clearing price
+            'listing.price': clearingPriceBigInt.toString(), // Also set price field
             'listing.type': 'STATIC', // Convert to static listing for remaining tokens
             'listing.active': true, // Re-activate listing for remaining token sales
             'listing.phase': 'CONFIRMED',
@@ -750,14 +811,14 @@ export class AssetLifecycleService {
       );
 
       this.logger.log(
-        `Remaining tokens (${tokensRemaining.toString()}) now available for purchase at clearing price $${Number(clearingPrice) / 1e6}. Listing re-activated as STATIC.`,
+        `Remaining tokens (${tokensRemaining.toString()}) now available for purchase at clearing price $${(Number(clearingPriceBigInt) / Math.pow(10, decimals)).toFixed(2)}. Listing re-activated as STATIC.`,
       );
     }
 
     return {
       success: true,
       assetId,
-      clearingPrice,
+      clearingPrice: clearingPriceBigInt.toString(),
       tokensSold: tokensSold.toString(),
       tokensRemaining: tokensRemaining.toString(),
       totalBids: bids.length,

@@ -28,4 +28,16 @@ export class UserPortfolioController {
     const network = req.user.network || 'mantle';
     return this.portfolioService.rebuildPortfolio(walletAddress, network);
   }
+
+  @Get('validate/:walletAddress')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Validate portfolio sync status (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns comparison between portfolio data and actual purchases/bids',
+  })
+  async validatePortfolio(@Param('walletAddress') walletAddress: string, @Request() req: any) {
+    const network = req.user.network || 'mantle';
+    return this.portfolioService.validatePortfolioSync(walletAddress, network);
+  }
 }

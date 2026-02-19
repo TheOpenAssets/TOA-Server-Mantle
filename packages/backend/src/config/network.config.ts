@@ -39,6 +39,7 @@ export default registerAs('network', () => {
       horizonUrl: process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org',
       networkPassphrase: process.env.STELLAR_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015',
       adminSecret: process.env.STELLAR_ADMIN_SECRET,
+      adminPublic: process.env.STELLAR_ADMIN_PUBLIC,
       platformSecret: process.env.STELLAR_PLATFORM_SECRET,
       contracts: {
         attestationRegistry: process.env.STELLAR_ATTESTATION_REGISTRY_CONTRACT_ID,

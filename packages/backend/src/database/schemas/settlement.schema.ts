@@ -41,6 +41,12 @@ export class Settlement {
 
   @Prop()
   distributedAt?: Date;
+
+  @Prop()
+  vaultDepositTxHash?: string; // Transaction hash for depositing yield to YieldVault
+
+  @Prop()
+  feeTransferTxHash?: string; // Transaction hash for transferring platform fee
 }
 
 export const SettlementSchema = SchemaFactory.createForClass(Settlement);

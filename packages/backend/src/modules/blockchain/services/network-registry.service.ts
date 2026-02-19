@@ -130,4 +130,28 @@ export class NetworkRegistryService implements OnModuleInit {
     }
     return { completed: false, skipped: true, reason: 'METHOD_NOT_SUPPORTED_BY_ADAPTER' };
   }
+
+  async depositYieldToVault(
+    tokenIdentifier: string,
+    usdcAmount: string,
+  ): Promise<{ txId: string; skipped?: boolean }> {
+    if (!this.isAvailable('yield')) {
+      this.logger.warn(`Yield feature disabled on ${this.networkType}, skipping vault deposit`);
+      return { txId: '', skipped: true };
+    }
+    const adapter = await this.getBlockchainAdapter();
+    return await adapter.depositYieldToVault(tokenIdentifier, usdcAmount);
+  }
+
+  async transferUSDCForFee(
+    recipientAddress: string,
+    usdcAmount: string,
+  ): Promise<{ txId: string; skipped?: boolean }> {
+    if (!this.isAvailable('yield')) {
+      this.logger.warn(`Yield feature disabled on ${this.networkType}, skipping fee transfer`);
+      return { txId: '', skipped: true };
+    }
+    const adapter = await this.getBlockchainAdapter();
+    return await adapter.transferUSDC(recipientAddress, usdcAmount);
+  }
 }
