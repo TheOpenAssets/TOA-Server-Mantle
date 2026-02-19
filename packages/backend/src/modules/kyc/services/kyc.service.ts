@@ -12,6 +12,7 @@ import { DocumentStorageService } from './document-storage.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
+import { isStellarWallet, isEvmWallet, detectWalletNetwork } from '../utils/wallet-detector.util';
 import { NotificationType } from '../../notifications/enums/notification-type.enum';
 import { NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
@@ -155,24 +156,30 @@ export class KycService {
       },
     );
 
-    // Register investor identity on blockchain (skip for Stellar)
-    const network = this.configService.get<string>('NETWORK') || 'mantle';
+    // Register investor identity on blockchain (skip for Stellar wallets)
+    const isStellar = isStellarWallet(fullUser.walletAddress);
+    const walletNetwork = detectWalletNetwork(fullUser.walletAddress);
+    const deploymentNetwork = this.configService.get<string>('network.networkType') || 'mantle';
     let txHash: string | undefined;
 
+    this.logger.log(`🔍 Detected wallet network: ${walletNetwork}, Deployment network: ${deploymentNetwork}`);
+
     try {
-      // Stellar network uses trustlines for compliance - skip on-chain identity registration
-      if (network !== 'stellar') {
-        this.logger.log(`🔗 Registering investor ${fullUser.walletAddress} on blockchain (${network})...`);
+      // Stellar wallets use trustlines for compliance - skip on-chain identity registration
+      if (!isStellar) {
+        this.logger.log(`🔗 Registering investor ${fullUser.walletAddress} on blockchain (${deploymentNetwork})...`);
         txHash = await this.blockchainService.registerIdentity(fullUser.walletAddress);
         this.logger.log(`✅ Investor registered on blockchain: ${txHash}`);
       } else {
-        this.logger.log(`ℹ️ Stellar network detected - skipping on-chain identity registration (trustline-based compliance)`);
+        this.logger.log(`ℹ️ Stellar wallet detected - skipping on-chain identity registration (trustline-based compliance)`);
       }
 
       // Initialize portfolio for the newly verified investor (all networks)
       try {
-        await this.userPortfolioService.initializePortfolio(fullUser.walletAddress, network);
-        this.logger.log(`✅ Portfolio initialized for ${fullUser.walletAddress} on ${network}`);
+        // Use wallet's network for portfolio, not deployment network
+        const portfolioNetwork = isStellar ? 'stellar' : deploymentNetwork;
+        await this.userPortfolioService.initializePortfolio(fullUser.walletAddress, portfolioNetwork);
+        this.logger.log(`✅ Portfolio initialized for ${fullUser.walletAddress} on ${portfolioNetwork}`);
       } catch (portfolioError) {
         this.logger.error(`⚠️ Failed to initialize portfolio: ${portfolioError}`);
         // Don't fail the whole operation if portfolio initialization fails
@@ -183,14 +190,15 @@ export class KycService {
         userId: fullUser.walletAddress,
         walletAddress: fullUser.walletAddress,
         header: 'KYC Verified - Ready to Invest!',
-        detail: network === 'stellar'
+        detail: isStellar
           ? 'Your KYC has been approved. You can now request trustline approval for Stellar assets!'
           : 'Your KYC has been approved and your identity has been registered on-chain. You can now purchase RWA tokens!',
         type: NotificationType.KYC_STATUS,
         severity: NotificationSeverity.SUCCESS,
         action: NotificationAction.VIEW_MARKETPLACE,
         actionMetadata: {
-          network,
+          walletNetwork,
+          deploymentNetwork,
           txHash,
           manualApproval: true,
         },

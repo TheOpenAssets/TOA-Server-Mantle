@@ -13,6 +13,7 @@ import { UserPortfolioService } from '../../user-portfolio/services/user-portfol
 import { NotificationType } from '../../notifications/enums/notification-type.enum';
 import { NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { isStellarWallet, isEvmWallet, detectWalletNetwork } from '../utils/wallet-detector.util';
 import * as fs from 'fs';
 import * as path from 'path';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -250,14 +251,19 @@ export class VerificationProcessor extends WorkerHost {
             try {
                 const user = await this.userModel.findById(userId);
                 if (user && user.walletAddress) {
-                    const network = this.configService.get<string>('NETWORK') || 'mantle';
+                    // Detect wallet network from address format, not deployment config
+                    const isStellar = isStellarWallet(user.walletAddress);
+                    const walletNetwork = detectWalletNetwork(user.walletAddress);
+                    const deploymentNetwork = this.configService.get<string>('network.networkType') || 'mantle';
                     let txHash: string | undefined;
                     let oaidTxHash: string | undefined;
                     let hasOAID = false;
 
-                    // Stellar network uses trustlines for compliance - skip on-chain identity registration
-                    if (network !== 'stellar') {
-                        this.logger.log(`🔗 Registering investor ${user.walletAddress} on blockchain (${network})...`);
+                    this.logger.log(`🔍 Detected wallet network: ${walletNetwork}, Deployment network: ${deploymentNetwork}`);
+
+                    // Stellar wallets use trustlines for compliance - skip on-chain identity registration
+                    if (!isStellar) {
+                        this.logger.log(`🔗 Registering investor ${user.walletAddress} on blockchain (${deploymentNetwork})...`);
                         txHash = await this.blockchainService.registerIdentity(user.walletAddress);
                         this.logger.log(`✅ Investor registered on blockchain: ${txHash}`);
 
@@ -279,13 +285,15 @@ export class VerificationProcessor extends WorkerHost {
                             this.logger.log(`✅ User already registered in OAID system`);
                         }
                     } else {
-                        this.logger.log(`ℹ️ Stellar network detected - skipping on-chain identity registration (trustline-based compliance)`);
+                        this.logger.log(`ℹ️ Stellar wallet detected - skipping on-chain identity registration (trustline-based compliance)`);
                     }
 
                     // Initialize portfolio for the newly verified investor (all networks)
                     try {
-                        await this.userPortfolioService.initializePortfolio(user.walletAddress, network);
-                        this.logger.log(`✅ Portfolio initialized for ${user.walletAddress} on ${network}`);
+                        // Use wallet's network for portfolio, not deployment network
+                        const portfolioNetwork = isStellar ? 'stellar' : deploymentNetwork;
+                        await this.userPortfolioService.initializePortfolio(user.walletAddress, portfolioNetwork);
+                        this.logger.log(`✅ Portfolio initialized for ${user.walletAddress} on ${portfolioNetwork}`);
                     } catch (portfolioError) {
                         this.logger.error(`⚠️ Failed to initialize portfolio: ${portfolioError}`);
                         // Don't fail the whole operation if portfolio initialization fails
@@ -296,7 +304,7 @@ export class VerificationProcessor extends WorkerHost {
                         userId: user.walletAddress,
                         walletAddress: user.walletAddress,
                         header: 'KYC Verified - Ready to Invest!',
-                        detail: network === 'stellar'
+                        detail: isStellar
                             ? 'Your KYC has been approved. You can now request trustline approval for Stellar assets!'
                             : hasOAID 
                                 ? 'Your KYC has been approved and your identity has been registered on-chain. You can now purchase RWA tokens!'
@@ -305,10 +313,11 @@ export class VerificationProcessor extends WorkerHost {
                         severity: NotificationSeverity.SUCCESS,
                         action: NotificationAction.VIEW_MARKETPLACE,
                         actionMetadata: {
-                            network,
+                            walletNetwork,
+                            deploymentNetwork,
                             txHash,
                             verificationScore: score,
-                            oaidRegistered: network !== 'stellar' && !hasOAID,
+                            oaidRegistered: !isStellar && !hasOAID,
                             oaidTxHash,
                         },
                     });
