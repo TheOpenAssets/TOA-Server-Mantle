@@ -806,6 +806,186 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     return { txId: response.hash };
   }
 
+  async burnUnsoldTokens(
+    tokenIdentifier: string,
+    assetId: string,
+  ): Promise<import('../blockchain-adapter.interface').TokenBurnResult | null> {
+    this.logger.log(`🔥 ========== BURNING UNSOLD TOKENS (STELLAR) ==========`);
+    this.logger.log(`   Token Identifier: ${tokenIdentifier}`);
+    this.logger.log(`   Asset ID: ${assetId}`);
+
+    const adminKeypair = this.walletAdapter.getAdminKeypair();
+    const platformKeypair = this.walletAdapter.getPlatformKeypair();
+    
+    // Get custody wallet address (where unsold tokens are held)
+    // On Stellar, this is typically the platform wallet itself
+    const custodyAddress = platformKeypair.publicKey();
+    this.logger.log(`   Custody Address: ${custodyAddress}`);
+
+    const tokenContract = new Contract(tokenIdentifier);
+
+    // Query old total supply
+    this.logger.log(`   Querying old total supply...`);
+    const oldTotalSupply = await this.queryTokenTotalSupply(tokenIdentifier);
+    this.logger.log(`   Old Total Supply: ${oldTotalSupply} (${Number(oldTotalSupply) / 1e7} tokens)`);
+
+    // Query custody balance
+    this.logger.log(`   Querying custody balance...`);
+    const custodyBalance = await this.queryTokenBalance(tokenIdentifier, custodyAddress);
+    this.logger.log(`   Custody Balance: ${custodyBalance} (${Number(custodyBalance) / 1e7} tokens)`);
+
+    if (BigInt(custodyBalance) === 0n) {
+      this.logger.log(`   ✅ No unsold tokens to burn - all tokens were sold`);
+      return null;
+    }
+
+    // Burn tokens from custody wallet
+    // Soroban token interface: burn(from: Address, amount: i128)
+    this.logger.log(`   🔥 Burning ${Number(custodyBalance) / 1e7} unsold tokens...`);
+
+    const source = await this.sorobanServer.getAccount(adminKeypair.publicKey());
+
+    const burnTx = new TransactionBuilder(source, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+    .addOperation(
+      tokenContract.call(
+        'burn',
+        new Address(custodyAddress).toScVal(), // from
+        xdr.ScVal.scvI128(
+          new xdr.Int128Parts({
+            lo: xdr.Uint64.fromString(custodyBalance.toString()),
+            hi: xdr.Int64.fromString('0'),
+          })
+        ), // amount as i128
+      )
+    )
+    .setTimeout(60)
+    .build();
+
+    // Simulate to get auth and resource costs
+    this.logger.log(`   Simulating burn transaction...`);
+    const simResponse = await this.sorobanServer.simulateTransaction(burnTx);
+
+    if (rpc.Api.isSimulationError(simResponse)) {
+      throw new Error(`Burn simulation failed: ${JSON.stringify(simResponse)}`);
+    }
+
+    // Prepare transaction with simulation results
+    const preparedTx = rpc.assembleTransaction(burnTx, simResponse).build();
+    
+    // Sign with admin keypair (token issuer/controller)
+    preparedTx.sign(adminKeypair);
+
+    // Submit transaction
+    this.logger.log(`   Submitting burn transaction...`);
+    const sendResponse = await this.sorobanServer.sendTransaction(preparedTx);
+
+    if (sendResponse.status === 'ERROR') {
+      throw new Error(`Burn submission failed: ${JSON.stringify(sendResponse)}`);
+    }
+
+    const txHash = sendResponse.hash;
+    this.logger.log(`   Transaction submitted: ${txHash}`);
+
+    // Wait for confirmation
+    this.logger.log(`   Waiting for confirmation...`);
+    const getResponse = await this.confirmTransaction(txHash);
+
+    // Extract ledger from successful transaction response
+    const ledgerSequence = getResponse.status === 'SUCCESS' ? getResponse.ledger : 0;
+    this.logger.log(`   ✅ Burn transaction confirmed in ledger ${ledgerSequence}`);
+
+    // Query new total supply
+    const newTotalSupply = await this.queryTokenTotalSupply(tokenIdentifier);
+    this.logger.log(`   New Total Supply: ${newTotalSupply} (${Number(newTotalSupply) / 1e7} tokens)`);
+
+    const tokensBurnedFormatted = `${(Number(custodyBalance) / 1e7).toFixed(4)} tokens`;
+    const oldTotalSupplyFormatted = `${(Number(oldTotalSupply) / 1e7).toFixed(4)} tokens`;
+    const newTotalSupplyFormatted = `${(Number(newTotalSupply) / 1e7).toFixed(4)} tokens`;
+
+    this.logger.log(`   Summary:`);
+    this.logger.log(`     Burned: ${tokensBurnedFormatted}`);
+    this.logger.log(`     Old Supply: ${oldTotalSupplyFormatted}`);
+    this.logger.log(`     New Supply: ${newTotalSupplyFormatted}`);
+    this.logger.log(`========================================\n`);
+
+    return {
+      txId: txHash,
+      blockNumber: ledgerSequence,
+      tokensBurned: custodyBalance.toString(),
+      tokensBurnedFormatted,
+      oldTotalSupply: oldTotalSupply.toString(),
+      oldTotalSupplyFormatted,
+      newTotalSupply: newTotalSupply.toString(),
+      newTotalSupplyFormatted,
+      timestamp: Math.floor(Date.now() / 1000),
+    };
+  }
+
+  private async queryTokenBalance(contractId: string, address: string): Promise<string> {
+    const contract = new Contract(contractId);
+    const dummyAccount = new Account(address, '0');
+
+    const tx = new TransactionBuilder(dummyAccount, {
+      fee: '0',
+      networkPassphrase: this.networkPassphrase,
+    })
+    .addOperation(
+      contract.call(
+        'balance',
+        new Address(address).toScVal(),
+      )
+    )
+    .build();
+
+    const response = await this.sorobanServer.simulateTransaction(tx);
+    
+    if (rpc.Api.isSimulationError(response)) {
+      throw new Error(`Balance query simulation failed: ${JSON.stringify(response)}`);
+    }
+
+    const result = response.result?.retval;
+    if (!result) {
+      throw new Error('No result returned from balance query');
+    }
+
+    // Result is i128 - parse it
+    const i128 = result.i128();
+    return i128.lo().toString();
+  }
+
+  private async queryTokenTotalSupply(contractId: string): Promise<string> {
+    const contract = new Contract(contractId);
+    const dummyAddress = this.walletAdapter.getAdminAddress();
+    const dummyAccount = new Account(dummyAddress, '0');
+
+    const tx = new TransactionBuilder(dummyAccount, {
+      fee: '0',
+      networkPassphrase: this.networkPassphrase,
+    })
+    .addOperation(
+      contract.call('total_supply')
+    )
+    .build();
+
+    const response = await this.sorobanServer.simulateTransaction(tx);
+    
+    if (rpc.Api.isSimulationError(response)) {
+      throw new Error(`Total supply query simulation failed: ${JSON.stringify(response)}`);
+    }
+
+    const result = response.result?.retval;
+    if (!result) {
+      throw new Error('No result returned from total supply query');
+    }
+
+    // Result is i128 - parse it
+    const i128 = result.i128();
+    return i128.lo().toString();
+  }
+
   private async confirmTransaction(hash: string, timeoutMs: number = 60000): Promise<rpc.Api.GetTransactionResponse> {
     const start = Date.now();
     this.logger.log(`Waiting for Stellar transaction ${hash} to confirm...`);

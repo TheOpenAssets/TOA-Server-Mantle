@@ -4,6 +4,7 @@ import {
   createPublicClient, 
   http, 
   Address, 
+  Hash,
   decodeEventLog, 
   defineChain,
   PublicClient 
@@ -481,4 +482,119 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
       args: [walletAddress],
     }), 'isVerified check') as boolean;
   }
+
+  async burnUnsoldTokens(
+    tokenIdentifier: string,
+    assetId: string,
+  ): Promise<import('../blockchain-adapter.interface').TokenBurnResult | null> {
+    this.logger.log(`🔥 ========== BURNING UNSOLD TOKENS (EVM) ==========`);
+    this.logger.log(`   Token Address: ${tokenIdentifier}`);
+    this.logger.log(`   Asset ID: ${assetId}`);
+
+    const tokenAbi = this.contractAdapter.getContractInterface('RWAToken');
+
+    // Get custody wallet address (where unsold tokens are held)
+    const custodyWalletAddress = this.configService.get<string>('blockchain.custodyAddress');
+
+    if (!custodyWalletAddress) {
+      throw new Error('Custody wallet address not configured in .env (CUSTODY_WALLET_ADDRESS)');
+    }
+
+    this.logger.log(`   Checking custody wallet: ${custodyWalletAddress}`);
+
+    // Get old total supply before burn
+    const oldTotalSupply = await this.executeWithRetry(() => this.publicClient.readContract({
+      address: tokenIdentifier as Address,
+      abi: tokenAbi,
+      functionName: 'totalSupply',
+      args: [],
+    }), 'get totalSupply before burn') as bigint;
+
+    this.logger.log(`   Old Total Supply: ${oldTotalSupply.toString()} wei (${Number(oldTotalSupply) / 1e18} tokens)`);
+
+    // Check unsold balance in custody wallet
+    const unsoldBalance = await this.executeWithRetry(() => this.publicClient.readContract({
+      address: tokenIdentifier as Address,
+      abi: tokenAbi,
+      functionName: 'balanceOf',
+      args: [custodyWalletAddress as Address],
+    }), 'check unsold balance') as bigint;
+
+    this.logger.log(`   Custody Balance: ${unsoldBalance.toString()} wei (${Number(unsoldBalance) / 1e18} tokens)`);
+
+    if (unsoldBalance === 0n) {
+      this.logger.log(`   ✅ No unsold tokens to burn - all tokens were sold`);
+      return null;
+    }
+
+    // Burn unsold tokens from custody wallet
+    this.logger.log(`   🔥 Burning ${Number(unsoldBalance) / 1e18} unsold tokens...`);
+
+    let hash: Hash;
+    const platformWalletAddress = this.walletAdapter.getAdminAddress();
+
+    if (platformWalletAddress.toLowerCase() === custodyWalletAddress.toLowerCase()) {
+      // If platform wallet IS custody wallet, use burn() directly
+      this.logger.log(`   Using burn() (platform wallet is custody wallet)`);
+      hash = await this.executeWithRetry(() => (this.walletAdapter.getAdminWallet() as any).writeContract({
+        address: tokenIdentifier as Address,
+        abi: tokenAbi,
+        functionName: 'burn',
+        args: [unsoldBalance],
+      }), 'burn write');
+    } else {
+      // If different, use burnFrom (requires allowance)
+      this.logger.log(`   Using burnFrom() (separate custody wallet)`);
+      hash = await this.executeWithRetry(() => (this.walletAdapter.getAdminWallet() as any).writeContract({
+        address: tokenIdentifier as Address,
+        abi: tokenAbi,
+        functionName: 'burnFrom',
+        args: [custodyWalletAddress as Address, unsoldBalance],
+      }), 'burnFrom write');
+    }
+
+    this.logger.log(`   Transaction submitted: ${hash}`);
+
+    // Wait for confirmation
+    const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 180000,
+      pollingInterval: 2000,
+    }), 'burn receipt');
+
+    this.logger.log(`   ✅ Burn transaction confirmed in block ${receipt.blockNumber}`);
+
+    // Get new total supply after burn
+    const newTotalSupply = await this.executeWithRetry(() => this.publicClient.readContract({
+      address: tokenIdentifier as Address,
+      abi: tokenAbi,
+      functionName: 'totalSupply',
+      args: [],
+    }), 'get totalSupply after burn') as bigint;
+
+    this.logger.log(`   New Total Supply: ${newTotalSupply.toString()} wei (${Number(newTotalSupply) / 1e18} tokens)`);
+
+    const tokensBurnedFormatted = `${(Number(unsoldBalance) / 1e18).toFixed(2)} tokens`;
+    const oldTotalSupplyFormatted = `${(Number(oldTotalSupply) / 1e18).toFixed(2)} tokens`;
+    const newTotalSupplyFormatted = `${(Number(newTotalSupply) / 1e18).toFixed(2)} tokens`;
+
+    this.logger.log(`   Summary:`);
+    this.logger.log(`     Burned: ${tokensBurnedFormatted}`);
+    this.logger.log(`     Old Supply: ${oldTotalSupplyFormatted}`);
+    this.logger.log(`     New Supply: ${newTotalSupplyFormatted}`);
+    this.logger.log(`========================================\n`);
+
+    return {
+      txId: hash,
+      blockNumber: Number(receipt.blockNumber),
+      tokensBurned: unsoldBalance.toString(),
+      tokensBurnedFormatted,
+      oldTotalSupply: oldTotalSupply.toString(),
+      oldTotalSupplyFormatted,
+      newTotalSupply: newTotalSupply.toString(),
+      newTotalSupplyFormatted,
+      timestamp: Math.floor(Date.now() / 1000),
+    };
+  }
 }
+

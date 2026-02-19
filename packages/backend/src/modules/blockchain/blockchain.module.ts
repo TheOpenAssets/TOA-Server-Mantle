@@ -29,17 +29,20 @@ import {
   WALLET_ADAPTER, 
   EVENT_ADAPTER, 
   CONTRACT_ADAPTER, 
-  AUTH_VERIFICATION_ADAPTER 
+  AUTH_VERIFICATION_ADAPTER,
+  PAYMENT_ADAPTER,
 } from './blockchain.constants';
 import { EvmBlockchainAdapter } from './adapters/evm/evm-blockchain.adapter';
 import { EvmWalletAdapter } from './adapters/evm/evm-wallet.adapter';
 import { EvmEventAdapter } from './adapters/evm/evm-event.adapter';
 import { EvmContractAdapter } from './adapters/evm/evm-contract-loader.adapter';
 import { EvmAuthVerificationAdapter } from './adapters/evm/evm-auth-verification.adapter';
+import { EvmPaymentAdapter } from './adapters/evm/evm-payment.adapter';
 import { StellarBlockchainAdapter } from './adapters/stellar/stellar-blockchain.adapter';
 import { StellarWalletAdapter } from './adapters/stellar/stellar-wallet.adapter';
 import { StellarContractAdapter } from './adapters/stellar/stellar-contract-loader.adapter';
 import { StellarAuthVerificationAdapter } from './adapters/stellar/stellar-auth-verification.adapter';
+import { StellarPaymentAdapter } from './adapters/stellar/stellar-payment.adapter';
 import { Queue } from 'bullmq';
 import { getModelToken } from '@nestjs/mongoose';
 
@@ -132,6 +135,17 @@ export class BlockchainModule {
           },
           inject: [ConfigService],
         },
+        {
+          provide: PAYMENT_ADAPTER,
+          useFactory: (configService: ConfigService) => {
+            const networkType = configService.get('network.networkType');
+            if (networkType === 'stellar') {
+              return new StellarPaymentAdapter(configService);
+            }
+            return new EvmPaymentAdapter(configService);
+          },
+          inject: [ConfigService],
+        },
 
         // Legacy Services (Wrappers)
         BlockchainService,
@@ -147,6 +161,7 @@ export class BlockchainModule {
         EVENT_ADAPTER,
         CONTRACT_ADAPTER,
         AUTH_VERIFICATION_ADAPTER,
+        PAYMENT_ADAPTER,
         NetworkRegistryService,
         BlockchainService,
         WalletService,

@@ -13,7 +13,6 @@ import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { LeveragePosition, LeveragePositionDocument } from '../../../database/schemas/leverage-position.schema';
 import { CreateAssetDto } from '../dto/create-asset.dto';
 import { v4 as uuidv4 } from 'uuid';
-import { ethers } from 'ethers';
 import { 
   AssetStatus, 
   UserRole, 
@@ -28,6 +27,9 @@ import { AnnouncementService } from '../../announcements/services/announcement.s
 import { NotificationService } from '../../notifications/services/notification.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { detectNetworkType } from '../../auth/utils/wallet.util';
+import { PAYMENT_ADAPTER, BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
+import { PaymentAdapter } from '../../blockchain/adapters/payment-adapter.interface';
+import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
 
 @Injectable()
 export class AssetLifecycleService {
@@ -48,6 +50,8 @@ export class AssetLifecycleService {
     private configService: ConfigService,
     private notificationService: NotificationService,
     private blockchainService: BlockchainService,
+    @Inject(PAYMENT_ADAPTER) private paymentAdapter: PaymentAdapter,
+    @Inject(BLOCKCHAIN_ADAPTER) private blockchainAdapter: BlockchainAdapter,
     @InjectConnection() connection: Connection,
   ) {
     this.leveragePositionModel = connection.model<LeveragePosition>(LeveragePosition.name);
@@ -837,14 +841,14 @@ export class AssetLifecycleService {
     tokenAddress: string,
     assetId: string,
     maxRetries: number = 3
-  ): Promise<{ tokensBurned: bigint; newTotalSupply: bigint; txHash: string } | undefined> {
+  ): Promise<import('../../blockchain/adapters/blockchain-adapter.interface').TokenBurnResult | null> {
     const delays = [5000, 10000, 20000]; // 5s, 10s, 20s exponential backoff
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         this.logger.log(`🔄 Burn attempt ${attempt}/${maxRetries} for asset ${assetId}`);
 
-        const result = await this.blockchainService.burnUnsoldTokens(tokenAddress, assetId);
+        const result = await this.blockchainAdapter.burnUnsoldTokens(tokenAddress, assetId);
 
         this.logger.log(`✅ Burn successful on attempt ${attempt}`);
         return result;
@@ -857,12 +861,12 @@ export class AssetLifecycleService {
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           this.logger.error(`❌ All ${maxRetries} burn attempts failed`);
-          return undefined;
+          return null;
         }
       }
     }
 
-    return undefined;
+    return null;
   }
 
   /**
@@ -951,61 +955,22 @@ export class AssetLifecycleService {
     this.logger.log(`  - PRIMARY_MARKET purchases: ${confirmedPurchases.length}`);
     this.logger.log(`  - Leverage positions: ${leveragePositions.length}`);
 
-    // Execute transfer on-chain
-    const platformPrivateKey = this.configService.get<string>('PLATFORM_PRIVATE_KEY');
-    const rpcUrl = this.configService.get<string>('blockchain.rpcUrl');
-
-    if (!platformPrivateKey) {
-      throw new Error('PLATFORM_PRIVATE_KEY not configured');
-    }
-
-    // Read deployed contracts for USDC address
-    const fs = require('fs');
-    const path = require('path');
-    const deployedContractsPath = path.join(process.cwd(), '../contracts/deployed_contracts.json');
-    const deployedContracts = JSON.parse(fs.readFileSync(deployedContractsPath, 'utf-8'));
-    const usdcAddress = deployedContracts.contracts.USDC;
-
-    if (!usdcAddress) {
-      throw new Error('USDC address not found in deployed contracts');
-    }
-
-    this.logger.log(`Using USDC contract: ${usdcAddress}`);
-
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const wallet = new ethers.Wallet(platformPrivateKey, provider);
-
-    const USDC_ABI = [
-      'function balanceOf(address) view returns (uint256)',
-      'function transfer(address to, uint256 amount) returns (bool)',
-    ];
-
-    const usdc = new ethers.Contract(usdcAddress, USDC_ABI, wallet) as any;
-
-    // Check platform balance
-    const balance = await usdc.balanceOf(wallet.address) as bigint;
-    this.logger.log(`Platform USDC balance: ${balance.toString()} (${Number(balance) / 1e6} USDC)`);
-
-    if (balance < totalUsdcRaised) {
-      throw new Error(`Insufficient USDC balance. Have: ${Number(balance) / 1e6}, Need: ${Number(totalUsdcRaised) / 1e6}`);
-    }
-
-    // Execute transfer
-    this.logger.log(`Transferring ${Number(totalUsdcRaised) / 1e6} USDC to ${asset.originator}`);
-    const tx = await usdc.transfer(asset.originator, totalUsdcRaised) as any;
-    this.logger.log(`Transaction submitted: ${tx.hash}`);
-
-    const receipt = await tx.wait();
-    this.logger.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+    // Execute transfer using payment adapter (network-agnostic)
+    this.logger.log(`\n💸 ========== EXECUTING PAYOUT TRANSFER ==========`);
+    const transferResult = await this.paymentAdapter.transferStablecoin(
+      asset.originator,
+      totalUsdcRaised,
+    );
+    this.logger.log(`========================================\n`);
 
     // Create payout record in MongoDB
     const payoutData: any = {
       assetId,
       originator: asset.originator,
       amount: totalUsdcRaised.toString(),
-      amountFormatted: `${Number(totalUsdcRaised) / 1e6} USDC`,
-      transactionHash: tx.hash,
-      blockNumber: Number(receipt.blockNumber),
+      amountFormatted: transferResult.amountFormatted,
+      transactionHash: transferResult.txId,
+      blockNumber: transferResult.blockNumber,
       paidAt: new Date(),
       purchaseIds: confirmedPurchases.map(p => p._id.toString()),
       purchasesCount: confirmedPurchases.length,
@@ -1019,56 +984,53 @@ export class AssetLifecycleService {
 
     // Burn unsold tokens before completing payout
     this.logger.log(`\n🔥 ========== BURNING UNSOLD TOKENS ==========`);
-    let burnResult: { tokensBurned: bigint; newTotalSupply: bigint; txHash: string } | undefined;
+    let burnResult: import('../../blockchain/adapters/blockchain-adapter.interface').TokenBurnResult | null = null;
 
     if (asset.token?.address) {
       try {
+        // Use adapter with retry logic
         burnResult = await this.burnTokensWithRetry(asset.token.address, assetId);
 
-        if (burnResult && burnResult.tokensBurned > 0n) {
-          this.logger.log(`✅ Burned ${Number(burnResult.tokensBurned) / 1e18} unsold tokens`);
-          this.logger.log(`   Old supply: ${Number(asset.tokenParams.totalSupply) / 1e18} tokens`);
-          this.logger.log(`   New supply: ${Number(burnResult.newTotalSupply) / 1e18} tokens`);
-          this.logger.log(`   Burn tx: ${burnResult.txHash}`);
+        if (burnResult && burnResult.tokensBurned !== '0') {
+          this.logger.log(`✅ Burned ${burnResult.tokensBurnedFormatted}`);
+          this.logger.log(`   Old supply: ${burnResult.oldTotalSupplyFormatted}`);
+          this.logger.log(`   New supply: ${burnResult.newTotalSupplyFormatted}`);
+          this.logger.log(`   Burn tx: ${burnResult.txId}`);
 
           // Update asset's token supply in database
           await this.assetModel.updateOne(
             { assetId },
             {
               $set: {
-                'token.supply': burnResult.newTotalSupply.toString(),
-                'token.unsoldTokensBurned': burnResult.tokensBurned.toString(),
-                'token.burnTransactionHash': burnResult.txHash,
+                'token.supply': burnResult.newTotalSupply,
+                'token.unsoldTokensBurned': burnResult.tokensBurned,
+                'token.burnTransactionHash': burnResult.txId,
               }
             }
           );
-
-          const tokensBurnedFormatted = (Number(burnResult.tokensBurned) / 1e18).toFixed(2);
-          const oldSupplyFormatted = (Number(asset.tokenParams.totalSupply) / 1e18).toFixed(2);
-          const newSupplyFormatted = (Number(burnResult.newTotalSupply) / 1e18).toFixed(2);
 
           // Notify originator about burned tokens
           await this.notificationService.create({
             userId: asset.originator,
             walletAddress: asset.originator,
             header: 'Unsold Tokens Burned',
-            detail: `${tokensBurnedFormatted} unsold tokens from ${asset.metadata.invoiceNumber} were burned during payout. Total supply reduced from ${oldSupplyFormatted} to ${newSupplyFormatted} tokens. Your payout is based on sold tokens only.`,
+            detail: `${burnResult.tokensBurnedFormatted} from ${asset.metadata.invoiceNumber} were burned during payout. Total supply reduced from ${burnResult.oldTotalSupplyFormatted} to ${burnResult.newTotalSupplyFormatted}. Your payout is based on sold tokens only.`,
             type: NotificationType.ASSET_STATUS,
             severity: NotificationSeverity.INFO,
             action: NotificationAction.VIEW_ASSET,
-            actionMetadata: { assetId, burnTxHash: burnResult.txHash },
+            actionMetadata: { assetId, burnTxHash: burnResult.txId },
           });
 
           // Notify admins about token burn
           await this.notifyAllAdmins(
             'Tokens Burned During Payout',
-            `${tokensBurnedFormatted} unsold tokens from asset ${asset.metadata.invoiceNumber} (${asset.assetId.slice(0, 8)}...) were burned. Supply: ${oldSupplyFormatted} → ${newSupplyFormatted}. Tx: ${burnResult.txHash}`,
+            `${burnResult.tokensBurnedFormatted} from asset ${asset.metadata.invoiceNumber} (${asset.assetId.slice(0, 8)}...) were burned. Supply: ${burnResult.oldTotalSupplyFormatted} → ${burnResult.newTotalSupplyFormatted}. Tx: ${burnResult.txId}`,
             NotificationType.ASSET_STATUS,
             NotificationSeverity.INFO,
             NotificationAction.VIEW_ASSET,
-            { assetId, burnTxHash: burnResult.txHash, tokensBurned: tokensBurnedFormatted }
+            { assetId, burnTxHash: burnResult.txId, tokensBurned: burnResult.tokensBurnedFormatted }
           );
-        } else if (burnResult && burnResult.tokensBurned === 0n) {
+        } else if (burnResult === null) {
           this.logger.log(`✅ No unsold tokens to burn - all tokens were sold`);
 
           // Notify originator that all tokens were sold
@@ -1076,7 +1038,7 @@ export class AssetLifecycleService {
             userId: asset.originator,
             walletAddress: asset.originator,
             header: 'All Tokens Sold!',
-            detail: `Congratulations! All ${(Number(asset.tokenParams.totalSupply) / 1e18).toFixed(2)} tokens from ${asset.metadata.invoiceNumber} were sold. No tokens were burned.`,
+            detail: `Congratulations! All tokens from ${asset.metadata.invoiceNumber} were sold. No tokens were burned.`,
             type: NotificationType.ASSET_STATUS,
             severity: NotificationSeverity.SUCCESS,
             action: NotificationAction.VIEW_ASSET,
@@ -1176,14 +1138,14 @@ export class AssetLifecycleService {
         userId: asset.originator,
         walletAddress: asset.originator,
         header: 'Payout Complete',
-        detail: `Your payout of ${Number(totalUsdcRaised) / 1e6} USDC for asset ${asset.metadata.invoiceNumber} has been successfully transferred to your wallet.`,
+        detail: `Your payout of ${transferResult.amountFormatted} for asset ${asset.metadata.invoiceNumber} has been successfully transferred to your wallet.`,
         type: NotificationType.PAYOUT_SETTLED,
         severity: NotificationSeverity.SUCCESS,
         action: NotificationAction.VIEW_PORTFOLIO,
         actionMetadata: {
           assetId,
           amount: totalUsdcRaised.toString(),
-          transactionHash: tx.hash,
+          transactionHash: transferResult.txId,
         },
       });
       this.logger.log(`Payout notification sent to originator ${asset.originator}`);
@@ -1197,11 +1159,11 @@ export class AssetLifecycleService {
       assetId,
       originator: asset.originator,
       totalUsdcRaised: totalUsdcRaised.toString(),
-      totalUsdcRaisedFormatted: `${Number(totalUsdcRaised) / 1e6} USDC`,
+      totalUsdcRaisedFormatted: transferResult.amountFormatted,
       listingType: asset.listing?.type,
       transactionCount: confirmedPurchases.length + leveragePositions.length,
-      transactionHash: tx.hash,
-      blockNumber: receipt.blockNumber.toString(),
+      transactionHash: transferResult.txId,
+      blockNumber: transferResult.blockNumber.toString(),
       payoutId: payoutRecord._id.toString(),
       message: 'Payout executed successfully!',
     };

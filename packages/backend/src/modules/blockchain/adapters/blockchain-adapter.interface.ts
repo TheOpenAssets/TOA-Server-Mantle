@@ -26,6 +26,18 @@ export interface BidSettlementResult {
   cost: PreciseNumeric; // Canonical 4-decimal (USDC)
 }
 
+export interface TokenBurnResult {
+  txId: string; // Transaction hash/ID (network-specific format)
+  blockNumber: number; // Block number (EVM) or ledger sequence (Stellar)
+  tokensBurned: string; // Raw amount burned (string BigInt for precision)
+  tokensBurnedFormatted: string; // Human-readable: "1000.00 tokens"
+  oldTotalSupply: string; // Total supply before burn
+  oldTotalSupplyFormatted: string; // Human-readable: "10000.00 tokens"
+  newTotalSupply: string; // Total supply after burn
+  newTotalSupplyFormatted: string; // Human-readable: "9000.00 tokens"
+  timestamp: number; // Unix timestamp (seconds)
+}
+
 export interface BlockchainAdapter {
   // Asset Management
   registerAsset(dto: any): Promise<{ txId: string }>;
@@ -82,6 +94,19 @@ export interface BlockchainAdapter {
   // Identity
   registerIdentity(walletAddress: WalletAddress): Promise<{ txId: string }>;
   isVerified(walletAddress: WalletAddress): Promise<boolean>;
+  
+  /**
+   * Burn unsold tokens from custody wallet after payout
+   * 
+   * @param tokenIdentifier - EVM: Contract address (0x...), Stellar: Asset code or contract ID
+   * @param assetId - Asset UUID for logging/tracking
+   * @returns Burn details including amounts and transaction ID, or null if no tokens to burn
+   * @throws Error if burn transaction fails
+   */
+  burnUnsoldTokens(
+    tokenIdentifier: string,
+    assetId: string,
+  ): Promise<TokenBurnResult | null>;
   
   // Stellar specific (gracefully ignored on EVM)
   approveTrustline?(walletAddress: WalletAddress, assetIdentifier: string): Promise<{ txId: string; skipped?: boolean }>;

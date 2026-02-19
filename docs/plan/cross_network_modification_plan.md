@@ -364,3 +364,22 @@ The work is ordered to maintain a working system at every step. Each phase is in
 3. **Conditional Loading**: With `NETWORK_TYPE=stellar`, leverage/faucet modules are not loaded, their API endpoints return 404
 4. **Stellar Smoke Test**: With `NETWORK_TYPE=stellar` and Stellar testnet config, basic operations (register asset, deploy token) succeed against Soroban contracts
 5. **Cross-Service Safety**: YieldDistributionService gracefully skips leverage paths when leverage is disabled
+
+
+## Summary of Network-Agnostic Features (Updated)
+
+The following features now work identically across Mantle and Stellar with zero code changes between deployments:
+
+1. ✅ **Asset Origination** — Upload, hash, attest, approve (Part 4)
+2. ✅ **Asset Registration** — On-chain attestation recording (Part 4)
+3. ✅ **Token Deployment** — ERC-20 (Mantle) / Soroban token (Stellar) (Part 4)
+4. ✅ **Static Marketplace Listing** — Fixed-price primary market (Part 5)
+5. ✅ **Auction Marketplace Listing** — Dutch auction with bid settlement (Part 6)
+6. ✅ **Auction Bids** — User bidding with on-chain verification (Part 6)
+
+**Next Features to Make Network-Agnostic** (Future Work):
+- Secondary P2P Market (order book, limit orders, matching)
+- Yield Distribution (deposit and distribute yield to token holders)
+- KYC Identity Registration (on-chain OAID)
+- Solvency Vault (borrow against RWA collateral)
+- Leverage Module (mETH-collateralized positions) — Mantle-only, will remain network-specific

@@ -7,10 +7,11 @@ This folder contains the concrete implementations of the blockchain adapter inte
 
 ### `EvmBlockchainAdapter`
 - Implements `BlockchainAdapter`.
-- Handles contract writes (registration, deployment, listing, endAuction) and reads using `viem`'s `PublicClient` and `WalletClient`.
+- Handles contract writes (registration, deployment, listing, endAuction, token burning) and reads using `viem`'s `PublicClient` and `WalletClient`.
 - Dynamically constructs the chain definition from `network.config.ts`.
 - **Transaction Verification**: Implements `verifyPurchaseTransaction`, `verifyBidTransaction`, and `verifyBidSettlement` by decoding EVM logs from transaction receipts.
 - **Auction Flow**: `endAuction` performs a database lookup to map the token address to an `assetId` before calling the `PrimaryMarketplace` contract.
+- **Token Burning** (NEW): `burnUnsoldTokens` queries custody wallet balance and burns using RWAToken's `burn()` or `burnFrom()` method with 3-retry mechanism.
 
 ### `EvmWalletAdapter`
 - Implements `WalletAdapter`.
@@ -28,6 +29,17 @@ This folder contains the concrete implementations of the blockchain adapter inte
 ### `EvmAuthVerificationAdapter`
 - Implements `AuthVerificationAdapter`.
 - Verifies EIP-191 signatures using `recoverAddress`.
+
+### `EvmPaymentAdapter` (NEW)
+- Implements `PaymentAdapter`.
+- **Purpose**: Handles USDC transfers on Mantle/EVM for originator payouts.
+- **Technology**: Uses `ethers.js` for ERC-20 token interactions.
+- **Configuration**: Reads USDC contract address from `deployed_contracts.json` (required).
+- **Operations**:
+  - `transferStablecoin()`: Executes USDC.transfer() from platform wallet to recipient
+  - `getPlatformStablecoinBalance()`: Queries USDC.balanceOf() for platform wallet
+  - Validates sufficient balance before transfer
+  - Returns network-agnostic transaction results (txId, blockNumber, formatted amounts)
 
 ## Invariants
 - All hex strings are treated as `0x` prefixed strings internally but exposed as plain strings to consumers.
