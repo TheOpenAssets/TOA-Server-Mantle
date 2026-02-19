@@ -125,6 +125,13 @@ export class UserPortfolio {
 
   @Prop({ default: 1 })
   version!: number;
+
+  // Stellar-specific: Trustline state tracking
+  @Prop({ type: [String], default: [] })
+  requested_trustlines!: string[]; // Array of assetIds with pending trustline requests
+
+  @Prop({ type: [String], default: [] })
+  approved_trustlines!: string[]; // Array of assetIds with approved trustlines
 }
 
 export const UserPortfolioSchema = SchemaFactory.createForClass(UserPortfolio);

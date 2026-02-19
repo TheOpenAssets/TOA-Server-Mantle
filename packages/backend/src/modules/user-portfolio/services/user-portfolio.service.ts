@@ -763,4 +763,66 @@ export class UserPortfolioService {
     portfolio.version += 1;
     await portfolio.save();
   }
+
+  /**
+   * Add assetId to requested_trustlines array for Stellar assets
+   */
+  async addRequestedTrustline(walletAddress: string, network: string, assetId: string): Promise<void> {
+    const investorWallet = walletAddress.toLowerCase();
+    
+    await this.portfolioModel.updateOne(
+      { walletAddress: investorWallet, network },
+      {
+        $addToSet: { requested_trustlines: assetId },
+        $setOnInsert: {
+          walletAddress: investorWallet,
+          network,
+          holdings: [],
+          totals: {},
+          recentActivity: [],
+          lastUpdated: new Date(),
+          version: 1,
+        },
+      },
+      { upsert: true }
+    );
+
+    this.logger.log(`Added assetId ${assetId} to requested_trustlines for wallet ${investorWallet} on ${network}`);
+  }
+
+  /**
+   * Move assetId from requested_trustlines to approved_trustlines
+   */
+  async approveTrustline(walletAddress: string, network: string, assetId: string): Promise<void> {
+    const investorWallet = walletAddress.toLowerCase();
+
+    await this.portfolioModel.updateOne(
+      { walletAddress: investorWallet, network },
+      {
+        $pull: { requested_trustlines: assetId },
+        $addToSet: { approved_trustlines: assetId },
+      }
+    );
+
+    this.logger.log(`Moved assetId ${assetId} from requested to approved trustlines for wallet ${investorWallet} on ${network}`);
+  }
+
+  /**
+   * Check if investor has approved trustline for an asset
+   */
+  async hasTrustlineApproved(walletAddress: string, network: string, assetId: string): Promise<boolean> {
+    const investorWallet = walletAddress.toLowerCase();
+    
+    const portfolio = await this.portfolioModel.findOne({
+      walletAddress: investorWallet,
+      network,
+    }).lean();
+
+    if (!portfolio) {
+      return false;
+    }
+
+    return portfolio.approved_trustlines?.includes(assetId) || false;
+  }
 }
+
