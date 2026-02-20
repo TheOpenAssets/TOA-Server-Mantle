@@ -684,11 +684,14 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
         if (eventName === 'BidSettled') {
           const data = event.body().v0().data();
           const args = scValToNative(data);
-          
-          // Expecting [assetId, bidder, tokensReceived, cost, refund]
-          const [evtAssetId, evtBidder, evtTokensReceived, evtCost, evtRefund] = args;
 
-          if (evtAssetId === assetId && evtBidder === expectedBidder) {
+          // Expecting [asset_code, bidder, tokensReceived, cost, refund]
+          // NOTE: asset_code is the Stellar asset code string (e.g. "RWAB194D5B1"), not the
+          // backend UUID. We skip comparing it to assetId — the txHash uniquely identifies
+          // the transaction; verifying the bidder address is sufficient.
+          const [_evtAssetCode, evtBidder, evtTokensReceived, evtCost, evtRefund] = args;
+
+          if (evtBidder === expectedBidder) {
             // Price normalization: Soroban contract stores price divided by 10^10
             // cost = (tokensReceived * price) / 10^18. 
             // If evtCost is returned in Stellar format, we must normalize it too.

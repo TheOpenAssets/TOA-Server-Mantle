@@ -178,7 +178,7 @@ export class BidTrackerService {
     for (const bid of bids) {
       const existing = pricePoints.get(bid.price);
       if (existing) {
-        existing.totalDemand = (BigInt(existing.totalDemand) + BigInt(bid.tokenAmount)).toString();
+        existing.totalDemand = (parseFloat(existing.totalDemand) + parseFloat(bid.tokenAmount)).toFixed(4);
         existing.bidCount += 1;
       } else {
         pricePoints.set(bid.price, {
@@ -434,15 +434,16 @@ export class BidTrackerService {
         status: { $in: ['CONFIRMED', 'CLAIMED'] },
       }).select({ amount: 1 });
       const totalSold = purchases.reduce(
-        (acc, p) => acc + BigInt(p.amount || '0'),
-        0n,
+        (acc, p) => acc + parseFloat(p.amount || '0'),
+        0,
       );
+      const totalSoldCanonical = totalSold.toFixed(4);
       await this.assetModel.updateOne(
         { assetId },
-        { $set: { 'listing.sold': totalSold.toString() } },
+        { $set: { 'listing.sold': totalSoldCanonical } },
       );
       this.logger.log(
-        `listing.sold synced for ${assetId}: ${Number(totalSold) / 1e18} tokens`,
+        `listing.sold synced for ${assetId}: ${totalSoldCanonical} tokens`,
       );
     } catch (error: any) {
       this.logger.error(`Failed to sync listing.sold for ${assetId}: ${error.message}`);

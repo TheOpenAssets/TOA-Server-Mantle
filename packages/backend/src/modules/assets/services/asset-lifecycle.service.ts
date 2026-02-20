@@ -4,7 +4,6 @@ import { Model, Connection } from 'mongoose';
 import { InjectConnection } from '@nestjs/mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { ConfigService } from '@nestjs/config';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
@@ -25,9 +24,8 @@ import { RegisterAssetDto } from '../../blockchain/dto/register-asset.dto';
 import { AttestationService } from '../../compliance-engine/services/attestation.service';
 import { AnnouncementService } from '../../announcements/services/announcement.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { detectNetworkType } from '../../auth/utils/wallet.util';
-import { toCanonical, fromCanonical } from '../../blockchain/utils/numeric-conversion';
+import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 import { PAYMENT_ADAPTER, BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
 import { PaymentAdapter } from '../../blockchain/adapters/payment-adapter.interface';
 import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
@@ -48,9 +46,7 @@ export class AssetLifecycleService {
     private attestationService: AttestationService,
     @Inject(forwardRef(() => AnnouncementService))
     private announcementService: AnnouncementService,
-    private configService: ConfigService,
     private notificationService: NotificationService,
-    private blockchainService: BlockchainService,
     @Inject(PAYMENT_ADAPTER) private paymentAdapter: PaymentAdapter,
     @Inject(BLOCKCHAIN_ADAPTER) private blockchainAdapter: BlockchainAdapter,
     @InjectConnection() connection: Connection,
@@ -445,12 +441,13 @@ export class AssetLifecycleService {
     }
 
     const bids = await this.bidModel.find({ assetId }).sort({ price: -1 }).exec();
-    const totalSupply = BigInt(asset.tokenParams.totalSupply);
+    // tokenParams.totalSupply is canonical 4-decimal format — parse as float
+    const totalSupply = parseFloat(asset.tokenParams.totalSupply);
 
     if (bids.length === 0) {
       return {
-        suggestedPrice: asset.listing?.reservePrice || '0',
-        tokensAtPrice: '0',
+        suggestedPrice: asset.listing?.reservePrice || '0.0000',
+        tokensAtPrice: '0.0000',
         percentageOfSupply: 0,
         totalBids: 0,
         allBids: [],
@@ -459,21 +456,20 @@ export class AssetLifecycleService {
     }
 
     // Get unique price points sorted descending
+    // bid.price is canonical 4-decimal format — compare as floats
     const uniquePrices = [...new Set(bids.map(b => b.price))].sort((a, b) => {
-      const aNum = BigInt(a);
-      const bNum = BigInt(b);
-      return aNum > bNum ? -1 : aNum < bNum ? 1 : 0;
+      return parseFloat(b) - parseFloat(a);
     });
 
-    // Calculate cumulative tokens at each price point
+    // Calculate cumulative tokens at each price point using floats (canonical format)
     const priceBreakdown = uniquePrices.map(price => {
-      const priceBigInt = BigInt(price);
-      let cumulativeTokens = BigInt(0);
+      const priceFloat = parseFloat(price);
+      let cumulativeTokens = 0;
       const bidsAtThisPrice = [];
 
       for (const bid of bids) {
-        if (BigInt(bid.price) >= priceBigInt) {
-          cumulativeTokens += BigInt(bid.tokenAmount);
+        if (parseFloat(bid.price) >= priceFloat) {
+          cumulativeTokens += parseFloat(bid.tokenAmount);
           bidsAtThisPrice.push({
             bidder: bid.bidder,
             price: bid.price,
@@ -483,11 +479,11 @@ export class AssetLifecycleService {
         }
       }
 
-      const percentage = Number((cumulativeTokens * BigInt(10000)) / totalSupply) / 100;
+      const percentage = totalSupply > 0 ? (cumulativeTokens / totalSupply) * 100 : 0;
 
       return {
         price,
-        cumulativeTokens: cumulativeTokens.toString(),
+        cumulativeTokens: cumulativeTokens.toFixed(4),
         percentage,
         bidsCount: bidsAtThisPrice.length,
       };
@@ -501,8 +497,8 @@ export class AssetLifecycleService {
       { percentage: 25, label: '25% of Supply' },
     ];
 
-    let suggestedPrice = asset.listing?.reservePrice || '0';
-    let tokensAtPrice = '0';
+    let suggestedPrice = asset.listing?.reservePrice || '0.0000';
+    let tokensAtPrice = '0.0000';
     let percentageOfSupply = 0;
 
     for (const threshold of thresholds) {
@@ -518,19 +514,19 @@ export class AssetLifecycleService {
       }
     }
 
-    // FIX: If no threshold met, calculate tokens at reserve price
+    // If no threshold met, calculate tokens at reserve price
     if (percentageOfSupply === 0 && bids.length > 0) {
-      const reservePrice = BigInt(asset.listing?.reservePrice || '0');
-      let tokensAtReserve = BigInt(0);
+      const reservePrice = parseFloat(asset.listing?.reservePrice || '0');
+      let tokensAtReserve = 0;
 
       for (const bid of bids) {
-        if (BigInt(bid.price) >= reservePrice) {
-          tokensAtReserve += BigInt(bid.tokenAmount);
+        if (parseFloat(bid.price) >= reservePrice) {
+          tokensAtReserve += parseFloat(bid.tokenAmount);
         }
       }
 
-      tokensAtPrice = tokensAtReserve.toString();
-      percentageOfSupply = Number((tokensAtReserve * BigInt(10000)) / totalSupply) / 100;
+      tokensAtPrice = tokensAtReserve.toFixed(4);
+      percentageOfSupply = totalSupply > 0 ? (tokensAtReserve / totalSupply) * 100 : 0;
 
       this.logger.log(
         `No threshold met. Using reserve price ${suggestedPrice} with ${percentageOfSupply.toFixed(2)}% of supply`,
@@ -649,7 +645,8 @@ export class AssetLifecycleService {
           this.logger.log(`Bid statuses updated (idempotent): ${wonCount} WON, ${lostCount} LOST`);
         }
 
-        const totalSupply = BigInt(asset.tokenParams.totalSupply);
+        const tokenDecimals = asset.network === 'stellar' ? 7 : 18;
+        const totalSupply = fromCanonical(asset.tokenParams.totalSupply, tokenDecimals);
         const tokensRemaining = totalSupply - tokensSold;
 
         return {
@@ -667,13 +664,13 @@ export class AssetLifecycleService {
       }
     }
 
-    // Update asset with clearing price and mark as ended
-    // Store clearing price in integer format for consistency
+    // Store clearing price in canonical format
+    const storedClearingPrice = clearingPrice.includes('.') ? clearingPrice : clearingPriceBigInt.toString();
     await this.assetModel.updateOne(
       { assetId },
       {
         $set: {
-          'listing.clearingPrice': clearingPriceBigInt.toString(),
+          'listing.clearingPrice': storedClearingPrice,
           'listing.active': false,
           'listing.phase': 'ENDED',
           'listing.endedAt': new Date(),
@@ -682,7 +679,7 @@ export class AssetLifecycleService {
       },
     );
 
-    this.logger.log(`Auction ${assetId} ended with clearing price ${clearingPriceBigInt.toString()}`);
+    this.logger.log(`Auction ${assetId} ended with clearing price ${storedClearingPrice}`);
 
     // Get all bids to calculate results
     const bids = await this.bidModel.find({ assetId }).exec();
@@ -736,8 +733,9 @@ export class AssetLifecycleService {
 
     this.logger.log(`Bid statuses updated: ${wonCount} WON, ${lostCount} LOST`);
 
-    // Calculate remaining tokens
-    const totalSupply = BigInt(asset.tokenParams.totalSupply);
+    // Calculate remaining tokens — totalSupply is canonical, convert to match tokensSold units
+    const tokenDecimals = asset.network === 'stellar' ? 7 : 18;
+    const totalSupply = fromCanonical(asset.tokenParams.totalSupply, tokenDecimals);
     const tokensRemaining = totalSupply - tokensSold;
 
     this.logger.log(
@@ -769,20 +767,20 @@ export class AssetLifecycleService {
 
       for (const bidderAddress of uniqueBidders) {
         try {
-          // Convert clearing price to USDC for display (use appropriate decimals)
-          const clearingPriceUSDC = Number(clearingPriceBigInt) / Math.pow(10, decimals);
+          // clearing price is canonical — display directly
+          const clearingPriceDisplay = parseFloat(clearingPrice).toFixed(2);
           await this.notificationService.create({
             userId: bidderAddress,
             walletAddress: bidderAddress,
             header: 'Auction Results Declared',
-            detail: `Auction results for asset ${asset.metadata.invoiceNumber} have been declared with a clearing price of $${clearingPriceUSDC.toFixed(2)}. Please settle your bid to claim tokens or receive refund.`,
+            detail: `Auction results for asset ${asset.metadata.invoiceNumber} have been declared with a clearing price of $${clearingPriceDisplay}. Please settle your bid to claim tokens or receive refund.`,
             type: NotificationType.ASSET_STATUS,
             severity: NotificationSeverity.SUCCESS,
             action: NotificationAction.VIEW_PORTFOLIO,
             actionMetadata: {
               assetId,
-              clearingPrice: clearingPriceBigInt.toString(),
-              clearingPriceUSDC: clearingPriceUSDC.toFixed(2),
+              clearingPrice: storedClearingPrice,
+              clearingPriceUSDC: clearingPriceDisplay,
               resultsDeclared: true,
               needsSettlement: true,
             },
@@ -798,31 +796,33 @@ export class AssetLifecycleService {
     }
 
     // If there are remaining tokens, update listing to allow sales at clearing price
+    // clearingPrice is already canonical (passed in as canonical or converted above)
+    const clearingPriceCanonical = clearingPrice.includes('.') ? clearingPrice : clearingPriceBigInt.toString();
     if (tokensRemaining > BigInt(0)) {
       await this.assetModel.updateOne(
         { assetId },
         {
           $set: {
-            'listing.staticPrice': clearingPriceBigInt.toString(), // Set static price to clearing price
-            'listing.price': clearingPriceBigInt.toString(), // Also set price field
-            'listing.type': 'STATIC', // Convert to static listing for remaining tokens
-            'listing.active': true, // Re-activate listing for remaining token sales
+            'listing.staticPrice': clearingPriceCanonical,
+            'listing.price': clearingPriceCanonical,
+            'listing.type': 'STATIC',
+            'listing.active': true,
             'listing.phase': 'CONFIRMED',
             'listing.tokensSold': tokensSold.toString(),
-            'listing.status':'LISTED'
+            'listing.status': 'LISTED',
           },
         },
       );
 
       this.logger.log(
-        `Remaining tokens (${tokensRemaining.toString()}) now available for purchase at clearing price $${(Number(clearingPriceBigInt) / Math.pow(10, decimals)).toFixed(2)}. Listing re-activated as STATIC.`,
+        `Remaining tokens (${tokensRemaining.toString()}) now available for purchase at clearing price $${parseFloat(clearingPrice).toFixed(2)}. Listing re-activated as STATIC.`,
       );
     }
 
     return {
       success: true,
       assetId,
-      clearingPrice: clearingPriceBigInt.toString(),
+      clearingPrice: clearingPriceCanonical,
       tokensSold: tokensSold.toString(),
       tokensRemaining: tokensRemaining.toString(),
       totalBids: bids.length,
