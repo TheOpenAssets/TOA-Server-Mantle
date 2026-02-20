@@ -216,9 +216,9 @@ impl YieldVault {
             panic!("insufficient vault balance");
         }
 
-        // Burn tokens: transfer to issuer (Stellar's native burn pattern)
+        // Burn tokens using SAC native burn() — removes tokens from circulation
         let token_client = TokenClient::new(&env, &asset_issuer);
-        token_client.transfer(&claimer, &asset_issuer, &token_amount);
+        token_client.burn(&claimer, &token_amount);
 
         // Transfer USDC to claimer
         let usdc_asset: Address = env

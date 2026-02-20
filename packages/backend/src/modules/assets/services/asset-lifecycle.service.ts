@@ -960,11 +960,14 @@ export class AssetLifecycleService {
       source: 'PRIMARY_MARKET', // Excludes SECONDARY_MARKET (P2P trades)
     });
 
+    // Ask the payment adapter how many decimals it uses (6 for Mantle, 7 for Stellar)
+    const stablecoinDecimals = await this.paymentAdapter.getStablecoinDecimals();
+
     for (const purchase of confirmedPurchases) {
       // Handle both old (wei) and new (canonical) format purchases
       const totalPayment = purchase.totalPayment.includes('.')
-        ? fromCanonical(purchase.totalPayment, 6)  // New canonical format
-        : BigInt(purchase.totalPayment);  // Old wei format
+        ? fromCanonical(purchase.totalPayment, stablecoinDecimals)  // Canonical → chain-native
+        : BigInt(purchase.totalPayment);  // Old wei format (already chain-native)
       totalUsdcRaised += totalPayment;
     }
 
@@ -974,13 +977,13 @@ export class AssetLifecycleService {
     // CHECK FOR LEVERAGE POSITIONS
     // ========================================================================
     this.logger.log(`\n🔍 Checking for leverage positions holding this asset...`);
-    
+
     if (asset.token?.address) {
       const tokenAddressLower = asset.token.address.toLowerCase();
       this.logger.log(`   Asset token address: ${asset.token.address}`);
       this.logger.log(`   Searching for positions with assetId: ${assetId}`);
       this.logger.log(`   Searching for positions with rwaTokenAddress: ${tokenAddressLower}`);
-      
+
       // Use case-insensitive regex for token address matching
       leveragePositions = await this.leveragePositionModel.find({
         assetId,
@@ -992,10 +995,10 @@ export class AssetLifecycleService {
 
       if (leveragePositions.length > 0) {
         this.logger.log(`📊 Found ${leveragePositions.length} leverage position(s)`);
-        
+
         for (const position of leveragePositions) {
-          // LeveragePosition schema now stores canonical format - convert to wei for calculation
-          const usdcBorrowed = fromCanonical(position.usdcBorrowed, 6);
+          // LeveragePosition schema now stores canonical format - convert to chain-native decimals
+          const usdcBorrowed = fromCanonical(position.usdcBorrowed, stablecoinDecimals);
           totalUsdcRaised += usdcBorrowed;
           this.logger.log(
             `   Position ${position.positionId}: ${position.usdcBorrowed} USDC borrowed (${position.status})`
@@ -1250,8 +1253,8 @@ export class AssetLifecycleService {
     }
 
     const purchases: any[] = [];
-    let totalTokensSold = BigInt(0);
-    let totalUSDCRaised = BigInt(0);
+    let totalTokensSold = 0; // canonical float (tokens)
+    let totalUSDCRaised = 0; // canonical float (USDC)
 
     if (asset.listing?.type === 'STATIC') {
       // Get confirmed purchases for STATIC listings
@@ -1272,8 +1275,8 @@ export class AssetLifecycleService {
           purchaseMethod: 'DIRECT',
         });
 
-        totalTokensSold += BigInt(purchase.amount);
-        totalUSDCRaised += BigInt(purchase.totalPayment);
+        totalTokensSold += parseFloat(purchase.amount);
+        totalUSDCRaised += parseFloat(purchase.totalPayment);
       }
     } else if (asset.listing?.type === 'AUCTION') {
       const settlementPurchases = await this.purchaseModel
@@ -1293,8 +1296,8 @@ export class AssetLifecycleService {
           purchaseMethod: 'DIRECT',
         });
 
-        totalTokensSold += BigInt(purchase.amount);
-        totalUSDCRaised += BigInt(purchase.totalPayment);
+        totalTokensSold += parseFloat(purchase.amount);
+        totalUSDCRaised += parseFloat(purchase.totalPayment);
       }
     }
 
@@ -1309,20 +1312,19 @@ export class AssetLifecycleService {
         // Calculate effective price: totalPayment / tokenAmount
         // Total payment for leverage = mETH collateral value + USDC borrowed
         // For simplicity, we'll use USDC borrowed as the payment amount
-        // LeveragePosition schema now stores canonical format - convert to wei for calculation
-        const usdcBorrowed = fromCanonical(position.usdcBorrowed, 6);
-        const rwaTokenAmount = fromCanonical(position.rwaTokenAmount, 18);
+        // LeveragePosition schema stores canonical format - use float arithmetic
+        const usdcBorrowedFloat = parseFloat(position.usdcBorrowed);
+        const rwaTokenAmountFloat = parseFloat(position.rwaTokenAmount);
 
-        // Calculate price per token: (usdcBorrowed * 10^18) / rwaTokenAmount
-        // This gives us USDC (6 decimals) per token (18 decimals)
-        const pricePerToken = rwaTokenAmount > BigInt(0)
-          ? (usdcBorrowed * BigInt(10 ** 18)) / rwaTokenAmount
-          : BigInt(0);
+        // Calculate price per token: usdcBorrowed / rwaTokenAmount (USDC per token, canonical)
+        const pricePerToken = rwaTokenAmountFloat > 0
+          ? (usdcBorrowedFloat / rwaTokenAmountFloat).toFixed(4)
+          : '0.0000';
 
         purchases.push({
           buyer: position.userAddress,
           tokenAmount: position.rwaTokenAmount,
-          price: pricePerToken.toString(),
+          price: pricePerToken,
           totalPayment: position.usdcBorrowed,
           timestamp: position.createdAt,
           transactionHash: position.settlementTxHash || `position-${position.positionId}`,
@@ -1333,8 +1335,8 @@ export class AssetLifecycleService {
           positionStatus: position.status,
         });
 
-        totalTokensSold += rwaTokenAmount;
-        totalUSDCRaised += usdcBorrowed;
+        totalTokensSold += rwaTokenAmountFloat;
+        totalUSDCRaised += usdcBorrowedFloat;
       }
 
       this.logger.log(`Found ${leveragePositions.length} leverage positions for asset ${assetId}`);
@@ -1348,29 +1350,29 @@ export class AssetLifecycleService {
 
     // Generate chart data with cumulative tokens
     const chartData: any[] = [];
-    let cumulativeTokens = BigInt(0);
+    let cumulativeTokens = 0;
 
     for (const purchase of purchases) {
-      cumulativeTokens += BigInt(purchase.tokenAmount);
+      cumulativeTokens += parseFloat(purchase.tokenAmount);
 
       chartData.push({
         timestamp: purchase.timestamp,
         tokensPurchased: purchase.tokenAmount,
-        cumulativeTokens: cumulativeTokens.toString(),
+        cumulativeTokens: cumulativeTokens.toFixed(4),
         price: purchase.price,
         purchaseMethod: purchase.purchaseMethod,
       });
     }
 
     // Calculate metadata
-    const totalSupply = BigInt(asset.tokenParams.totalSupply);
-    const percentageSold = totalSupply > BigInt(0)
-      ? Number((totalTokensSold * BigInt(10000)) / totalSupply) / 100
+    const totalSupplyFloat = parseFloat(asset.tokenParams.totalSupply);
+    const percentageSold = totalSupplyFloat > 0
+      ? (totalTokensSold / totalSupplyFloat) * 100
       : 0;
 
     const averagePrice = purchases.length > 0
-      ? totalUSDCRaised / BigInt(purchases.length)
-      : BigInt(0);
+      ? (totalUSDCRaised / purchases.length).toFixed(4)
+      : '0.0000';
 
     const firstPurchaseAt = purchases.length > 0 ? purchases[0].timestamp : undefined;
     const lastPurchaseAt = purchases.length > 0 ? purchases[purchases.length - 1].timestamp : undefined;
@@ -1384,13 +1386,13 @@ export class AssetLifecycleService {
       assetType: asset.listing?.type || asset.assetType,
       purchases,
       chartData,
-      totalTokensSold: totalTokensSold.toString(),
-      totalUSDCRaised: totalUSDCRaised.toString(),
+      totalTokensSold: totalTokensSold.toFixed(4),
+      totalUSDCRaised: totalUSDCRaised.toFixed(4),
       totalTransactions: purchases.length,
       metadata: {
         totalSupply: asset.tokenParams.totalSupply,
         percentageSold,
-        averagePrice: averagePrice.toString(),
+        averagePrice,
         firstPurchaseAt,
         lastPurchaseAt,
         directPurchases,

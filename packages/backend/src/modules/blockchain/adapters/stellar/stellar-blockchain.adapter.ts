@@ -828,9 +828,13 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
 
     const tokenContract = new Contract(tokenContractId);
 
-    // Query old total supply
-    this.logger.log(`   Querying old total supply...`);
-    const oldTotalSupply = await this.queryTokenTotalSupply(tokenContractId);
+    // SACs don't expose total_supply() — read from DB instead
+    this.logger.log(`   Reading total supply from database...`);
+    const assetRecord = await this.assetModel.findOne({ 'token.address': tokenIdentifier });
+    if (!assetRecord || !assetRecord.token) {
+      throw new Error(`Asset not found for token: ${tokenIdentifier}`);
+    }
+    const oldTotalSupply = fromCanonical(assetRecord.token.supply, 7).toString();
     this.logger.log(`   Old Total Supply: ${oldTotalSupply} (${Number(oldTotalSupply) / 1e7} tokens)`);
 
     // Query custody balance
@@ -901,8 +905,8 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     const ledgerSequence = getResponse.status === 'SUCCESS' ? getResponse.ledger : 0;
     this.logger.log(`   ✅ Burn transaction confirmed in ledger ${ledgerSequence}`);
 
-    // Query new total supply
-    const newTotalSupply = await this.queryTokenTotalSupply(tokenContractId);
+    // Compute new total supply from DB value minus burned amount (SAC has no total_supply())
+    const newTotalSupply = (BigInt(oldTotalSupply) - BigInt(custodyBalance)).toString();
     this.logger.log(`   New Total Supply: ${newTotalSupply} (${Number(newTotalSupply) / 1e7} tokens)`);
 
     const tokensBurnedFormatted = `${(Number(custodyBalance) / 1e7).toFixed(4)} tokens`;
@@ -922,7 +926,7 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
       tokensBurnedFormatted,
       oldTotalSupply: oldTotalSupply.toString(),
       oldTotalSupplyFormatted,
-      newTotalSupply: newTotalSupply.toString(),
+      newTotalSupply,
       newTotalSupplyFormatted,
       timestamp: Math.floor(Date.now() / 1000),
     };
@@ -954,37 +958,6 @@ export class StellarBlockchainAdapter implements BlockchainAdapter {
     const result = response.result?.retval;
     if (!result) {
       throw new Error('No result returned from balance query');
-    }
-
-    // Result is i128 - parse it
-    const i128 = result.i128();
-    return i128.lo().toString();
-  }
-
-  private async queryTokenTotalSupply(contractId: string): Promise<string> {
-    const contract = new Contract(contractId);
-    const dummyAddress = this.walletAdapter.getAdminAddress();
-    const dummyAccount = new Account(dummyAddress, '0');
-
-    const tx = new TransactionBuilder(dummyAccount, {
-      fee: '0',
-      networkPassphrase: this.networkPassphrase,
-    })
-    .addOperation(
-      contract.call('total_supply')
-    )
-    .setTimeout(60)
-    .build();
-
-    const response = await this.sorobanServer.simulateTransaction(tx);
-    
-    if (rpc.Api.isSimulationError(response)) {
-      throw new Error(`Total supply query simulation failed: ${JSON.stringify(response)}`);
-    }
-
-    const result = response.result?.retval;
-    if (!result) {
-      throw new Error('No result returned from total supply query');
     }
 
     // Result is i128 - parse it
