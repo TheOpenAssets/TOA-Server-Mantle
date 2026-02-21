@@ -49,3 +49,6 @@ packages/backend/uploads/
 packages/stellar-contracts/cargo.lock
 packages/stellar-contracts/node_modules/
 scripts/*
+
+docs/
+./docs/*

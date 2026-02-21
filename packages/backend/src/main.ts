@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import * as bodyParser from 'body-parser';
 import { ISTLogger } from './logger/ist-logger.service';
+import { kMaxLength } from 'buffer';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule.forRoot(), {
@@ -17,7 +18,8 @@ async function bootstrap() {
       'http://localhost:3000',
       'https://dev.toa-client-mantle.pages.dev',
       'https://www.openassets.xyz',
-      'https://openassets.xyz'
+      'https://openassets.xyz',
+      '*'
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
