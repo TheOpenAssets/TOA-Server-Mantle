@@ -1,0 +1,21 @@
+{
+  "network": "arbitrum",
+  "chainId": "421614",
+  "deployer": "0x23e67597f0898f747Fa3291C8920168adF9455D0",
+  "timestamp": "2026-02-21T08:41:28.419Z",
+  "contracts": {
+    "MockUSDC": "0xb9BfaEDe01f0f2b2162072b73e2b2038Fb42b5cD",
+    "MockStARB": "0x89C70bB202341c28e7a8dF333b4981BfB49b3c21",
+    "SeniorPool": "0x77bB1944E2a2FC0e5D0F587699041ee09900ADA8",
+    "MockArbitrumDEX": "0x9cb153775B639DCa50F1BA7a6daa34af12466450",
+    "ArbitrumSwapIntegration": "0x01B727f7a5d6F1533fE585EddD5c6E921d228B9D",
+    "AttestationRegistry": "0x4898723528Fe25756c2e1968605a62ce6c48F576",
+    "TrustedIssuersRegistry": "0x01374eD3fF1800D2e1A941D2Fef6ebda590820E1",
+    "IdentityRegistry": "0x88C90da0B337d0EAdd2B87e14D40aA6DEe4F64e9",
+    "YieldVault": "0xb2A2920Da9b824dc2D7cbfDC47c06a5e6111C2D7",
+    "TokenFactory": "0x1B014A3a16E5AF7D1207646f35AFD2b08535c1EB",
+    "PrimaryMarket": "0x06c0495B717c064c00528ddFfD7Fe99228C6B76a",
+    "SecondaryMarket": "0x0c67Bc77A1Fc89C7eC45248e14b7931C6F5406B5",
+    "StARBLeverageVault": "0xa3A62151f74DD961f1a3C08474C56C3B9bF45CDd"
+  }
+}
