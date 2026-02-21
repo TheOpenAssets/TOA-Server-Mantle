@@ -1,12 +1,12 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request, Logger, Inject } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { LeveragePositionService } from '../services/leverage-position.service';
-import { FluxionDEXService } from '../services/fluxion-dex.service';
 import { LeverageBlockchainService } from '../services/leverage-blockchain.service';
 import { InitiateLeveragePurchaseDto, GetSwapQuoteDto, UnwindPositionDto } from '../dto/leverage.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { DEX_SERVICE } from '../leverage.constants';
 
 @Controller('leverage')
 @UseGuards(JwtAuthGuard)
@@ -16,7 +16,7 @@ export class LeverageController {
 
   constructor(
     private readonly positionService: LeveragePositionService,
-    private readonly dexService: FluxionDEXService,
+    @Inject(DEX_SERVICE) private readonly dexService: { calculateMETHValueUSD: (amount: bigint) => Promise<bigint>; getMETHPrice: () => Promise<bigint>; getQuote: (amount: bigint) => Promise<bigint> },
     private readonly blockchainService: LeverageBlockchainService,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) { }

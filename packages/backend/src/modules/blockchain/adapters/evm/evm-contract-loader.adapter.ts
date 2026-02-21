@@ -16,23 +16,44 @@ export class EvmContractAdapter implements ContractAdapter {
 
   private loadContracts() {
     const envContracts = this.configService.get('blockchain.contracts');
+    const networkType = this.configService.get('network.networkType');
+    
     try {
       const monorepoRoot = path.join(process.cwd(), '../..');
-      const deployPath = path.join(monorepoRoot, 'packages/contracts/deployed_contracts.json');
+      
+      // Determine path based on network type
+      let deployPath: string;
+      if (networkType === 'arbitrum') {
+        deployPath = path.join(monorepoRoot, 'packages/arbitrum-contracts/deployed_contracts_arbitrum.json');
+      } else {
+        deployPath = path.join(monorepoRoot, 'packages/contracts/deployed_contracts.json');
+      }
+      
       if (fs.existsSync(deployPath)) {
         const data = JSON.parse(fs.readFileSync(deployPath, 'utf8'));
         this.contracts = { ...data.contracts, ...envContracts };
+        this.logger.log(`Loaded contracts from ${deployPath}`);
       } else {
+        this.logger.warn(`Contracts file not found at ${deployPath}`);
         this.contracts = envContracts || {};
       }
     } catch (e) {
+      this.logger.error('Failed to load contracts', e);
       this.contracts = envContracts || {};
     }
   }
 
   private loadAbis() {
+    const networkType = this.configService.get('network.networkType');
     const monorepoRoot = path.join(process.cwd(), '../..');
-    const artifactBase = path.join(monorepoRoot, 'packages/contracts/artifacts/contracts');
+    
+    // Determine artifact base path based on network
+    let artifactBase: string;
+    if (networkType === 'arbitrum') {
+      artifactBase = path.join(monorepoRoot, 'packages/arbitrum-contracts/artifacts/contracts');
+    } else {
+      artifactBase = path.join(monorepoRoot, 'packages/contracts/artifacts/contracts');
+    }
 
     const mapping = {
       AttestationRegistry: 'core/AttestationRegistry.sol/AttestationRegistry.json',
@@ -40,7 +61,9 @@ export class EvmContractAdapter implements ContractAdapter {
       TokenFactory: 'core/TokenFactory.sol/TokenFactory.json',
       YieldVault: 'core/YieldVault.sol/YieldVault.json',
       PrimaryMarketplace: 'marketplace/PrimaryMarket.sol/PrimaryMarket.json',
+      PrimaryMarket: 'marketplace/PrimaryMarket.sol/PrimaryMarket.json',
       RWAToken: 'core/RWAToken.sol/RWAToken.json',
+      SecondaryMarket: 'marketplace/SecondaryMarket.sol/SecondaryMarket.json',
     };
 
     for (const [name, relPath] of Object.entries(mapping)) {

@@ -16,6 +16,7 @@ export class EvmWalletAdapter implements WalletAdapter {
     this.rpcUrl = this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
     const chainId = this.configService.get<number>('blockchain.chainId') || 5003;
     const networkName = this.configService.get<string>('network.networkName') || 'Mantle Sepolia';
+    const nativeSymbol = this.configService.get<string>('blockchain.evmNativeSymbol') || 'MNT';
 
     if (!adminPk) throw new Error('ADMIN_PRIVATE_KEY not configured');
     if (!platformPk) throw new Error('PLATFORM_PRIVATE_KEY not configured');
@@ -26,7 +27,7 @@ export class EvmWalletAdapter implements WalletAdapter {
     this.chain = defineChain({
       id: chainId,
       name: networkName,
-      nativeCurrency: { decimals: 18, name: 'MNT', symbol: 'MNT' },
+      nativeCurrency: { decimals: 18, name: nativeSymbol, symbol: nativeSymbol },
       rpcUrls: {
         default: { http: [this.rpcUrl] },
         public: { http: [this.rpcUrl] },

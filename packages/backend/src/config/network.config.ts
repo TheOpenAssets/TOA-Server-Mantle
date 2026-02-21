@@ -3,6 +3,7 @@ import { registerAs } from '@nestjs/config';
 export enum NetworkType {
   MANTLE = 'mantle',
   STELLAR = 'stellar',
+  ARBITRUM = 'arbitrum',
 }
 
 export default registerAs('network', () => {
@@ -10,24 +11,25 @@ export default registerAs('network', () => {
 
   const isMantle = networkType === NetworkType.MANTLE;
   const isStellar = networkType === NetworkType.STELLAR;
+  const isArbitrum = networkType === NetworkType.ARBITRUM;
 
   return {
     networkType,
-    networkName: isMantle ? 'Mantle Sepolia' : 'Stellar Testnet',
-    isTestnet: true, // For now both are testnets
+    networkName: isMantle ? 'Mantle Sepolia' : isArbitrum ? 'Arbitrum Sepolia' : 'Stellar Testnet',
+    isTestnet: true, // For now all are testnets
 
     // Feature Availability Map
     features: {
-      leverage: isMantle,
-      faucet: isMantle,
-      solvency: isMantle,
-      secondaryMarket: isMantle, // Initially false for Stellar , will be true for both later
-      oaid: isMantle, // will be tue for both later
-      methPrice: isMantle,
-      fluxionDex: isMantle,
-      marketplace: true, // Both support marketplace
-      partners: isMantle,
-      yield: true, // Both support yield distribution
+      leverage: isMantle || isArbitrum,
+      faucet: isMantle || isArbitrum,
+      solvency: isMantle || isArbitrum,
+      secondaryMarket: isMantle || isArbitrum, // Initially false for Stellar , will be true for all later
+      oaid: isMantle || isArbitrum, // will be true for all later
+      collateralPrice: isMantle || isArbitrum, // Replaces methPrice - works for both mETH and stARB
+      collateralDex: isMantle || isArbitrum, // Replaces fluxionDex - works for both DEXs
+      marketplace: true, // All support marketplace
+      partners: isMantle || isArbitrum,
+      yield: true, // All support yield distribution
       kyc: true,
       assets: true,
       auth: true,

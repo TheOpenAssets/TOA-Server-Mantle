@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createPublicClient, http, Address } from 'viem';
-import { mantleSepolia } from '../../../config/mantle-chain';
+import { createPublicClient, http, Address, defineChain } from 'viem';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { MethPriceService } from '../../blockchain/services/meth-price.service';
 
@@ -21,9 +20,29 @@ export class FluxionDEXService {
     private contractLoader: ContractLoaderService,
     private methPriceService: MethPriceService,
   ) {
+    // Dynamically construct chain from config
+    const rpcUrl = this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
+    const chainId = this.configService.get<number>('blockchain.chainId') || 5003;
+    const networkName = this.configService.get<string>('network.networkName') || 'Mantle Sepolia';
+    const nativeSymbol = this.configService.get<string>('blockchain.evmNativeSymbol') || 'MNT';
+
+    const chain = defineChain({
+      id: chainId,
+      name: networkName,
+      nativeCurrency: {
+        decimals: 18,
+        name: nativeSymbol,
+        symbol: nativeSymbol,
+      },
+      rpcUrls: {
+        default: { http: [rpcUrl] },
+        public: { http: [rpcUrl] },
+      },
+    });
+
     this.publicClient = createPublicClient({
-      chain: mantleSepolia,
-      transport: http(this.configService.get('blockchain.rpcUrl')),
+      chain,
+      transport: http(rpcUrl),
     });
   }
 

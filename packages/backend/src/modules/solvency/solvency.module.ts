@@ -12,7 +12,6 @@ import { PrivateAsset, PrivateAssetSchema } from '../../database/schemas/private
 import { PrivateAssetRequest, PrivateAssetRequestSchema } from '../../database/schemas/private-asset-request.schema';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { BlockchainModule } from '../blockchain/blockchain.module';
-import { LeverageModule } from '../leverage/leverage.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PartnersModule } from '../partners/partners.module';
 import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
@@ -27,7 +26,6 @@ import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
     ]),
     ScheduleModule.forRoot(),
     forwardRef(() => BlockchainModule),
-    LeverageModule, // For liquidating leverage positions via admin controller
     NotificationsModule,
     forwardRef(() => PartnersModule), // For accessing PartnerLoanService (circular dependency)
     UserPortfolioModule,

@@ -10,6 +10,7 @@ import { WalletService } from './services/wallet.service';
 import { ContractLoaderService } from './services/contract-loader.service';
 import { EventListenerService } from './services/event-listener.service';
 import { MethPriceService } from './services/meth-price.service';
+import { StArbPriceService } from './services/starb-price.service';
 import { NetworkRegistryService } from './services/network-registry.service';
 import { EventProcessor } from './processors/event.processor';
 import { Asset, AssetSchema, AssetDocument } from '../../database/schemas/asset.schema';
@@ -153,6 +154,7 @@ export class BlockchainModule {
         ContractLoaderService,
         EventListenerService,
         MethPriceService,
+        StArbPriceService,
         EventProcessor,
       ],
       exports: [
@@ -168,6 +170,7 @@ export class BlockchainModule {
         ContractLoaderService,
         EventListenerService,
         MethPriceService,
+        StArbPriceService,
         MongooseModule,
       ],
     };
