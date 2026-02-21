@@ -950,14 +950,15 @@ export class AssetLifecycleService {
     let confirmedPurchases: any[] = [];
     let leveragePositions: any[] = [];
 
-    // Both STATIC and AUCTION use Purchase records with source='PRIMARY_MARKET'
+    // Both STATIC and AUCTION use Purchase records. Auction settlements use source='PRIMARY_MARKET'
+    // (set by bid-tracker), but 'AUCTION' is also a valid source value — include both.
     this.logger.log(`${asset.listing?.type} listing detected - calculating from purchases + leverage positions`);
 
-    // 1. Get confirmed PRIMARY_MARKET purchases (excludes P2P trades)
+    // 1. Get confirmed primary-sale purchases (excludes P2P/secondary trades)
     confirmedPurchases = await this.purchaseModel.find({
       assetId,
       status: 'CONFIRMED',
-      source: 'PRIMARY_MARKET', // Excludes SECONDARY_MARKET (P2P trades)
+      source: { $in: ['PRIMARY_MARKET', 'AUCTION'] },
     });
 
     // Ask the payment adapter how many decimals it uses (6 for Mantle, 7 for Stellar)
@@ -971,7 +972,53 @@ export class AssetLifecycleService {
       totalUsdcRaised += totalPayment;
     }
 
-    this.logger.log(`Found ${confirmedPurchases.length} confirmed PRIMARY_MARKET purchases`);
+    this.logger.log(`Found ${confirmedPurchases.length} confirmed PRIMARY_MARKET/AUCTION purchases`);
+
+    // ========================================================================
+    // AUCTION FALLBACK: if notify-settlement was never called (or verifyBidSettlement
+    // failed), no purchase records exist. Compute the raised amount directly from
+    // WON bids × clearing price so the originator can still be paid out.
+    // ========================================================================
+    if (totalUsdcRaised === BigInt(0) && asset.listing?.type === 'AUCTION') {
+      const clearingPriceStr = asset.listing?.clearingPrice;
+      if (clearingPriceStr) {
+        const wonBids = await this.bidModel.find({
+          assetId,
+          status: { $in: ['WON', 'SETTLED', 'FINALIZED'] },
+        });
+
+        if (wonBids.length > 0) {
+          this.logger.log(`Auction fallback: ${wonBids.length} WON bid(s) found, computing from clearing price ${clearingPriceStr}`);
+          const tokenDecimals = asset.network === 'stellar' ? 7 : 18;
+
+          let clearingPriceBigInt: bigint;
+          if (clearingPriceStr.includes('.')) {
+            clearingPriceBigInt = fromCanonical(clearingPriceStr, stablecoinDecimals);
+          } else {
+            clearingPriceBigInt = BigInt(clearingPriceStr);
+          }
+
+          for (const bid of wonBids) {
+            let tokenAmountBigInt: bigint;
+            if (bid.tokenAmount.includes('.')) {
+              tokenAmountBigInt = fromCanonical(bid.tokenAmount, tokenDecimals);
+            } else {
+              tokenAmountBigInt = BigInt(bid.tokenAmount);
+            }
+            // actual_cost = (clearing_price_raw × token_amount_raw) / token_scale
+            const costRaw = (clearingPriceBigInt * tokenAmountBigInt) / (10n ** BigInt(tokenDecimals));
+            totalUsdcRaised += costRaw;
+            this.logger.log(`   Bid ${bid.bidder}: ${bid.tokenAmount} tokens × clearing price → costRaw=${costRaw.toString()}`);
+          }
+
+          this.logger.log(`Auction fallback total: ${totalUsdcRaised.toString()} (${Number(totalUsdcRaised) / 10 ** stablecoinDecimals} USDC)`);
+        } else {
+          this.logger.log(`Auction fallback: no WON bids found for asset ${assetId}`);
+        }
+      } else {
+        this.logger.log(`Auction fallback skipped: clearing price not set for asset ${assetId}`);
+      }
+    }
 
     // ========================================================================
     // CHECK FOR LEVERAGE POSITIONS
