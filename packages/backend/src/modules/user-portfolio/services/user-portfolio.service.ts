@@ -215,7 +215,7 @@ export class UserPortfolioService {
     const position = await this.leveragePositionModel.findById(holding.leveragePositionId);
     if (!position) return {};
 
-    const mETHCollateralCanonical = toCanonical(position.mETHCollateral, 18).value;
+    const mETHCollateralCanonical = position.mETHCollateral; // already canonical
     const usdcBorrowedCanonical = toCanonical(position.usdcBorrowed, 6).value;
     const totalInterestPaidCanonical = toCanonical(position.totalInterestPaid, 6).value;
 
@@ -562,8 +562,8 @@ export class UserPortfolioService {
         network,
         holdingType: HoldingType.LEVERAGE,
         status: pos.status === 'ACTIVE' ? HoldingStatus.ACTIVE : HoldingStatus.SETTLED,
-        tokenBalance: toCanonical(pos.rwaTokenAmount, 18).value,
-        totalInvested: '0.0000', 
+        tokenBalance: pos.rwaTokenAmount,
+        totalInvested: '0.0000',
         leveragePositionId: pos._id,
         firstEntryAt: pos.createdAt,
         lastActivityAt: pos.updatedAt || pos.createdAt,
@@ -703,7 +703,7 @@ export class UserPortfolioService {
         network,
         holdingType: HoldingType.LEVERAGE,
         status: HoldingStatus.ACTIVE,
-        tokenBalance: toCanonical(position.rwaTokenAmount, 18).value,
+        tokenBalance: position.rwaTokenAmount,
         totalInvested: '0.0000',
         leveragePositionId: position._id,
         firstEntryAt: position.createdAt || new Date(),
@@ -713,7 +713,7 @@ export class UserPortfolioService {
     } else {
       holding.status = position.status === 'ACTIVE' ? HoldingStatus.ACTIVE : 
                        (position.status === 'SETTLED' ? HoldingStatus.SETTLED : HoldingStatus.LIQUIDATED);
-      holding.tokenBalance = toCanonical(position.rwaTokenAmount, 18).value;
+      holding.tokenBalance = position.rwaTokenAmount;
       holding.lastActivityAt = new Date();
     }
 

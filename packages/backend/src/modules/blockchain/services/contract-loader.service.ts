@@ -97,6 +97,23 @@ export class ContractLoaderService implements OnModuleInit {
       this.logger.error('Failed to load deployed_contracts.json', e);
       this.contracts = envContracts || {};
     }
+
+    // Normalize naming aliases so backend lookups work regardless of manifest key conventions:
+    // Arbitrum uses 'PrimaryMarket', Mantle uses 'PrimaryMarketplace' — treat as identical
+    if (this.contracts['PrimaryMarket'] && !this.contracts['PrimaryMarketplace']) {
+      this.contracts['PrimaryMarketplace'] = this.contracts['PrimaryMarket'];
+    }
+    if (this.contracts['PrimaryMarketplace'] && !this.contracts['PrimaryMarket']) {
+      this.contracts['PrimaryMarket'] = this.contracts['PrimaryMarketplace'];
+    }
+    // Arbitrum uses 'MockUSDC', shared backend code uses 'USDC'
+    if (this.contracts['MockUSDC'] && !this.contracts['USDC']) {
+      this.contracts['USDC'] = this.contracts['MockUSDC'];
+    }
+    // Arbitrum uses 'StARBLeverageVault', backend may reference 'LeverageVault'
+    if (this.contracts['StARBLeverageVault'] && !this.contracts['LeverageVault']) {
+      this.contracts['LeverageVault'] = this.contracts['StARBLeverageVault'];
+    }
   }
 
   private loadAbis() {

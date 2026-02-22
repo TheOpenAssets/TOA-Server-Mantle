@@ -194,14 +194,22 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     const abi = this.contractAdapter.getContractInterface('PrimaryMarketplace');
 
     const listingTypeEnum = listingType === ListingType.STATIC ? 0 : 1;
-    const dummyAssetId = '0x' + '0'.repeat(64); 
+
+    // Look up the real assetId from the DB using the token address
+    const asset = await this.assetModel.findOne({ 'token.address': new RegExp(`^${tokenIdentifier}$`, 'i') });
+    if (!asset) {
+      throw new Error(`Asset not found for token ${tokenIdentifier}`);
+    }
+    const assetIdBytes32 = ('0x' + asset.assetId.replace(/-/g, '').padEnd(64, '0')) as `0x${string}`;
+
+    this.logger.log(`Creating listing for asset ${asset.assetId} (token ${tokenIdentifier})...`);
 
     const txId = await this.executeWithRetry(() => (wallet as any).writeContract({
       address: address as Address,
       abi,
       functionName: 'createListing',
       args: [
-        dummyAssetId,
+        assetIdBytes32,
         tokenIdentifier as Address,
         listingTypeEnum,
         fromCanonical(price.toString(), 6), // USDC Price (6 decimals)

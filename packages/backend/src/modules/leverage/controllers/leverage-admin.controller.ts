@@ -7,10 +7,11 @@ import {
   HttpStatus,
   Logger,
   Param,
+  Inject,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminRoleGuard } from '../../admin/guards/admin-role.guard';
-import { MethPriceService } from '../../blockchain/services/meth-price.service';
+import { PRICE_SERVICE } from '../leverage.constants';
 import { LeverageBlockchainService } from '../services/leverage-blockchain.service';
 import { LeveragePositionService } from '../services/leverage-position.service';
 
@@ -20,7 +21,11 @@ export class LeverageAdminController {
   private readonly logger = new Logger(LeverageAdminController.name);
 
   constructor(
-    private methPriceService: MethPriceService,
+    @Inject(PRICE_SERVICE) private priceService: { 
+      setTestPrice: (price: number) => void; 
+      getCurrentPrice: () => Promise<bigint>; 
+      resetTestPrice: () => void;
+    },
     private leverageBlockchainService: LeverageBlockchainService,
     private leveragePositionService: LeveragePositionService,
   ) {}
@@ -28,9 +33,9 @@ export class LeverageAdminController {
   /**
    * Manually update mETH price (for testing liquidation scenarios)
    */
-  @Post('update-meth-price')
+  @Post('update-collateral-price')
   @HttpCode(HttpStatus.OK)
-  async updateMethPrice(@Body('price') price: string) {
+  async updateCollateralPrice(@Body('price') price: string) {
     if (!price) {
       throw new Error('Price is required');
     }
@@ -40,15 +45,15 @@ export class LeverageAdminController {
       throw new Error('Invalid price value');
     }
 
-    this.logger.warn(`⚠️ Manual mETH price update requested: $${price}`);
+    this.logger.warn(`⚠️ Manual collateral price update requested: $${price}`);
     
     // Convert to 6 decimals (USDC format)
     const priceInUSDC = Math.floor(priceNumber * 1e6);
     
-    // Update price in service
-    this.methPriceService.setTestPrice(priceInUSDC);
+    // Update price in service (works for both mETH and stARB)
+    this.priceService.setTestPrice(priceInUSDC);
 
-    this.logger.log(`✅ mETH price manually set to: $${price} (${priceInUSDC} USDC)`);
+    this.logger.log(`✅ Collateral price manually set to: $${price} (${priceInUSDC} USDC)`);
     this.logger.warn('⚠️ This price will be used for liquidations and health checks');
     this.logger.warn('⚠️ Remember: The DEX still uses its own price for actual swaps!');
 
@@ -56,19 +61,19 @@ export class LeverageAdminController {
       success: true,
       price: price,
       priceInUSDC: priceInUSDC.toString(),
-      message: 'mETH price updated successfully',
+      message: 'Collateral price updated successfully',
       warning: 'DEX may use different price for actual swaps',
     };
   }
 
   /**
-   * Get current mETH price
+   * Get current collateral price (mETH or stARB depending on network)
    */
-  @Post('get-meth-price')
+  @Post('get-collateral-price')
   @HttpCode(HttpStatus.OK)
-  async getMethPrice() {
-    const currentPrice = this.methPriceService.getCurrentPrice();
-    const priceInUSD = currentPrice / 1e6;
+  async getCollateralPrice() {
+    const currentPrice = await this.priceService.getCurrentPrice();
+    const priceInUSD = Number(currentPrice) / 1e6;
 
     return {
       success: true,
@@ -79,20 +84,20 @@ export class LeverageAdminController {
   }
 
   /**
-   * Reset mETH price to automatic updates
+   * Reset collateral price to automatic updates
    */
-  @Post('reset-meth-price')
+  @Post('reset-collateral-price')
   @HttpCode(HttpStatus.OK)
-  async resetMethPrice() {
-    this.logger.warn('⚠️ Resetting mETH price to automatic CSV updates');
+  async resetCollateralPrice() {
+    this.logger.warn('⚠️ Resetting collateral price to automatic CSV updates');
     
-    this.methPriceService.resetTestPrice();
+    this.priceService.resetTestPrice();
 
-    this.logger.log('✅ mETH price reset to automatic mode');
+    this.logger.log('✅ Collateral price reset to automatic mode');
 
     return {
       success: true,
-      message: 'mETH price reset to automatic updates',
+      message: 'Collateral price reset to automatic updates',
     };
   }
 

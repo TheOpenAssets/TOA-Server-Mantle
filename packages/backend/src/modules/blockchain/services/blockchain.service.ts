@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createPublicClient, http, Hash, Address, decodeEventLog, parseAbi } from 'viem';
-import { mantleSepolia } from '../../../config/mantle-chain';
+import { createPublicClient, http, Hash, Address, decodeEventLog, parseAbi, defineChain } from 'viem';
 import { ContractLoaderService } from './contract-loader.service';
 import { WalletService } from './wallet.service';
 import { RegisterAssetDto } from '../dto/register-asset.dto';
@@ -9,6 +8,7 @@ import { DeployTokenDto } from '../dto/deploy-token.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { fromCanonical } from '../utils/numeric-conversion';
 
 @Injectable()
 export class BlockchainService {
@@ -21,9 +21,19 @@ export class BlockchainService {
     private walletService: WalletService,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) {
+    const rpcUrl = this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
+    const chainId = this.configService.get<number>('blockchain.chainId') || 5003;
+    const networkName = this.configService.get<string>('network.networkName') || 'Mantle Sepolia';
+    const nativeSymbol = this.configService.get<string>('blockchain.evmNativeSymbol') || 'MNT';
+    const chain = defineChain({
+      id: chainId,
+      name: networkName,
+      nativeCurrency: { decimals: 18, name: nativeSymbol, symbol: nativeSymbol },
+      rpcUrls: { default: { http: [rpcUrl] }, public: { http: [rpcUrl] } },
+    });
     this.publicClient = createPublicClient({
-      chain: mantleSepolia,
-      transport: http(this.configService.get('blockchain.rpcUrl')),
+      chain,
+      transport: http(rpcUrl),
     });
   }
 
@@ -131,11 +141,9 @@ export class BlockchainService {
     let totalSupplyWei: bigint;
 
     if (dto.totalSupply) {
-      // Use provided value (already in wei format)
-      totalSupplyWei = BigInt(dto.totalSupply);
-      this.logger.log(`Using provided totalSupply: ${dto.totalSupply} wei`);
+      totalSupplyWei = fromCanonical(dto.totalSupply, 18);
+      this.logger.log(`Using provided totalSupply: ${dto.totalSupply} → ${totalSupplyWei} wei`);
     } else {
-      // Get from asset's tokenParams (already stored in wei format during upload)
       const asset = await this.assetModel.findOne({ assetId: dto.assetId });
       if (!asset) {
         throw new Error(`Asset ${dto.assetId} not found`);
@@ -145,8 +153,8 @@ export class BlockchainService {
         throw new Error(`Asset ${dto.assetId} missing tokenParams.totalSupply`);
       }
 
-      totalSupplyWei = BigInt(asset.tokenParams.totalSupply);
-      this.logger.log(`Using asset's totalSupply: ${asset.tokenParams.totalSupply} wei (${Number(totalSupplyWei) / 1e18} tokens)`);
+      totalSupplyWei = fromCanonical(asset.tokenParams.totalSupply, 18);
+      this.logger.log(`Using asset's totalSupply: ${asset.tokenParams.totalSupply} → ${totalSupplyWei} wei`);
     }
     const issuer = dto.issuer || wallet.account.address; // Default to admin wallet
 
@@ -326,9 +334,8 @@ export class BlockchainService {
       const assetIdBytes32 = ('0x' + asset.assetId.replace(/-/g, '').padEnd(64, '0')) as Hash;
       this.logger.log(`AssetId bytes32: ${assetIdBytes32}`);
 
-      // Get totalSupply (already in wei from database - 18 decimals)
       const totalSupplyRaw = asset.tokenParams?.totalSupply || asset.token?.supply || '100000000000000000000';
-      const totalSupplyWei = BigInt(totalSupplyRaw); // Already in wei, no multiplication needed
+      const totalSupplyWei = fromCanonical(totalSupplyRaw, 18);
       this.logger.log(`Total supply: raw=${totalSupplyRaw}, wei=${totalSupplyWei.toString()}`);
 
       // Determine listing type enum (0 = STATIC, 1 = AUCTION)
@@ -359,11 +366,11 @@ export class BlockchainService {
           assetIdBytes32,
           tokenAddress as Address,
           listingTypeEnum,
-          BigInt(price),               // priceOrReserve
-          BigInt(minPrice || '0'),     // minPrice (0 for STATIC, actual min for AUCTION)
-          BigInt(duration || '0'),     // duration (0 for STATIC is fine, or ignored)
-          totalSupplyWei,              // totalSupply
-          BigInt(minInvestment),       // minInvestment
+          fromCanonical(price, 6),               // priceOrReserve in USDC wei (6 decimals)
+          fromCanonical(minPrice || '0', 6),     // minPrice in USDC wei (0 for STATIC)
+          BigInt(duration || '0'),               // duration in seconds (integer)
+          totalSupplyWei,                        // totalSupply in token wei (18 decimals)
+          fromCanonical(minInvestment, 6),       // minInvestment in USDC wei (6 decimals)
         ],
       }), 'createListing write');
       

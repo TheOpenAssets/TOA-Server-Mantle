@@ -11,6 +11,7 @@ import { DeployTokenDto } from '../../../blockchain/dto/deploy-token.dto';
 import { ListOnMarketplaceDto } from '../../../blockchain/dto/list-on-marketplace.dto';
 import { NetworkRegistryService } from '../../../blockchain/services/network-registry.service';
 import { ConfigService } from '@nestjs/config';
+import { privateKeyToAccount } from 'viem/accounts';
 import { 
   AssetStatus, 
   NotificationType, 
@@ -261,9 +262,15 @@ export class MantleAdminStrategy implements IAdminDomainStrategy {
     this.logger.log(`   Net Distribution: $${settlement.netDistribution.toFixed(2)} (${netDistributionUsdcWei} USDC wei)`);
 
     // Get admin wallet address for fee transfer
-    const adminWalletAddress = this.configService.get<string>('blockchain.adminWallet');
+    // Prefer explicit ADMIN_WALLET_ADDRESS config; fall back to deriving from private key
+    let adminWalletAddress = this.configService.get<string>('blockchain.adminWallet');
     if (!adminWalletAddress) {
-      throw new HttpException('Admin wallet address not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+      const pk = this.configService.get<string>('blockchain.adminPrivateKey');
+      if (!pk) {
+        throw new HttpException('Admin wallet address not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+      adminWalletAddress = privateKeyToAccount(pk as `0x${string}`).address;
+      this.logger.log(`[Mantle] Derived admin wallet address from private key: ${adminWalletAddress}`);
     }
 
     // Step 1: Transfer platform fee to admin wallet

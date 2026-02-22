@@ -717,9 +717,15 @@ export class SolvencyBlockchainService {
     }>;
   }> {
     try {
-      const oaidAddress = this.contractLoader.getContractAddress('OAID');
+      let oaidAddress: string;
+      try {
+        oaidAddress = this.contractLoader.getContractAddress('OAID');
+      } catch {
+        this.logger.warn('OAID contract not configured on this network — returning empty credit lines');
+        return { totalCreditLimit: '0', totalCreditUsed: '0', totalAvailableCredit: '0', creditLines: [] };
+      }
       if (!oaidAddress) {
-        throw new Error('OAID contract address not found');
+        return { totalCreditLimit: '0', totalCreditUsed: '0', totalAvailableCredit: '0', creditLines: [] };
       }
 
       const oaidAbi = this.contractLoader.getContractAbi('OAID');

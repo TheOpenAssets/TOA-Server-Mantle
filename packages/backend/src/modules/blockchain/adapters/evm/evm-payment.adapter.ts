@@ -38,7 +38,7 @@ export class EvmPaymentAdapter implements PaymentAdapter {
   ) {}
 
   private getUsdcContract(): { contract: ethers.Contract; wallet: ethers.Wallet; address: string } {
-    const platformPrivateKey = this.configService.get<string>('PLATFORM_PRIVATE_KEY');
+    const platformPrivateKey = this.configService.get<string>('blockchain.platformPrivateKey');
     const rpcUrl = this.configService.get<string>('blockchain.rpcUrl');
 
     if (!platformPrivateKey) {
@@ -49,15 +49,26 @@ export class EvmPaymentAdapter implements PaymentAdapter {
       throw new Error('blockchain.rpcUrl not configured');
     }
 
-    // Read deployed contracts for USDC address
-    const deployedContractsPath = path.join(process.cwd(), '../contracts/deployed_contracts.json');
-    
+    // Read deployed contracts for USDC address — path depends on active network
+    const networkType = this.configService.get<string>('network.networkType');
+    const monorepoRoot = path.join(process.cwd(), '../..');
+
+    let deployedContractsPath: string;
+    if (networkType === 'arbitrum') {
+      deployedContractsPath = path.join(monorepoRoot, 'packages/arbitrum-contracts/deployed_contracts_arbitrum.json');
+    } else {
+      deployedContractsPath = path.join(monorepoRoot, 'packages/contracts/deployed_contracts.json');
+    }
+
     if (!fs.existsSync(deployedContractsPath)) {
       throw new Error(`deployed_contracts.json not found at ${deployedContractsPath}`);
     }
 
     const deployedContracts = JSON.parse(fs.readFileSync(deployedContractsPath, 'utf-8'));
-    const usdcAddress = deployedContracts.contracts?.USDC;
+    // Support flat contracts object (Arbitrum) and nested networks structure (Mantle multi-network)
+    const contractsMap = deployedContracts.contracts ?? {};
+    // Arbitrum uses 'MockUSDC', Mantle uses 'USDC'
+    const usdcAddress = contractsMap.USDC ?? contractsMap.MockUSDC;
 
     if (!usdcAddress) {
       throw new Error('USDC address not found in deployed_contracts.json');

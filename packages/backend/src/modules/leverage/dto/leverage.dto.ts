@@ -18,8 +18,17 @@ export class InitiateLeveragePurchaseDto {
   pricePerToken!: string; // Price per token in USDC (6 decimals)
 
   @IsString()
-  @IsNotEmpty()
-  mETHCollateral!: string; // mETH collateral amount (18 decimals)
+  @IsOptional()
+  mETHCollateral?: string; // mETH collateral amount (18 decimals) — Mantle
+
+  @IsString()
+  @IsOptional()
+  stARBCollateral?: string; // stARB collateral amount (18 decimals) — Arbitrum
+
+  /** Normalised accessor — use this in the controller regardless of network */
+  get collateral(): string {
+    return this.mETHCollateral || this.stARBCollateral || '0';
+  }
 }
 
 export class GetSwapQuoteDto {

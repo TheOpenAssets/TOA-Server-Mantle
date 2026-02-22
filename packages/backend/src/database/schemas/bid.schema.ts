@@ -36,7 +36,7 @@ export class Bid {
   @Prop({ type: String })
   settlementTxHash?: string; // Transaction hash for settlement
 
-  @Prop({ type: String, enum: ['mantle', 'stellar'], default: 'mantle', index: true })
+  @Prop({ type: String, enum: ['mantle', 'stellar', 'arbitrum'], default: 'mantle', index: true })
   network!: string;
 
   @Prop({ type: Date })

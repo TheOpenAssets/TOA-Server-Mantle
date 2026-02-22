@@ -19,7 +19,7 @@ async function bootstrap() {
       'https://dev.toa-client-mantle.pages.dev',
       'https://www.openassets.xyz',
       'https://openassets.xyz',
-      '*'
+      'http://10.155.192.113:5173',
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [

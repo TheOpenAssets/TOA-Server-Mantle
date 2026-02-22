@@ -34,14 +34,15 @@ export class ModuleRegistryService implements OnModuleInit {
   private async resolveServices() {
     try {
       // Resolve Asset Origination Service
-      const assetToken = this.networkType === NetworkType.MANTLE
+      const isEvm = this.networkType === NetworkType.MANTLE || this.networkType === NetworkType.ARBITRUM;
+      const assetToken = isEvm
         ? MANTLE_ASSET_ORIGINATION_TOKEN
         : STELLAR_ASSET_ORIGINATION_TOKEN;
 
       await this.resolveService(ASSET_ORIGINATION_SERVICE, assetToken);
 
       // Resolve Admin Domain Strategy
-      const adminToken = this.networkType === NetworkType.MANTLE
+      const adminToken = isEvm
         ? MANTLE_ADMIN_STRATEGY_TOKEN
         : STELLAR_ADMIN_STRATEGY_TOKEN;
 

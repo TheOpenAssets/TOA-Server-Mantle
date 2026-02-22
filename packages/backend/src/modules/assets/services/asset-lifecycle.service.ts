@@ -24,7 +24,7 @@ import { RegisterAssetDto } from '../../blockchain/dto/register-asset.dto';
 import { AttestationService } from '../../compliance-engine/services/attestation.service';
 import { AnnouncementService } from '../../announcements/services/announcement.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { detectNetworkType } from '../../auth/utils/wallet.util';
+import { getConfiguredNetworkType } from '../../auth/utils/wallet.util';
 import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 import { PAYMENT_ADAPTER, BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
 import { PaymentAdapter } from '../../blockchain/adapters/payment-adapter.interface';
@@ -105,8 +105,8 @@ export class AssetLifecycleService {
     const assetId = uuidv4();
     this.logger.log(`Creating ${dto.assetType} asset ${assetId} for originator ${userWallet}`);
 
-    // Detect network type (for future adapter usage)
-    const network = detectNetworkType(userWallet);
+    // Get configured network type from environment
+    const network = getConfiguredNetworkType();
 
     // All DTO values are now in canonical 4-decimal format
     // Parse them as floats for calculations

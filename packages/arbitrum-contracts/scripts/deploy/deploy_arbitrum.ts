@@ -175,6 +175,10 @@ async function main() {
   // Step 7: Post-deployment configuration
   console.log("\n7️⃣ Configuring contracts...");
   
+  // Set TokenFactory on YieldVault (required for YieldVault.registerAsset to work)
+  await yieldVault.setFactory(deployedContracts.TokenFactory);
+  console.log("   ✅ TokenFactory set as factory on YieldVault");
+
   // Set YieldVault on LeverageVault
   await leverageVault.setYieldVault(deployedContracts.YieldVault);
   console.log("   ✅ YieldVault address set on StARBLeverageVault");
@@ -186,6 +190,12 @@ async function main() {
   // Authorize LeverageVault to borrow from SeniorPool
   await seniorPool.setLeverageVault(deployedContracts.StARBLeverageVault);
   console.log("   ✅ StARBLeverageVault authorized on SeniorPool");
+
+  // Register platform custody (deployer) in IdentityRegistry
+  // Required so ComplianceModule allows transfers FROM platformCustody in buyTokens
+  const identityRegistryInstance = await ethers.getContractAt("IdentityRegistry", deployedContracts.IdentityRegistry);
+  await identityRegistryInstance.registerIdentity(deployer.address);
+  console.log("   ✅ Platform custody (deployer) registered in IdentityRegistry");
 
   // Mint test stARB to deployer
   const testStARBAmount = ethers.parseEther("10000"); // 10K stARB

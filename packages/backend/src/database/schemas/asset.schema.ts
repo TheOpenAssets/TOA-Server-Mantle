@@ -28,7 +28,7 @@ export class Asset implements IAssetEVM, IAssetStellar {
   @Prop({ required: true, enum: AssetType, type: String })
   assetType!: AssetType;
 
-  @Prop({ type: String, enum: ['mantle', 'stellar'], default: 'mantle' })
+  @Prop({ type: String, enum: ['mantle', 'stellar', 'arbitrum'], default: 'mantle' })
   network!: string;
 
   @Prop({ type: Object })

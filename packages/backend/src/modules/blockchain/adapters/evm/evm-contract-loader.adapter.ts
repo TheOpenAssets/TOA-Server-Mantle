@@ -41,6 +41,22 @@ export class EvmContractAdapter implements ContractAdapter {
       this.logger.error('Failed to load contracts', e);
       this.contracts = envContracts || {};
     }
+
+    // Normalize naming aliases: Arbitrum manifest uses 'PrimaryMarket', code uses 'PrimaryMarketplace'
+    if (this.contracts['PrimaryMarket'] && !this.contracts['PrimaryMarketplace']) {
+      this.contracts['PrimaryMarketplace'] = this.contracts['PrimaryMarket'];
+    }
+    if (this.contracts['PrimaryMarketplace'] && !this.contracts['PrimaryMarket']) {
+      this.contracts['PrimaryMarket'] = this.contracts['PrimaryMarketplace'];
+    }
+    // Arbitrum uses 'MockUSDC', code uses 'USDC'
+    if (this.contracts['MockUSDC'] && !this.contracts['USDC']) {
+      this.contracts['USDC'] = this.contracts['MockUSDC'];
+    }
+    // Arbitrum uses 'StARBLeverageVault', code may use 'LeverageVault'
+    if (this.contracts['StARBLeverageVault'] && !this.contracts['LeverageVault']) {
+      this.contracts['LeverageVault'] = this.contracts['StARBLeverageVault'];
+    }
   }
 
   private loadAbis() {
@@ -64,6 +80,8 @@ export class EvmContractAdapter implements ContractAdapter {
       PrimaryMarket: 'marketplace/PrimaryMarket.sol/PrimaryMarket.json',
       RWAToken: 'core/RWAToken.sol/RWAToken.json',
       SecondaryMarket: 'marketplace/SecondaryMarket.sol/SecondaryMarket.json',
+      USDC: 'test/MockUSDC.sol/MockUSDC.json',
+      MockUSDC: 'test/MockUSDC.sol/MockUSDC.json',
     };
 
     for (const [name, relPath] of Object.entries(mapping)) {
