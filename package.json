@@ -1,7 +1,7 @@
 {
   "name": "mantle-rwa-platform",
   "private": true,
-  "packageManager": "yarn@1.22.22",
+  "packageManager": "yarn@4.6.0",
   "type": "module",
   "engines": {
     "node": "22.x"
