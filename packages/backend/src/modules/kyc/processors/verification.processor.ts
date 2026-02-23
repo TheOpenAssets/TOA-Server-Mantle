@@ -267,22 +267,25 @@ export class VerificationProcessor extends WorkerHost {
                         txHash = await this.blockchainService.registerIdentity(user.walletAddress);
                         this.logger.log(`✅ Investor registered on blockchain: ${txHash}`);
 
-                        // Check if OAID registration already exists, register if not
-                        this.logger.log(`🔍 Checking for existing OAID registration for ${user.walletAddress}...`);
-                        hasOAID = await this.solvencyBlockchainService.hasOAIDCreditLine(user.walletAddress);
-                        
-                        if (!hasOAID) {
-                            try {
-                                this.logger.log(`🆔 Registering user in OAID system for ${user.walletAddress}...`);
-                                const oaidResult = await this.solvencyBlockchainService.registerUserInOAID(user.walletAddress);
-                                oaidTxHash = oaidResult.txHash;
-                                this.logger.log(`✅ User registered in OAID system: TX: ${oaidTxHash}`);
-                            } catch (oaidError) {
-                                this.logger.error(`⚠️ Failed to register user in OAID: ${oaidError}`);
-                                // Don't fail the whole operation if OAID registration fails
+                        // OAID is Mantle-specific — guard against missing contract on other EVM networks
+                        try {
+                            this.logger.log(`🔍 Checking for existing OAID registration for ${user.walletAddress}...`);
+                            hasOAID = await this.solvencyBlockchainService.hasOAIDCreditLine(user.walletAddress);
+
+                            if (!hasOAID) {
+                                try {
+                                    this.logger.log(`🆔 Registering user in OAID system for ${user.walletAddress}...`);
+                                    const oaidResult = await this.solvencyBlockchainService.registerUserInOAID(user.walletAddress);
+                                    oaidTxHash = oaidResult.txHash;
+                                    this.logger.log(`✅ User registered in OAID system: TX: ${oaidTxHash}`);
+                                } catch (oaidError) {
+                                    this.logger.error(`⚠️ Failed to register user in OAID: ${oaidError}`);
+                                }
+                            } else {
+                                this.logger.log(`✅ User already registered in OAID system`);
                             }
-                        } else {
-                            this.logger.log(`✅ User already registered in OAID system`);
+                        } catch (oaidCheckError) {
+                            this.logger.warn(`ℹ️ OAID not available on ${deploymentNetwork} — skipping OAID registration`);
                         }
                     } else {
                         this.logger.log(`ℹ️ Stellar wallet detected - skipping on-chain identity registration (trustline-based compliance)`);
