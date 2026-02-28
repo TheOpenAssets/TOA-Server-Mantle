@@ -4,6 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { NetworkType } from '@openassets/types';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { DocumentStorageService } from '../services/document-storage.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
@@ -254,7 +255,7 @@ export class VerificationProcessor extends WorkerHost {
                     // Detect wallet network from address format, not deployment config
                     const isStellar = isStellarWallet(user.walletAddress);
                     const walletNetwork = detectWalletNetwork(user.walletAddress);
-                    const deploymentNetwork = this.configService.get<string>('network.networkType') || 'mantle';
+                    const deploymentNetwork = (this.configService.get<string>('network.networkType') || NetworkType.MANTLE) as NetworkType;
                     let txHash: string | undefined;
                     let oaidTxHash: string | undefined;
                     let hasOAID = false;
@@ -294,7 +295,7 @@ export class VerificationProcessor extends WorkerHost {
                     // Initialize portfolio for the newly verified investor (all networks)
                     try {
                         // Use wallet's network for portfolio, not deployment network
-                        const portfolioNetwork = isStellar ? 'stellar' : deploymentNetwork;
+                        const portfolioNetwork = (isStellar ? NetworkType.STELLAR : deploymentNetwork) as NetworkType;
                         await this.userPortfolioService.initializePortfolio(user.walletAddress, portfolioNetwork);
                         this.logger.log(`✅ Portfolio initialized for ${user.walletAddress} on ${portfolioNetwork}`);
                     } catch (portfolioError) {

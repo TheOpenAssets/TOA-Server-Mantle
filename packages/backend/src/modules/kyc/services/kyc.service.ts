@@ -16,6 +16,7 @@ import { isStellarWallet, isEvmWallet, detectWalletNetwork } from '../utils/wall
 import { NotificationType } from '../../notifications/enums/notification-type.enum';
 import { NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { NetworkType } from '@openassets/types';
 
 @Injectable()
 export class KycService {
@@ -159,7 +160,7 @@ export class KycService {
     // Register investor identity on blockchain (skip for Stellar wallets)
     const isStellar = isStellarWallet(fullUser.walletAddress);
     const walletNetwork = detectWalletNetwork(fullUser.walletAddress);
-    const deploymentNetwork = this.configService.get<string>('network.networkType') || 'mantle';
+    const deploymentNetwork = (this.configService.get<string>('network.networkType') || NetworkType.MANTLE) as NetworkType;
     let txHash: string | undefined;
 
     this.logger.log(`🔍 Detected wallet network: ${walletNetwork}, Deployment network: ${deploymentNetwork}`);
@@ -177,7 +178,7 @@ export class KycService {
       // Initialize portfolio for the newly verified investor (all networks)
       try {
         // Use wallet's network for portfolio, not deployment network
-        const portfolioNetwork = isStellar ? 'stellar' : deploymentNetwork;
+        const portfolioNetwork = (isStellar ? NetworkType.STELLAR : deploymentNetwork) as NetworkType;
         await this.userPortfolioService.initializePortfolio(fullUser.walletAddress, portfolioNetwork);
         this.logger.log(`✅ Portfolio initialized for ${fullUser.walletAddress} on ${portfolioNetwork}`);
       } catch (portfolioError) {

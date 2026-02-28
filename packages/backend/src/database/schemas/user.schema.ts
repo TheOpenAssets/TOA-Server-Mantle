@@ -1,13 +1,16 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { UserRole, IUser, IKycDocument, KycStatus, WalletAddress } from '@openassets/types';
+import { UserRole, IUser, IKycDocument, KycStatus, WalletAddress, NetworkType } from '@openassets/types';
 
 export type UserDocument = User & Document;
 
 @Schema({ timestamps: true })
 export class User implements IUser {
-  @Prop({ required: true, unique: true, index: true, type: String })
+  @Prop({ required: true, index: true, type: String })
   walletAddress!: WalletAddress;
+
+  @Prop({ required: true, enum: NetworkType, index: true, type: String })
+  network!: NetworkType;
 
   @Prop({ required: true, enum: UserRole, default: UserRole.INVESTOR, type: String })
   role!: UserRole;
@@ -62,3 +65,6 @@ export class User implements IUser {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+// Composite unique index for walletAddress and network
+UserSchema.index({ walletAddress: 1, network: 1 }, { unique: true });

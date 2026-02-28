@@ -1,4 +1,4 @@
-import { Module, Global, DynamicModule, Provider } from '@nestjs/common';
+import { Module, Global, DynamicModule, Provider, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
@@ -13,6 +13,8 @@ import { MethPriceService } from './services/meth-price.service';
 import { StArbPriceService } from './services/starb-price.service';
 import { NetworkRegistryService } from './services/network-registry.service';
 import { ChainManagerRegistry } from './services/chain-manager-registry.service';
+import { NetworkContextService } from './services/network-context.service';
+import { NetworkContextMiddleware } from './middleware/network-context.middleware';
 import { EventProcessor } from './processors/event.processor';
 import { Asset, AssetSchema, AssetDocument } from '../../database/schemas/asset.schema';
 import { Bid, BidSchema } from '../../database/schemas/bid.schema';
@@ -50,7 +52,7 @@ import { getModelToken } from '@nestjs/mongoose';
 
 @Global()
 @Module({})
-export class BlockchainModule {
+export class BlockchainModule implements NestModule {
   static forRoot(): DynamicModule {
     return {
       module: BlockchainModule,
@@ -77,6 +79,7 @@ export class BlockchainModule {
         // Registry
         NetworkRegistryService,
         ChainManagerRegistry,
+        NetworkContextService,
         
         // Adapters (Determined at runtime via factory)
         {
@@ -168,6 +171,7 @@ export class BlockchainModule {
         PAYMENT_ADAPTER,
         NetworkRegistryService,
         ChainManagerRegistry,
+        NetworkContextService,
         BlockchainService,
         WalletService,
         ContractLoaderService,
@@ -177,5 +181,11 @@ export class BlockchainModule {
         MongooseModule,
       ],
     };
+  }
+
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(NetworkContextMiddleware)
+      .forRoutes('*');
   }
 }

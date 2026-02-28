@@ -1,4 +1,5 @@
 import { WalletAddress } from '../blockchain/addresses';
+import { NetworkType } from '../network/network.types';
 
 export enum UserRole {
   ORIGINATOR = 'ORIGINATOR',
@@ -40,6 +41,7 @@ export interface IKycDocument {
 
 export interface IUser {
   walletAddress: WalletAddress;
+  network: NetworkType;
   role: UserRole;
   kyc: boolean;
   kycDocuments: {

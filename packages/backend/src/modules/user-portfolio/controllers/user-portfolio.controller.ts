@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Param, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { NetworkType } from '@openassets/types';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../../admin/guards/admin.guard';
 import { UserPortfolioService } from '../services/user-portfolio.service';
@@ -17,7 +18,7 @@ export class UserPortfolioController {
   @ApiResponse({ status: 200, type: PortfolioResponseDto })
   async getPortfolio(@Request() req: any) {
     const walletAddress = req.user.walletAddress;
-    const network = req.user.network || 'mantle';
+    const network = req.user.network as NetworkType;
     return this.portfolioService.getPortfolio(walletAddress, network);
   }
 
@@ -25,7 +26,7 @@ export class UserPortfolioController {
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Rebuild user portfolio from scratch (Admin only)' })
   async rebuildPortfolio(@Param('walletAddress') walletAddress: string, @Request() req: any) {
-    const network = req.user.network || 'mantle';
+    const network = req.user.network as NetworkType;
     return this.portfolioService.rebuildPortfolio(walletAddress, network);
   }
 
@@ -37,7 +38,7 @@ export class UserPortfolioController {
     description: 'Returns comparison between portfolio data and actual purchases/bids',
   })
   async validatePortfolio(@Param('walletAddress') walletAddress: string, @Request() req: any) {
-    const network = req.user.network || 'mantle';
+    const network = req.user.network as NetworkType;
     return this.portfolioService.validatePortfolioSync(walletAddress, network);
   }
 }

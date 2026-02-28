@@ -10,6 +10,7 @@ import {
   IAssetFiles,
   IAssetCheckpoints,
   WalletAddress,
+  NetworkType,
 } from '@openassets/types';
 
 export type AssetDocument = Asset & Document;
@@ -28,8 +29,8 @@ export class Asset implements IAssetEVM, IAssetStellar {
   @Prop({ required: true, enum: AssetType, type: String })
   assetType!: AssetType;
 
-  @Prop({ type: String, enum: ['mantle', 'stellar', 'arbitrum'], default: 'mantle' })
-  network!: string;
+  @Prop({ type: String, enum: NetworkType, default: NetworkType.MANTLE })
+  network!: NetworkType;
 
   @Prop({ type: Object })
   metadata!: IAssetMetadata;

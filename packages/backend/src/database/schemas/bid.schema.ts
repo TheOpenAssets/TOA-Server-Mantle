@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { BidStatus, WalletAddress } from '@openassets/types';
+import { BidStatus, WalletAddress, NetworkType } from '@openassets/types';
 
 export type BidDocument = Bid & Document;
 
@@ -36,8 +36,8 @@ export class Bid {
   @Prop({ type: String })
   settlementTxHash?: string; // Transaction hash for settlement
 
-  @Prop({ type: String, enum: ['mantle', 'stellar', 'arbitrum'], default: 'mantle', index: true })
-  network!: string;
+  @Prop({ type: String, enum: NetworkType, default: NetworkType.MANTLE, index: true })
+  network!: NetworkType;
 
   @Prop({ type: Date })
   settledAt?: Date; // When the bid was settled

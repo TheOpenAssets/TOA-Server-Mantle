@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { YieldClaimStatus, WalletAddress } from '@openassets/types';
+import { YieldClaimStatus, WalletAddress, NetworkType } from '@openassets/types';
 
 export type UserYieldClaimDocument = UserYieldClaim & Document;
 
@@ -14,6 +14,9 @@ export class UserYieldClaim {
 
   @Prop({ required: true, index: true })
   assetId!: string; // Asset ID for reference
+
+  @Prop({ type: String, enum: NetworkType, default: NetworkType.MANTLE, index: true })
+  network!: NetworkType;
 
   @Prop({ required: true })
   tokensBurned!: string; // Amount of RWA tokens burned (in wei)
@@ -50,3 +53,4 @@ UserYieldClaimSchema.index({ userAddress: 1, tokenAddress: 1 });
 UserYieldClaimSchema.index({ assetId: 1 });
 UserYieldClaimSchema.index({ transactionHash: 1 }, { unique: true });
 UserYieldClaimSchema.index({ createdAt: -1 });
+UserYieldClaimSchema.index({ userAddress: 1, network: 1 });

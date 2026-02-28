@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
+import { NetworkType } from '@openassets/types';
 
 export enum HoldingType {
   STATIC = 'STATIC',
@@ -41,8 +42,8 @@ export class PortfolioHolding {
   @Prop({ required: true })
   tokenIdentifier!: string; // Address or Stellar asset string
 
-  @Prop({ required: true })
-  network!: string;
+  @Prop({ required: true, enum: NetworkType, type: String })
+  network!: NetworkType;
 
   @Prop({ required: true, enum: HoldingType })
   holdingType!: HoldingType;
@@ -108,8 +109,8 @@ export class UserPortfolio {
   @Prop({ required: true, index: true })
   walletAddress!: string;
 
-  @Prop({ required: true, enum: ['mantle', 'stellar'] })
-  network!: string;
+  @Prop({ required: true, enum: NetworkType, index: true, type: String })
+  network!: NetworkType;
 
   @Prop({ type: [PortfolioHoldingSchema], default: [] })
   holdings!: PortfolioHolding[];

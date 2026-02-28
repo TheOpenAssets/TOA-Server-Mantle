@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, ConflictException, Inject } fr
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Model, Connection } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
+import { NetworkType } from '@openassets/types';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Settlement, SettlementDocument } from '../../../database/schemas/settlement.schema';
@@ -80,6 +81,7 @@ export class PurchaseTrackerService {
         blockNumber: blockNumber,
         blockTimestamp: new Date(),
         status: 'CONFIRMED',
+        network: (asset.network || NetworkType.MANTLE) as NetworkType,
         metadata: {
           assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
           industry: asset.metadata?.industry,
@@ -92,12 +94,12 @@ export class PurchaseTrackerService {
 
       // Update portfolio
       try {
-        await this.userPortfolioService.updateOnPurchase(purchase, asset.network || 'mantle');
-        this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || 'mantle'}`);
+        await this.userPortfolioService.updateOnPurchase(purchase, (asset.network || NetworkType.MANTLE) as NetworkType);
+        this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || NetworkType.MANTLE}`);
       } catch (error: any) {
         this.logger.error(`❌ CRITICAL: Failed to update portfolio for ${investorWallet}: ${error.message}`);
         this.logger.error(`Error stack: ${error.stack}`);
-        this.logger.error(`Purchase details - assetId: ${purchase.assetId}, amount: ${purchase.amount}, network: ${asset.network || 'mantle'}`);
+        this.logger.error(`Purchase details - assetId: ${purchase.assetId}, amount: ${purchase.amount}, network: ${asset.network || NetworkType.MANTLE}`);
         // Continue operation - portfolio can be rebuilt later via admin endpoint
       }
 
@@ -143,6 +145,7 @@ export class PurchaseTrackerService {
       blockTimestamp: new Date(purchaseData.timestamp * 1000),
       status: 'CONFIRMED',
       source: 'PRIMARY_MARKET',
+      network: (asset.network || NetworkType.MANTLE) as NetworkType,
       metadata: {
         assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
         industry: asset.metadata?.industry,
@@ -155,12 +158,12 @@ export class PurchaseTrackerService {
 
     // Update portfolio
     try {
-      await this.userPortfolioService.updateOnPurchase(purchase as any, asset.network || 'mantle');
-      this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || 'mantle'}`);
+      await this.userPortfolioService.updateOnPurchase(purchase as any, (asset.network || NetworkType.MANTLE) as NetworkType);
+      this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || NetworkType.MANTLE}`);
     } catch (error: any) {
       this.logger.error(`❌ CRITICAL: Failed to update portfolio for ${investorWallet}: ${error.message}`);
       this.logger.error(`Error stack: ${error.stack}`);
-      this.logger.error(`Purchase details - assetId: ${dto.assetId}, amount: ${purchaseData.amount.value}, network: ${asset.network || 'mantle'}`);
+      this.logger.error(`Purchase details - assetId: ${dto.assetId}, amount: ${purchaseData.amount.value}, network: ${asset.network || NetworkType.MANTLE}`);
       // Continue operation - portfolio can be rebuilt later via admin endpoint
     }
 
@@ -268,6 +271,7 @@ export class PurchaseTrackerService {
       rawUsdcReceived: usdcReceivedCanonical.rawPrice,
       blockNumber: dto.blockNumber ? parseInt(dto.blockNumber) : undefined,
       status: 'CONFIRMED',
+      network: (asset.network || NetworkType.MANTLE) as NetworkType,
       metadata: {
         assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
         industry: asset.metadata?.industry,
@@ -279,7 +283,7 @@ export class PurchaseTrackerService {
 
     // Update portfolio
     try {
-      await this.userPortfolioService.updateOnYieldClaim(yieldClaim as any, asset.network || 'mantle');
+      await this.userPortfolioService.updateOnYieldClaim(yieldClaim as any, (asset.network || NetworkType.MANTLE) as NetworkType);
     } catch (error: any) {
       this.logger.error(`Failed to update portfolio on yield claim: ${error.message}`);
     }

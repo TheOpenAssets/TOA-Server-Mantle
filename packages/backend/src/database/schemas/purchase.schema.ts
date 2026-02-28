@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { NetworkType } from '@openassets/types';
 
 export type PurchaseDocument = Purchase & Document;
 
@@ -47,8 +48,8 @@ export class Purchase {
   @Prop()
   soldP2PTradeId?: string; // Reference to P2PTrade when sold
 
-  @Prop({ type: String, enum: ['mantle', 'stellar', 'arbitrum'], default: 'mantle' })
-  network!: string;
+  @Prop({ type: String, enum: NetworkType, default: NetworkType.MANTLE })
+  network!: NetworkType;
 
   @Prop({ type: Boolean })
   rawPrecise?: boolean;

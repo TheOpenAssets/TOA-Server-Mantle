@@ -10,7 +10,8 @@ import {
   TokenType, 
   SolvencyHealthStatus as HealthStatus, 
   SolvencyPositionStatus as PositionStatus,
-  WalletAddress 
+  WalletAddress,
+  NetworkType
 } from '@openassets/types';
 import { SolvencyBlockchainService } from './solvency-blockchain.service';
 import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
@@ -41,8 +42,9 @@ export class SolvencyPositionService {
     depositTxHash: string,
     depositBlockNumber: number,
     oaidCreditIssued: boolean = false,
+    network: NetworkType = NetworkType.MANTLE,
   ): Promise<SolvencyPosition> {
-    this.logger.log(`Creating position ${positionId} for user ${userAddress}`);
+    this.logger.log(`Creating position ${positionId} for user ${userAddress} on ${network}`);
 
     // Calculate initial LTV based on token type
     const initialLTV = collateralTokenType === TokenType.RWA ? 7000 : 6000;
@@ -63,6 +65,7 @@ export class SolvencyPositionService {
       oaidCreditIssued,
       depositTxHash,
       depositBlockNumber,
+      network,
     });
 
     await position.save();
@@ -109,8 +112,9 @@ export class SolvencyPositionService {
     depositTxHash: string,
     depositBlockNumber: number,
     oaidCreditIssued: boolean = false,
+    network: NetworkType = NetworkType.MANTLE,
   ): Promise<SolvencyPosition> {
-    this.logger.log(`Syncing position ${positionId} for user ${userAddress}`);
+    this.logger.log(`Syncing position ${positionId} for user ${userAddress} on ${network}`);
 
     // Check if position already exists
     const existingPosition = await this.positionModel.findOne({ positionId });
@@ -129,6 +133,7 @@ export class SolvencyPositionService {
       existingPosition.initialLTV = initialLTV;
       existingPosition.depositTxHash = depositTxHash;
       existingPosition.depositBlockNumber = depositBlockNumber;
+      existingPosition.network = network;
 
       await existingPosition.save();
       this.logger.log(`Position ${positionId} updated successfully`);
@@ -148,6 +153,7 @@ export class SolvencyPositionService {
         depositTxHash,
         depositBlockNumber,
         oaidCreditIssued,
+        network,
       );
     }
   }
@@ -679,7 +685,7 @@ export class SolvencyPositionService {
       });
       await this.userPortfolioService.updateOnSolvencyEvent(
         positionId,
-        asset?.network || 'mantle',
+        (asset?.network || NetworkType.MANTLE) as NetworkType,
       );
     } catch (error: any) {
       this.logger.error(

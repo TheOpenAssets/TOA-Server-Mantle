@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
-import { BidStatus } from '@openassets/types';
+import { BidStatus, NetworkType } from '@openassets/types';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { NotifyBidDto } from '../dto/notify-bid.dto';
@@ -72,7 +72,7 @@ export class BidTrackerService {
     const usdcDepositedRaw = (priceBigInt * tokenAmountBigInt) / BigInt(10 ** 18);
     const usdcDepositedCanonical = toCanonical(usdcDepositedRaw, 6);
 
-    const network = this.configService.get<string>('network.networkType') || 'mantle';
+    const network = this.configService.get<NetworkType>('network.networkType') || NetworkType.MANTLE;
 
     // Record bid in database
     const bid = await this.bidModel.create({
@@ -363,7 +363,7 @@ export class BidTrackerService {
           totalPayment: settlementData.cost.value, // Canonical
           status: 'CONFIRMED',
           source: 'PRIMARY_MARKET',
-          network: asset.network || 'mantle',
+          network: (asset.network || NetworkType.MANTLE) as NetworkType,
           metadata: {
             assetName: asset.metadata?.invoiceNumber,
             industry: asset.metadata?.industry,
@@ -373,12 +373,12 @@ export class BidTrackerService {
 
         // Update portfolio
         try {
-          await this.userPortfolioService.updateOnPurchase(purchase, asset.network || 'mantle');
-          this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || 'mantle'}`);
+          await this.userPortfolioService.updateOnPurchase(purchase, (asset.network || NetworkType.MANTLE) as NetworkType);
+          this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || NetworkType.MANTLE}`);
         } catch (error: any) {
           this.logger.error(`❌ CRITICAL: Failed to update portfolio after auction settlement for ${investorWallet}: ${error.message}`);
           this.logger.error(`Error stack: ${error.stack}`);
-          this.logger.error(`Purchase details - assetId: ${dto.assetId}, amount: ${settlementData.tokensReceived.value}, network: ${asset.network || 'mantle'}`);
+          this.logger.error(`Purchase details - assetId: ${dto.assetId}, amount: ${settlementData.tokensReceived.value}, network: ${asset.network || NetworkType.MANTLE}`);
           // Continue operation - portfolio can be rebuilt later via admin endpoint
         }
 

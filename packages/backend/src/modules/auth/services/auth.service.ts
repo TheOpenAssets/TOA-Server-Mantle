@@ -12,10 +12,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
-import { UserRole } from '@openassets/types';
+import { UserRole, NetworkType } from '@openassets/types';
 import { UserSession, UserSessionDocument } from '../../../database/schemas/session.schema';
 import { RedisService } from '../../redis/redis.service';
 import { SignatureService } from './signature.service';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 import { LoginDto, RefreshDto } from '../dto/auth.dto';
 import { detectNetworkType, normalizeAddress } from '../utils/wallet.util';
 
@@ -30,6 +31,7 @@ export class AuthService {
     private configService: ConfigService,
     private redisService: RedisService,
     private signatureService: SignatureService,
+    private networkContextService: NetworkContextService,
   ) {
     // Load approved admins from config file
     try {
@@ -51,14 +53,16 @@ export class AuthService {
 
   async createChallenge(walletAddress: string, role?: UserRole): Promise<{ message: string; nonce: string }> {
     const normalizedAddress = normalizeAddress(walletAddress);
+    const network = this.networkContextService.getNetwork();
     
     // Validate admin role request
     if (role === UserRole.ADMIN && !this.isApprovedAdmin(normalizedAddress)) {
       throw new ForbiddenException('Wallet address not authorized for admin role');
     }
     const nonce = uuidv4();
+    const networkType = network === NetworkType.MANTLE ? 'Mantle' : network === NetworkType.ARBITRUM ? 'Arbitrum' : 'Stellar';
     const appName = this.configService.get<string>('APP_NAME', 'Open Assets Platform');
-    const message = `Sign this message to authenticate with ${appName}.\nNonce: ${nonce}\nTimestamp: ${Date.now()}`;
+    const message = `Sign this message to authenticate with ${appName} on ${networkType}.\nNonce: ${nonce}\nTimestamp: ${Date.now()}`;
 
     // Store nonce and role preference in Redis
     await this.redisService.set(`nonce:${normalizedAddress}`, nonce, 60);
@@ -72,6 +76,7 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const { walletAddress, signature, message } = loginDto;
     const normalizedAddress = normalizeAddress(walletAddress);
+    const network = this.networkContextService.getNetwork();
 
     // 1. Extract Nonce from message
     const nonceMatch = message.match(/Nonce: ([a-f0-9-]+)/);
@@ -107,7 +112,7 @@ export class AuthService {
     }
 
     // 4. Find or Create User
-    let user = await this.userModel.findOne({ walletAddress: normalizedAddress });
+    let user = await this.userModel.findOne({ walletAddress: normalizedAddress, network });
     if (!user) {
       // Determine final role - only allow ADMIN if wallet is approved
       const finalRole = rolePreference === UserRole.ADMIN && this.isApprovedAdmin(normalizedAddress)
@@ -116,6 +121,7 @@ export class AuthService {
 
       user = await this.userModel.create({
         walletAddress: normalizedAddress,
+        network,
         role: finalRole,
         kyc: false,
       });
@@ -140,8 +146,10 @@ export class AuthService {
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
+      
+      const network = user.network;
 
-      const session = await this.sessionModel.findOne({ user: user._id });
+      const session = await this.sessionModel.findOne({ user: user._id, network });
       if (!session) {
           throw new UnauthorizedException('Session not found');
       }
@@ -156,9 +164,9 @@ export class AuthService {
       }
 
       // 4. Invalidate old access token if active
-      const activeAccessTokenJti = await this.redisService.get(`session:active:${user.walletAddress}`);
+      const activeAccessTokenJti = await this.redisService.get(`session:active:${network}:${user.walletAddress}`);
       if (activeAccessTokenJti) {
-        await this.redisService.del(`access:${user.walletAddress}:${activeAccessTokenJti}`);
+        await this.redisService.del(`access:${network}:${user.walletAddress}:${activeAccessTokenJti}`);
       }
 
       // 5. Generate NEW tokens and rotate session
@@ -174,18 +182,19 @@ export class AuthService {
   }
 
   async logout(user: UserDocument) {
+      const network = user.network;
       // Clear Redis session
-      const activeAccessTokenJti = await this.redisService.get(`session:active:${user.walletAddress}`);
+      const activeAccessTokenJti = await this.redisService.get(`session:active:${network}:${user.walletAddress}`);
       if (activeAccessTokenJti) {
-          await this.redisService.del(`access:${user.walletAddress}:${activeAccessTokenJti}`);
-          await this.redisService.del(`session:active:${user.walletAddress}`);
+          await this.redisService.del(`access:${network}:${user.walletAddress}:${activeAccessTokenJti}`);
+          await this.redisService.del(`session:active:${network}:${user.walletAddress}`);
       }
       
       // Clear MongoDB Refresh Token in UserSession
-      const session = await this.sessionModel.findOne({ user: user._id });
+      const session = await this.sessionModel.findOne({ user: user._id, network });
       if (session) {
           await this.sessionModel.updateOne(
-              { user: user._id },
+              { user: user._id, network },
               { 
                   $unset: { currentRefreshToken: "" },
                   $push: {
@@ -205,13 +214,14 @@ export class AuthService {
     const accessJti = uuidv4();
     const refreshJti = uuidv4();
     const deviceHash = 'unknown';
+    const network = user.network;
 
     const accessTokenExpiresIn = parseInt(this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRES_IN', '900'));
 
     const accessPayload = {
       sub: user._id,
       wallet: user.walletAddress,
-      network: detectNetworkType(user.walletAddress),
+      network: network,
       role: user.role,
       kyc: user.kyc,
       jti: accessJti,
@@ -232,20 +242,21 @@ export class AuthService {
 
     // Store Access Token in Redis
     await this.redisService.set(
-      `access:${user.walletAddress}:${accessJti}`,
-      JSON.stringify({ userId: user._id, jti: accessJti, wallet: user.walletAddress }),
+      `access:${network}:${user.walletAddress}:${accessJti}`,
+      JSON.stringify({ userId: user._id, jti: accessJti, wallet: user.walletAddress, network }),
       accessTokenExpiresIn
     );
-    await this.redisService.set(`session:active:${user.walletAddress}`, accessJti, accessTokenExpiresIn);
+    await this.redisService.set(`session:active:${network}:${user.walletAddress}`, accessJti, accessTokenExpiresIn);
 
     // Store Refresh Token in MongoDB UserSession
     // Upsert session document
     await this.sessionModel.updateOne(
-      { user: user._id },
+      { user: user._id, network },
       {
         $set: {
           user: user._id,
           walletAddress: user.walletAddress,
+          network,
           currentRefreshToken: {
             jti: refreshJti,
             exp: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
