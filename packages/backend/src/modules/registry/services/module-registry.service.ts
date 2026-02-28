@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ModuleRef } from '@nestjs/core';
-import { NetworkType } from '../../../config/network.config';
+import { NetworkType } from '@openassets/types';
 import {
   ASSET_ORIGINATION_SERVICE,
   MANTLE_ASSET_ORIGINATION_TOKEN,

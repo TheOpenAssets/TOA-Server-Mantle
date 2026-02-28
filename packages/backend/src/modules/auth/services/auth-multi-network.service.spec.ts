@@ -11,7 +11,7 @@ import { BadRequestException } from '@nestjs/common';
 import { mockDeep, DeepMockProxy } from 'jest-mock-extended';
 import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
-import { NetworkType } from '../utils/wallet.util';
+import { NetworkType } from '@openassets/types';
 
 describe('AuthService Multi-Network', () => {
   let service: AuthService;

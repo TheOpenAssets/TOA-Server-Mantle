@@ -14,7 +14,12 @@
     "paths": {
       "@openassets/types": ["./packages/types/src/index.ts"],
       "@openassets/types/*": ["./packages/types/src/*"],
-      "@mantle/contracts/*": ["./packages/contracts/generated/*"]
+      "@contracts/mantle": ["./packages/contracts/index.ts"],
+      "@contracts/mantle/*": ["./packages/contracts/*"],
+      "@contracts/arbitrum": ["./packages/arbitrum-contracts/index.ts"],
+      "@contracts/arbitrum/*": ["./packages/arbitrum-contracts/*"],
+      "@contracts/stellar": ["./packages/stellar-contracts/index.ts"],
+      "@contracts/stellar/*": ["./packages/stellar-contracts/*"]
     },
     "types": ["jest", "node", "multer"]
   }

@@ -1,10 +1,5 @@
 import { registerAs } from '@nestjs/config';
-
-export enum NetworkType {
-  MANTLE = 'mantle',
-  STELLAR = 'stellar',
-  ARBITRUM = 'arbitrum',
-}
+import { NetworkType } from '@openassets/types';
 
 export default registerAs('network', () => {
   const networkType = (process.env.NETWORK_TYPE as NetworkType) || NetworkType.MANTLE;

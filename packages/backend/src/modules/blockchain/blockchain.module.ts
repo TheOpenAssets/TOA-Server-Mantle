@@ -12,6 +12,7 @@ import { EventListenerService } from './services/event-listener.service';
 import { MethPriceService } from './services/meth-price.service';
 import { StArbPriceService } from './services/starb-price.service';
 import { NetworkRegistryService } from './services/network-registry.service';
+import { ChainManagerRegistry } from './services/chain-manager-registry.service';
 import { EventProcessor } from './processors/event.processor';
 import { Asset, AssetSchema, AssetDocument } from '../../database/schemas/asset.schema';
 import { Bid, BidSchema } from '../../database/schemas/bid.schema';
@@ -75,6 +76,7 @@ export class BlockchainModule {
       providers: [
         // Registry
         NetworkRegistryService,
+        ChainManagerRegistry,
         
         // Adapters (Determined at runtime via factory)
         {
@@ -165,6 +167,7 @@ export class BlockchainModule {
         AUTH_VERIFICATION_ADAPTER,
         PAYMENT_ADAPTER,
         NetworkRegistryService,
+        ChainManagerRegistry,
         BlockchainService,
         WalletService,
         ContractLoaderService,

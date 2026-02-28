@@ -8,8 +8,8 @@ import {
   ValidatorConstraint, 
   ValidatorConstraintInterface 
 } from 'class-validator';
-import { UserRole } from '@openassets/types';
-import { detectNetworkType, NetworkType } from '../utils/wallet.util';
+import { UserRole, NetworkType } from '@openassets/types';
+import { detectNetworkType } from '../utils/wallet.util';
 
 @ValidatorConstraint({ name: 'isWalletAddress', async: false })
 export class IsWalletAddressConstraint implements ValidatorConstraintInterface {
