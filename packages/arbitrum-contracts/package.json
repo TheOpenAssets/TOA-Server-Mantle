@@ -1,9 +1,9 @@
 {
-  "name": "@arbitrum/contracts",
+  "name": "@contracts/arbitrum",
   "version": "1.0.0",
   "private": true,
-  "main": "./typechain-types/index.ts",
-  "types": "./typechain-types/index.ts",
+  "main": "./index.ts",
+  "types": "./index.ts",
   "scripts": {
     "generate:types": "hardhat compile",
     "dev": "echo 'No dev script for contracts'",
@@ -17,6 +17,7 @@
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
     "@nomicfoundation/hardhat-verify": "^1.1.1",
     "@nomicfoundation/hardhat-viem": "^3.0.1",
+    "@openassets/types": "*",
     "@typechain/ethers-v6": "^0.5.1",
     "@typechain/hardhat": "^8.0.0",
     "@types/chai": "^4.3.11",

@@ -11,8 +11,23 @@
       "@openassets/types/*": [
         "../types/src/*"
       ],
-      "@mantle/contracts/*": [
-        "../contracts/generated/*"
+      "@contracts/mantle": [
+        "../contracts/index.ts"
+      ],
+      "@contracts/mantle/*": [
+        "../contracts/*"
+      ],
+      "@contracts/arbitrum": [
+        "../arbitrum-contracts/index.ts"
+      ],
+      "@contracts/arbitrum/*": [
+        "../arbitrum-contracts/*"
+      ],
+      "@contracts/stellar": [
+        "../stellar-contracts/index.ts"
+      ],
+      "@contracts/stellar/*": [
+        "../stellar-contracts/*"
       ]
     },
     "types": [

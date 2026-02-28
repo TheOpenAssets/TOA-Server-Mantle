@@ -1,5 +1,6 @@
 // Blockchain
 export * from './blockchain/addresses';
+export * from './blockchain/contracts';
 
 // Domain
 export * from './domain/user.types';
