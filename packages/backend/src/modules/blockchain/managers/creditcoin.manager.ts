@@ -25,6 +25,11 @@ export class CreditCoinChainManager implements ChainManager {
     const chainId = Number(this.configService.get<string>('CREDITCOIN_CHAIN_ID'));
     const adminPk = this.configService.get<string>('CREDITCOIN_ADMIN_PRIVATE_KEY');
     const platformPk = this.configService.get<string>('CREDITCOIN_PLATFORM_PRIVATE_KEY');
+    const custodyAddress = this.configService.get<string>('CREDITCOIN_CUSTODY_WALLET_ADDRESS');
+
+    if (!custodyAddress) {
+      this.logger.warn('CREDITCOIN_CUSTODY_WALLET_ADDRESS not configured. Burn operations might fail.');
+    }
 
     this.contractAdapter = new EvmContractAdapter(
       this.configService,
@@ -51,6 +56,7 @@ export class CreditCoinChainManager implements ChainManager {
         chainId,
         networkName: 'Credit Coin CC3',
         nativeSymbol: 'CTC',
+        custodyAddress,
       }
     );
   }

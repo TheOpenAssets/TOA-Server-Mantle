@@ -26,6 +26,7 @@ import { toCanonical, fromCanonical } from '../../utils/numeric-conversion';
 export class EvmBlockchainAdapter implements BlockchainAdapter {
   private readonly logger = new Logger(EvmBlockchainAdapter.name);
   private publicClient: PublicClient;
+  private custodyAddress?: string;
 
   constructor(
     private readonly configService: ConfigService,
@@ -37,12 +38,14 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
       chainId?: number;
       networkName?: string;
       nativeSymbol?: string;
+      custodyAddress?: string;
     }
   ) {
     const rpcUrl = configOverride?.rpcUrl || this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
     const chainId = configOverride?.chainId || this.configService.get<number>('blockchain.chainId') || 5003;
     const networkName = configOverride?.networkName || this.configService.get<string>('network.networkName') || 'Mantle Sepolia';
     const nativeSymbol = configOverride?.nativeSymbol || this.configService.get<string>('blockchain.evmNativeSymbol') || 'MNT';
+    this.custodyAddress = configOverride?.custodyAddress;
 
     const chain = defineChain({
       id: chainId,
@@ -509,10 +512,10 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     const tokenAbi = this.contractAdapter.getContractInterface('RWAToken');
 
     // Get custody wallet address (where unsold tokens are held)
-    const custodyWalletAddress = this.configService.get<string>('blockchain.custodyAddress');
+    const custodyWalletAddress = this.custodyAddress || this.configService.get<string>('blockchain.custodyAddress');
 
     if (!custodyWalletAddress) {
-      throw new Error('Custody wallet address not configured in .env (CUSTODY_WALLET_ADDRESS)');
+      throw new Error('Custody wallet address not configured');
     }
 
     this.logger.log(`   Checking custody wallet: ${custodyWalletAddress}`);

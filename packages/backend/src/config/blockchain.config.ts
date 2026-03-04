@@ -11,4 +11,13 @@ export default registerAs('blockchain', () => ({
   adminPrivateKey: process.env.ADMIN_PRIVATE_KEY,
   platformPrivateKey: process.env.PLATFORM_PRIVATE_KEY,
   custodyAddress: process.env.CUSTODY_WALLET_ADDRESS,
+
+  // Credit Coin specific
+  creditcoin: {
+    rpcUrl: process.env.CREDITCOIN_RPC_URL,
+    chainId: process.env.CREDITCOIN_CHAIN_ID,
+    adminPrivateKey: process.env.CREDITCOIN_ADMIN_PRIVATE_KEY,
+    platformPrivateKey: process.env.CREDITCOIN_PLATFORM_PRIVATE_KEY,
+    custodyAddress: process.env.CREDITCOIN_CUSTODY_WALLET_ADDRESS,
+  }
 }));

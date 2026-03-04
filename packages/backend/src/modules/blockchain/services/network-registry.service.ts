@@ -142,4 +142,20 @@ export class NetworkRegistryService {
     const adapter = this.getBlockchainAdapter();
     return await adapter.transferUSDC(recipientAddress, usdcAmount);
   }
+
+  async burnUnsoldTokens(tokenIdentifier: string, assetId: string) {
+    if (!this.isAvailable('assets')) {
+      return null;
+    }
+    const adapter = this.getBlockchainAdapter();
+    return await adapter.burnUnsoldTokens(tokenIdentifier, assetId);
+  }
+
+  async payoutToRecipient(recipientAddress: string, usdcAmount: string) {
+    if (!this.isAvailable('assets')) {
+      return { txId: '', skipped: true };
+    }
+    const adapter = this.getBlockchainAdapter();
+    return await adapter.transferUSDC(recipientAddress, usdcAmount);
+  }
 }
