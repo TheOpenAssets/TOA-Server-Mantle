@@ -40,6 +40,9 @@ export const ContractNameRegistry = {
 
   // Stellar-only
   AssetRegistry: 'AssetRegistry',
+
+  // Creditcoin USC
+  USCCreditVerifier: 'USCCreditVerifier',
 } as const;
 
 export type ContractName = keyof typeof ContractNameRegistry;
