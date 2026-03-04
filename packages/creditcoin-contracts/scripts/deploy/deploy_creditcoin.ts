@@ -224,6 +224,22 @@ async function main() {
   );
   console.log("   [OK] Manifest saved to deployed_contracts_creditcoin.json");
 
+  // Step 9: Update addresses.ts file
+  console.log("\n[9] Updating addresses.ts file...");
+
+  const addressesPath = "./src/addresses.ts";
+  let addressesContent = fs.readFileSync(addressesPath, "utf8");
+
+  // Update each contract address in the CreditCoinContracts object
+  for (const [contractName, address] of Object.entries(deployedContracts)) {
+    // Create regex to match the specific contract line
+    const regex = new RegExp(`(${contractName}:\\s*)'0x[0-9a-fA-F]{40}'`, 'g');
+    addressesContent = addressesContent.replace(regex, `$1'${address}'`);
+  }
+
+  fs.writeFileSync(addressesPath, addressesContent);
+  console.log("   [OK] addresses.ts updated with deployed contract addresses");
+
   // Summary
   console.log("\n[SUCCESS] Deployment complete!");
 }
