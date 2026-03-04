@@ -1,69 +1,44 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import {
+  AssetStatus,
+  AssetType,
+  IAssetEVM,
+  IAssetStellar,
+  IAssetMetadata,
+  IAssetTokenParams,
+  IAssetFiles,
+  IAssetCheckpoints,
+  WalletAddress,
+} from '@openassets/types';
 
 export type AssetDocument = Asset & Document;
 
-export enum AssetStatus {
-  UPLOADED = 'UPLOADED',
-  HASHED = 'HASHED',
-  MERKLED = 'MERKLED',
-  PROOF_GENERATED = 'PROOF_GENERATED',
-  ATTESTED = 'ATTESTED',
-  DA_ANCHORED = 'DA_ANCHORED',
-  REGISTERED = 'REGISTERED',
-  TOKENIZED = 'TOKENIZED',
-  SCHEDULED = 'SCHEDULED',
-  LISTED = 'LISTED',
-  PAYOUT_COMPLETE = 'PAYOUT_COMPLETE',
-  YIELD_SETTLED = 'YIELD_SETTLED',
-  ENDED = 'ENDED',
-  REVOKED = 'REVOKED',
-  REJECTED = 'REJECTED',
-}
-
 @Schema({ timestamps: true })
-export class Asset {
+export class Asset implements IAssetEVM, IAssetStellar {
   @Prop({ required: true, unique: true })
   assetId!: string;
 
-  @Prop({ required: true })
-  originator!: string; // Wallet address
+  @Prop({ required: true, type: String })
+  originator!: WalletAddress;
 
-  @Prop({ required: true, enum: AssetStatus, default: AssetStatus.UPLOADED })
+  @Prop({ required: true, enum: AssetStatus, default: AssetStatus.UPLOADED, type: String })
   status!: AssetStatus;
 
-  @Prop({ required: true, enum: ['STATIC', 'AUCTION'] })
-  assetType!: 'STATIC' | 'AUCTION';
+  @Prop({ required: true, enum: AssetType, type: String })
+  assetType!: AssetType;
+
+  @Prop({ type: String, enum: ['mantle', 'stellar'], default: 'mantle' })
+  network!: string;
 
   @Prop({ type: Object })
-  metadata!: {
-    invoiceNumber: string;
-    faceValue: string;
-    currency: string;
-    issueDate: Date;
-    dueDate: Date;
-    buyerName: string;
-    industry: string;
-    riskTier: string;
-  };
+  metadata!: IAssetMetadata;
 
   @Prop({ type: Object })
-  tokenParams!: {
-    totalSupply: string;
-    pricePerToken?: string; // Optional for auctions
-    minInvestment: string;
-    minRaise: string; // Minimum amount that must be raised
-  };
+  tokenParams!: IAssetTokenParams;
 
   @Prop({ type: Object })
-  files!: {
-    invoice: {
-      tempPath: string;
-      permanentPath?: string;
-      size: number;
-      uploadedAt: Date;
-    };
-  };
+  files!: IAssetFiles;
 
   @Prop({ type: Object })
   cryptography!: {
@@ -102,8 +77,9 @@ export class Asset {
   @Prop({ type: Object })
   registry?: {
     transactionHash: string;
-    blockNumber: number;
+    blockNumber?: number;
     registeredAt: Date;
+    assetCode?: string;
   };
 
   @Prop({ type: Object })
@@ -118,21 +94,21 @@ export class Asset {
   @Prop({ type: Object })
   listing?: {
     type: 'STATIC' | 'AUCTION';
-    price?: string; // For STATIC listings
-    reservePrice?: string; // For AUCTION: minimum acceptable price
-    priceRange?: { min: string; max: string }; // For AUCTION: bid price range
-    duration?: number; // For AUCTION: duration in seconds
+    price?: string;
+    reservePrice?: string;
+    priceRange?: { min: string; max: string };
+    duration?: number;
     sold: string;
-    amountRaised?: string; // Total USDC raised from primary sales (for yield calculation)
+    amountRaised?: string;
     active: boolean;
     listedAt: Date;
-    scheduledStartTime?: Date; // For AUCTION: when the auction is scheduled to start
-    scheduledEndTime?: Date; // For AUCTION: when the auction is scheduled to end
-    endedAt?: Date; // When the auction/listing ended
+    scheduledStartTime?: Date;
+    scheduledEndTime?: Date;
+    endedAt?: Date;
     phase?: 'BIDDING' | 'ENDED' | 'SETTLED' | 'FAILED';
-    clearingPrice?: string; // For AUCTION: final clearing price after settlement
-    transactionHash?: string; // Transaction hash for listing creation
-    endTransactionHash?: string; // Transaction hash for auction settlement
+    clearingPrice?: string;
+    transactionHash?: string;
+    endTransactionHash?: string;
   };
 
   @Prop({ type: Object })
@@ -150,20 +126,14 @@ export class Asset {
       hashed: false,
       merkled: false,
       attested: false,
-      daAnchored: false,
       registered: false,
       tokenized: false,
     },
   })
-  checkpoints!: {
-    uploaded: boolean;
-    hashed: boolean;
-    merkled: boolean;
-    attested: boolean;
-    daAnchored: boolean;
-    registered: boolean;
-    tokenized: boolean;
-  };
+  checkpoints!: IAssetCheckpoints;
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const AssetSchema = SchemaFactory.createForClass(Asset);

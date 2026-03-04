@@ -1,66 +1,36 @@
-import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, Inject } from '@nestjs/common';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Model, Connection } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
-import { createPublicClient, http, Hash, decodeEventLog } from 'viem';
-import { mantleSepolia } from '../../../config/mantle-chain';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Settlement, SettlementDocument } from '../../../database/schemas/settlement.schema';
 import { YieldClaim, YieldClaimDocument } from '../../../database/schemas/yield-claim.schema';
 import { LeveragePosition } from '../../../database/schemas/leverage-position.schema';
-import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
+import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
+import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
+import { toCanonical, fromCanonical } from '../../blockchain/utils/numeric-conversion';
+
 @Injectable()
 export class PurchaseTrackerService {
   private readonly logger = new Logger(PurchaseTrackerService.name);
-  private publicClient;
 
   constructor(
     private configService: ConfigService,
-    private contractLoader: ContractLoaderService,
+    @Inject(BLOCKCHAIN_ADAPTER) private blockchainAdapter: BlockchainAdapter,
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Settlement.name) private settlementModel: Model<SettlementDocument>,
     @InjectModel(YieldClaim.name) private yieldClaimModel: Model<YieldClaimDocument>,
     private notificationService: NotificationService,
+    private userPortfolioService: UserPortfolioService,
     @InjectConnection() private connection: Connection,
-  ) {
-    this.publicClient = createPublicClient({
-      chain: mantleSepolia,
-      transport: http(this.configService.get('blockchain.rpcUrl')),
-    });
-  }
-
-  private async executeWithRetry<T>(
-    operation: () => Promise<T>,
-    description: string,
-    maxRetries = 5,
-    initialDelay = 2000,
-  ): Promise<T> {
-    let retries = 0;
-    let delay = initialDelay;
-
-    while (true) {
-      try {
-        return await operation();
-      } catch (error: any) {
-        retries++;
-        if (retries > maxRetries) {
-          this.logger.error(`Failed ${description} after ${maxRetries} retries: ${error.message}`);
-          throw error;
-        }
-        this.logger.warn(
-          `Error in ${description} (attempt ${retries}/${maxRetries}): ${error.message}. Retrying in ${delay}ms...`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        delay *= 2;
-      }
-    }
-  }
+  ) {}
 
   /**
    * Validate and record a purchase transaction
@@ -88,22 +58,25 @@ export class PurchaseTrackerService {
       // Handle token deposit to contract (balance decrease)
       this.logger.log(`Processing token ${isDeposit ? "DEPOSIT" : "WITHDRAWAL"} (balance): ${dto.amount}`);
 
-      // Convert amount to wei (if not already in wei)
-      const amountWithoutSign = isDeposit ? dto.amount.substring(1) : (BigInt(dto.amount) / BigInt(1e18)).toString(); // Remove negative sign if present
-      const depositAmountInWei = (BigInt(amountWithoutSign) * BigInt(10 ** 18)).toString();
-      const blockNumber = dto.blockNumber ? parseInt(dto.blockNumber) : 0;
-      const depositAmount = type === 'WITHDRAWAL' ? depositAmountInWei : '-' + depositAmountInWei;
+      // Amount is already canonical 4-decimal string from DTO
+      // For existing Purchase schema, we convert back to 18-decimal integer string for compatibility
+      const amountCanonical = isDeposit ? dto.amount.substring(1) : dto.amount;
+      const amountRawBigInt = fromCanonical(amountCanonical, 18);
+      
+      const depositAmount = type === 'WITHDRAWAL' ? amountRawBigInt.toString() : '-' + amountRawBigInt.toString();
       const derivedType = type === 'WITHDRAWAL' ? 'PURCHASE' : 'DEPOSIT';
+
+      const blockNumber = dto.blockNumber ? parseInt(dto.blockNumber) : 0;
 
       // Record as a negative purchase to track balance decrease
       const purchase = await this.purchaseModel.create({
         txHash: dto.txHash,
         assetId: dto.assetId,
-        investorWallet: investorWallet.toLowerCase(), // Store as negative in wei
+        investorWallet: investorWallet.toLowerCase(),
         tokenAddress: asset.token?.address || '',
         amount: depositAmount,
-        price: '0', // No price for deposits
-        totalPayment: '0', // No payment for deposits
+        price: '0.0000', // Canonical zero
+        totalPayment: '0.0000', // Canonical zero
         blockNumber: blockNumber,
         blockTimestamp: new Date(),
         status: 'CONFIRMED',
@@ -115,13 +88,24 @@ export class PurchaseTrackerService {
         },
       });
 
-      this.logger.log(`Token deposit recorded: ${purchase._id}, amount in wei: -${depositAmountInWei}`);
+      this.logger.log(`Token deposit recorded: ${purchase._id}, amount raw: ${depositAmount}`);
+
+      // Update portfolio
+      try {
+        await this.userPortfolioService.updateOnPurchase(purchase, asset.network || 'mantle');
+        this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || 'mantle'}`);
+      } catch (error: any) {
+        this.logger.error(`❌ CRITICAL: Failed to update portfolio for ${investorWallet}: ${error.message}`);
+        this.logger.error(`Error stack: ${error.stack}`);
+        this.logger.error(`Purchase details - assetId: ${purchase.assetId}, amount: ${purchase.amount}, network: ${asset.network || 'mantle'}`);
+        // Continue operation - portfolio can be rebuilt later via admin endpoint
+      }
 
       return {
         success: true,
-        purchaseId: purchase._id,
+        purchaseId: (purchase as any)._id,
         assetId: dto.assetId,
-        amount: '-' + depositAmountInWei,
+        amount: '-' + depositAmount,
         totalPayment: '0',
         tokenAddress: asset.token?.address,
         type: 'DEPOSIT',
@@ -131,8 +115,8 @@ export class PurchaseTrackerService {
     // Handle normal purchase (positive amount) - validate on-chain
 
     // Validate transaction on-chain
-    const purchaseData = await this.validatePurchaseTransaction(
-      dto.txHash as Hash,
+    const purchaseData = await this.blockchainAdapter.verifyPurchaseTransaction(
+      dto.txHash,
       dto.assetId,
       investorWallet,
     );
@@ -147,9 +131,14 @@ export class PurchaseTrackerService {
       assetId: dto.assetId,
       investorWallet: investorWallet.toLowerCase(),
       tokenAddress: asset.token?.address || '',
-      amount: purchaseData.amount,
-      price: purchaseData.price,
-      totalPayment: purchaseData.totalPayment,
+      amount: purchaseData.amount.value,
+      price: purchaseData.price.value,
+      totalPayment: purchaseData.totalPayment.value,
+      // Companion fields for precision
+      rawPrecise: purchaseData.amount.rawPrecise || purchaseData.price.rawPrecise || purchaseData.totalPayment.rawPrecise,
+      rawAmount: purchaseData.amount.rawPrice,
+      rawPrice: purchaseData.price.rawPrice,
+      rawTotalPayment: purchaseData.totalPayment.rawPrice,
       blockNumber: purchaseData.blockNumber,
       blockTimestamp: new Date(purchaseData.timestamp * 1000),
       status: 'CONFIRMED',
@@ -162,26 +151,39 @@ export class PurchaseTrackerService {
       },
     });
 
-    this.logger.log(`Purchase recorded: ${purchase._id}`);
+    this.logger.log(`Purchase recorded: ${(purchase as any)._id}`);
+
+    // Update portfolio
+    try {
+      await this.userPortfolioService.updateOnPurchase(purchase as any, asset.network || 'mantle');
+      this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || 'mantle'}`);
+    } catch (error: any) {
+      this.logger.error(`❌ CRITICAL: Failed to update portfolio for ${investorWallet}: ${error.message}`);
+      this.logger.error(`Error stack: ${error.stack}`);
+      this.logger.error(`Purchase details - assetId: ${dto.assetId}, amount: ${purchaseData.amount.value}, network: ${asset.network || 'mantle'}`);
+      // Continue operation - portfolio can be rebuilt later via admin endpoint
+    }
 
     // Update asset.listing.sold with verified amount from transaction
     try {
-      const currentSold = BigInt(asset.listing?.sold || '0');
-      const purchasedAmount = BigInt(purchaseData.amount);
-      const newSoldAmount = currentSold + purchasedAmount;
+      const currentSoldCanonical = asset.listing?.sold || '0.0000';
+      const currentSoldRaw = fromCanonical(currentSoldCanonical, 18);
+      const purchasedAmountRaw = fromCanonical(purchaseData.amount.value, 18);
+      const newSoldAmountRaw = currentSoldRaw + purchasedAmountRaw;
+      const newSoldAmountCanonical = toCanonical(newSoldAmountRaw, 18);
 
       const updateResult = await this.assetModel.updateOne(
         { assetId: dto.assetId },
         {
           $set: {
-            'listing.sold': newSoldAmount.toString(),
+            'listing.sold': newSoldAmountCanonical.value,
           },
         },
       );
 
       if (updateResult.modifiedCount > 0) {
         this.logger.log(
-          `Asset ${dto.assetId} listing.sold updated: ${Number(purchasedAmount) / 1e18} tokens added, total sold: ${Number(newSoldAmount) / 1e18} tokens`,
+          `Asset ${dto.assetId} listing.sold updated: ${purchaseData.amount.value} tokens added, total sold: ${newSoldAmountCanonical.value} tokens`,
         );
       } else {
         this.logger.warn(`Failed to update asset.listing.sold for ${dto.assetId}`);
@@ -193,8 +195,8 @@ export class PurchaseTrackerService {
 
     // Send notification to investor
     try {
-      const tokenAmountFormatted = (Number(purchaseData.amount) / 1e18).toFixed(2);
-      const totalPaymentFormatted = (Number(purchaseData.totalPayment) / 1e6).toFixed(2);
+      const tokenAmountFormatted = Number(purchaseData.amount.value).toFixed(2);
+      const totalPaymentFormatted = Number(purchaseData.totalPayment.value).toFixed(2);
       const assetName = `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`;
 
       await this.notificationService.create({
@@ -207,8 +209,8 @@ export class PurchaseTrackerService {
         action: NotificationAction.VIEW_PORTFOLIO,
         actionMetadata: {
           assetId: dto.assetId,
-          amount: purchaseData.amount,
-          totalPayment: purchaseData.totalPayment,
+          amount: purchaseData.amount.value,
+          totalPayment: purchaseData.totalPayment.value,
           tokenAddress: asset.token?.address,
         },
       });
@@ -219,88 +221,12 @@ export class PurchaseTrackerService {
 
     return {
       success: true,
-      purchaseId: purchase._id,
+      purchaseId: (purchase as any)._id,
       assetId: dto.assetId,
-      amount: purchaseData.amount,
-      totalPayment: purchaseData.totalPayment,
+      amount: purchaseData.amount.value,
+      totalPayment: purchaseData.totalPayment.value,
       tokenAddress: asset.token?.address,
     };
-  }
-
-  /**
-   * Validate purchase transaction on-chain
-   */
-  private async validatePurchaseTransaction(
-    txHash: Hash,
-    assetId: string,
-    expectedBuyer: string,
-  ): Promise<{
-    amount: string;
-    price: string;
-    totalPayment: string;
-    blockNumber: number;
-    timestamp: number;
-  } | null> {
-    try {
-      // Get transaction receipt
-      const receipt = await this.executeWithRetry(() => this.publicClient.getTransactionReceipt({ hash: txHash }), 'getTransactionReceipt');
-
-      if (!receipt || receipt.status !== 'success') {
-        this.logger.error(`Transaction not found or failed: ${txHash}`);
-        return null;
-      }
-
-      // Get block to extract timestamp
-      const block = await this.publicClient.getBlock({ blockNumber: receipt.blockNumber });
-
-      // Decode TokensPurchased event from logs
-      const marketplaceAddress = this.contractLoader.getContractAddress('PrimaryMarketplace');
-      const abi = this.contractLoader.getContractAbi('PrimaryMarketplace');
-
-      // Convert assetId to bytes32 for comparison
-      const assetIdBytes32 = '0x' + assetId.replace(/-/g, '').padEnd(64, '0');
-
-      for (const log of receipt.logs) {
-        if (log.address.toLowerCase() !== marketplaceAddress.toLowerCase()) {
-          continue;
-        }
-
-        try {
-          const decoded = decodeEventLog({
-            abi,
-            data: log.data,
-            topics: log.topics,
-          }) as { eventName: string; args: any };
-
-          if (decoded.eventName === 'TokensPurchased') {
-            const { assetId: eventAssetId, buyer, amount, price, totalPayment } = decoded.args;
-
-            // Validate this is the correct purchase
-            if (
-              eventAssetId.toLowerCase() === assetIdBytes32.toLowerCase() &&
-              buyer.toLowerCase() === expectedBuyer.toLowerCase()
-            ) {
-              return {
-                amount: amount.toString(),
-                price: price.toString(),
-                totalPayment: totalPayment.toString(),
-                blockNumber: Number(receipt.blockNumber),
-                timestamp: Number(block.timestamp),
-              };
-            }
-          }
-        } catch (e) {
-          // Skip logs that don't match
-          continue;
-        }
-      }
-
-      this.logger.error(`TokensPurchased event not found in transaction ${txHash}`);
-      return null;
-    } catch (error: any) {
-      this.logger.error(`Error validating transaction ${txHash}:`, error.message);
-      return null;
-    }
   }
 
   /**
@@ -325,14 +251,21 @@ export class PurchaseTrackerService {
     // Get settlement info for metadata
     const settlement = await this.settlementModel.findOne({ assetId: dto.assetId }).sort({ createdAt: -1 });
 
+    const tokensBurnedCanonical = toCanonical(dto.tokensBurned, 18);
+    const usdcReceivedCanonical = toCanonical(dto.usdcReceived, 6);
+
     // Save yield claim record
     const yieldClaim = await this.yieldClaimModel.create({
       txHash: dto.txHash,
       assetId: dto.assetId,
       investorWallet: investorWallet.toLowerCase(),
       tokenAddress: asset.token?.address || '',
-      tokensBurned: dto.tokensBurned,
-      usdcReceived: dto.usdcReceived,
+      tokensBurned: tokensBurnedCanonical.value,
+      usdcReceived: usdcReceivedCanonical.value,
+      // Companion fields for precision
+      rawPrecise: (tokensBurnedCanonical as any).rawPrecise || (usdcReceivedCanonical as any).rawPrecise,
+      rawTokensBurned: tokensBurnedCanonical.rawPrice,
+      rawUsdcReceived: usdcReceivedCanonical.rawPrice,
       blockNumber: dto.blockNumber ? parseInt(dto.blockNumber) : undefined,
       status: 'CONFIRMED',
       metadata: {
@@ -342,7 +275,14 @@ export class PurchaseTrackerService {
       },
     });
 
-    this.logger.log(`Yield claim recorded: ${yieldClaim._id}`);
+    this.logger.log(`Yield claim recorded: ${(yieldClaim as any)._id}`);
+
+    // Update portfolio
+    try {
+      await this.userPortfolioService.updateOnYieldClaim(yieldClaim as any, asset.network || 'mantle');
+    } catch (error: any) {
+      this.logger.error(`Failed to update portfolio on yield claim: ${error.message}`);
+    }
 
     // Mark all purchases for this asset and investor as CLAIMED
     const updateResult = await this.purchaseModel.updateMany(
@@ -361,8 +301,8 @@ export class PurchaseTrackerService {
 
     // Send notification to investor
     try {
-      const tokensBurnedFormatted = (Number(dto.tokensBurned) / 1e18).toFixed(2);
-      const usdcReceivedFormatted = (Number(dto.usdcReceived) / 1e6).toFixed(2);
+      const tokensBurnedFormatted = Number(tokensBurnedCanonical.value).toFixed(2);
+      const usdcReceivedFormatted = Number(usdcReceivedCanonical.value).toFixed(2);
       const assetName = `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`;
 
       await this.notificationService.create({
@@ -375,8 +315,8 @@ export class PurchaseTrackerService {
         action: NotificationAction.VIEW_PORTFOLIO,
         actionMetadata: {
           assetId: dto.assetId,
-          tokensBurned: dto.tokensBurned,
-          usdcReceived: dto.usdcReceived,
+          tokensBurned: tokensBurnedCanonical.value,
+          usdcReceived: usdcReceivedCanonical.value,
           txHash: dto.txHash,
         },
       });
@@ -388,10 +328,10 @@ export class PurchaseTrackerService {
     return {
       success: true,
       message: 'Yield claim recorded successfully',
-      yieldClaimId: yieldClaim._id,
+      yieldClaimId: (yieldClaim as any)._id,
       assetId: dto.assetId,
-      tokensBurned: dto.tokensBurned,
-      usdcReceived: dto.usdcReceived,
+      tokensBurned: tokensBurnedCanonical.value,
+      usdcReceived: usdcReceivedCanonical.value,
       purchasesUpdated: updateResult.modifiedCount,
     };
   }
@@ -414,73 +354,55 @@ export class PurchaseTrackerService {
 
     for (const purchase of purchases) {
       const existing = portfolioMap.get(purchase.assetId);
-      // console.log(`[Portfolio] Processing purchase ${purchase._id} for asset ${purchase.assetId}`);
+      
+      // Handle potential transition from old wei strings to new canonical strings
+      // Canonical strings have a dot, wei strings do not
+      const amountCanonical = purchase.amount.includes('.') ? purchase.amount : toCanonical(purchase.amount, 18).value;
+      const priceCanonical = purchase.price.includes('.') ? purchase.price : toCanonical(purchase.price, 6).value;
+      const totalPaymentCanonical = purchase.totalPayment.includes('.') ? purchase.totalPayment : toCanonical(purchase.totalPayment, 6).value;
 
-      // CRITICAL: Calculate net investment and balance correctly
-      // - PRIMARY_MARKET/AUCTION: Money OUT (add to investment), tokens IN (add to balance)
-      // - SECONDARY_MARKET with positive amount (buyer): Money OUT (add to investment), tokens IN (add to balance)
-      // - SECONDARY_MARKET with negative amount (seller): Money IN (subtract from investment), tokens ALREADY ACCOUNTED in P2P_SELL_ORDER (skip for balance)
-      // - P2P_SELL_ORDER: No effect on investment (escrow lock), tokens OUT (subtract from balance)
-      // - P2P_ORDER_CANCELLED: No effect on investment (escrow unlock), tokens IN (add to balance)
-
-      // console.log(`[Portfolio] Purchase Source: ${purchase.source}, Amount: ${purchase.amount}, Total Payment: ${purchase.totalPayment}`);
-      let investmentDelta = '0';
-      let balanceDelta = purchase.amount; // Default: use purchase amount for balance
-      const amount = BigInt(purchase.amount);
-      const totalPayment = BigInt(purchase.totalPayment);
-
-
-
+      let investmentDeltaRaw = 0n;
+      let balanceDeltaRaw = fromCanonical(amountCanonical, 18);
+      const totalPaymentRaw = fromCanonical(totalPaymentCanonical, 6);
 
       if (purchase.source === 'PRIMARY_MARKET' || purchase.source === 'AUCTION') {
-        // console.log(`[Portfolio] Condition: PRIMARY_MARKET/AUCTION`);
-        investmentDelta = totalPayment.toString();
+        investmentDeltaRaw = totalPaymentRaw;
       } else if (purchase.source === 'SECONDARY_MARKET') {
-        if (amount < 0n) {
-          // console.log(`[Portfolio] Condition: SECONDARY_MARKET (Sell)`);
+        if (balanceDeltaRaw < 0n) {
           // Selling tokens: money IN (capital recovery) - SUBTRACT from investment
-          // CRITICAL: Don't subtract from balance - already done in P2P_SELL_ORDER lock
-          investmentDelta = (-totalPayment).toString();
+          investmentDeltaRaw = -totalPaymentRaw;
         } else {
-          // console.log(`[Portfolio] Condition: SECONDARY_MARKET (Buy)`);
           // Buying tokens: money OUT - ADD to investment, tokens IN
-          investmentDelta = totalPayment.toString();
+          investmentDeltaRaw = totalPaymentRaw;
         }
       } else if (purchase.source === 'P2P_SELL_ORDER') {
-        // console.log(`[Portfolio] Condition: P2P_SELL_ORDER`);
-        // Lock in escrow: no investment change, tokens leave wallet
-        investmentDelta = '0';
+        investmentDeltaRaw = 0n;
       } else if (purchase.source === 'P2P_ORDER_CANCELLED') {
-        // console.log(`[Portfolio] Condition: P2P_ORDER_CANCELLED`);
-        // Unlock from escrow: no investment change, tokens return to wallet
-        investmentDelta = (-totalPayment).toString();;
+        investmentDeltaRaw = -totalPaymentRaw;
       }
 
-      // console.log(`[Portfolio] Deltas - Investment: ${investmentDelta}, BalanceDelta: ${balanceDelta}`);
-
       if (existing) {
-        existing.totalAmount = (BigInt(existing.totalAmount) + BigInt(balanceDelta)).toString();
-        existing.totalInvested = (BigInt(existing.totalInvested) + BigInt(investmentDelta)).toString();
+        const existingTotalAmountRaw = fromCanonical(existing.totalAmount, 18);
+        const existingTotalInvestedRaw = fromCanonical(existing.totalInvested, 6);
+        
+        existing.totalAmount = toCanonical(existingTotalAmountRaw + balanceDeltaRaw, 18).value;
+        existing.totalInvested = toCanonical(existingTotalInvestedRaw + investmentDeltaRaw, 6).value;
         existing.purchaseCount += 1;
         existing.transactions.push({
           date: purchase.createdAt,
-          type: String(purchase.metadata?.type) === 'DEPOSIT' ? 'CREDIT DEPOSIT' : (String(purchase.metadata?.type) === 'WITHDRAWAL' ? 'CREDIT WITHDRAWAL' : this.getTransactionType(purchase.source, amount)),
-          amount: purchase.amount,
-          balanceDelta,
-          price: purchase.price,
-          totalValue: purchase.totalPayment,
-          investmentDelta,
+          type: String(purchase.metadata?.type) === 'DEPOSIT' ? 'CREDIT DEPOSIT' : (String(purchase.metadata?.type) === 'WITHDRAWAL' ? 'CREDIT WITHDRAWAL' : this.getTransactionType(purchase.source, balanceDeltaRaw)),
+          amount: amountCanonical,
+          price: priceCanonical,
+          totalValue: totalPaymentCanonical,
           txHash: purchase.txHash,
           source: String(purchase.metadata?.type) === 'DEPOSIT' ? 'DEPOSIT' : purchase.source,
         })
-        console.log('TOTAL AMOUNT :', existing.totalAmount);
-        ;
       } else {
         portfolioMap.set(purchase.assetId, {
           assetId: purchase.assetId,
           tokenAddress: purchase.tokenAddress,
-          totalAmount: balanceDelta,
-          totalInvested: investmentDelta,
+          totalAmount: amountCanonical,
+          totalInvested: toCanonical(investmentDeltaRaw, 6).value,
           status: purchase.status,
           purchaseCount: 1,
           firstPurchase: purchase.createdAt,
@@ -488,12 +410,10 @@ export class PurchaseTrackerService {
           metadata: purchase.metadata,
           transactions: [{
             date: purchase.createdAt,
-            type: purchase.metadata?.type === 'DEPOSIT' ? 'CREDIT DEPOSIT' : this.getTransactionType(purchase.source, amount),
-            amount: purchase.amount,
-            balanceDelta: balanceDelta,
-            price: purchase.price,
-            totalValue: purchase.totalPayment,
-            investmentDelta,
+            type: purchase.metadata?.type === 'DEPOSIT' ? 'CREDIT DEPOSIT' : this.getTransactionType(purchase.source, balanceDeltaRaw),
+            amount: amountCanonical,
+            price: priceCanonical,
+            totalValue: totalPaymentCanonical,
             txHash: purchase.txHash,
             source: purchase.metadata?.type === 'DEPOSIT' ? 'DEPOSIT' : purchase.source,
           }],
@@ -505,31 +425,46 @@ export class PurchaseTrackerService {
       // Sort transactions by date (oldest first for running balance calculation)
       item.transactions.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-      // Calculate running balances
-      let runningTokens = 0n;
-      let runningInvestment = 0n;
+      // Calculate running balances using raw bigints for precision
+      let runningTokensRaw = 0n;
+      let runningInvestmentRaw = 0n;
 
       item.transactionHistory = item.transactions.map((tx: any) => {
-        runningTokens += BigInt(tx.amount);
-        runningInvestment += BigInt(tx.investmentDelta);
+        const amountRaw = fromCanonical(tx.amount, 18);
+        // Recalculate investment delta from canonical totalValue for consistency
+        const totalValueRaw = fromCanonical(tx.totalValue, 6);
+        
+        let invDeltaRaw = 0n;
+        if (tx.source === 'PRIMARY_MARKET' || tx.source === 'AUCTION') {
+          invDeltaRaw = totalValueRaw;
+        } else if (tx.source === 'SECONDARY_MARKET') {
+          invDeltaRaw = amountRaw < 0n ? -totalValueRaw : totalValueRaw;
+        } else if (tx.source === 'P2P_ORDER_CANCELLED') {
+          invDeltaRaw = -totalValueRaw;
+        }
 
-        const tokenBalance = Number(runningTokens) / 1e18;
-        const investmentBalance = Number(runningInvestment) / 1e6;
-        const avgCost = runningTokens > 0n ? Number(runningInvestment) / Number(runningTokens) * 1e12 : 0;
+        runningTokensRaw += amountRaw;
+        runningInvestmentRaw += invDeltaRaw;
+
+        const tokenBalanceCanonical = toCanonical(runningTokensRaw, 18).value;
+        const investmentBalanceCanonical = toCanonical(runningInvestmentRaw, 6).value;
+        
+        // Avg cost calculation
+        const avgCost = runningTokensRaw > 0n 
+          ? (Number(runningInvestmentRaw) / 1e6) / (Number(runningTokensRaw) / 1e18)
+          : 0;
 
         return {
           date: tx.date,
           type: tx.type,
           amount: tx.amount,
-          amountFormatted: `${(Number(tx.amount) / 1e18).toFixed(2)} tokens`,
+          amountFormatted: `${tx.amount} tokens`,
           price: tx.price,
-          priceFormatted: `$${(Number(tx.price) / 1e6).toFixed(2)}`,
+          priceFormatted: `$${tx.price}`,
           totalValue: tx.totalValue,
-          totalValueFormatted: `$${(Number(tx.totalValue) / 1e6).toFixed(2)}`,
-          investmentDelta: tx.investmentDelta,
-          investmentDeltaFormatted: `$${(Number(tx.investmentDelta) / 1e6).toFixed(2)}`,
-          runningTokenBalance: tokenBalance.toFixed(2),
-          runningInvestment: investmentBalance.toFixed(2),
+          totalValueFormatted: `$${tx.totalValue}`,
+          runningTokenBalance: tokenBalanceCanonical,
+          runningInvestment: investmentBalanceCanonical,
           avgCostPerToken: avgCost.toFixed(2),
           txHash: tx.txHash,
           source: tx.source,
@@ -553,34 +488,32 @@ export class PurchaseTrackerService {
             // Get asset details for total supply
             const asset = await this.assetModel.findOne({ assetId: item.assetId });
 
-            if (asset && asset.tokenParams?.totalSupply) {
-              const userTokenBalance = BigInt(item.totalAmount);
-              console.log('USER TOKEN BALANCE:', userTokenBalance.toString());
-              const settlementUSDC = BigInt(settlement.usdcAmount);
-              console.log('SETTLEMENT USDC AMOUNT:', settlementUSDC.toString());
-              const totalSupply = BigInt(asset.listing?.sold || '0');
-              console.log('TOTAL SUPPLY AFTER BURNING UNSOLD TOKENS:', totalSupply.toString());
-
-              console.log('total tolen balance:', userTokenBalance.toString());
-              console.log('settlement usdc amount:', settlementUSDC.toString());
-              console.log('total supply:', totalSupply.toString());
+            if (asset && (asset.listing?.sold || asset.tokenParams?.totalSupply)) {
+              const userTokenBalanceRaw = fromCanonical(item.totalAmount, 18);
+              const settlementUSDCCanonical = settlement.usdcAmount.includes('.') 
+                ? settlement.usdcAmount 
+                : toCanonical(settlement.usdcAmount, 6).value;
+              const settlementUSDCRaw = fromCanonical(settlementUSDCCanonical, 6);
+              
+              const totalSupplyCanonical = (asset.listing?.sold || asset.tokenParams?.totalSupply || '0').includes('.')
+                ? (asset.listing?.sold || asset.tokenParams?.totalSupply || '0')
+                : toCanonical(asset.listing?.sold || asset.tokenParams?.totalSupply || '0', 18).value;
+              const totalSupplyRaw = fromCanonical(totalSupplyCanonical, 18);
 
               // Calculate claimable yield: (userTokens * settlementUSDC) / totalSupply
-              const claimableYieldRaw = totalSupply > 0n
-                ? (userTokenBalance * settlementUSDC) / totalSupply
+              const claimableYieldRaw = totalSupplyRaw > 0n
+                ? (userTokenBalanceRaw * settlementUSDCRaw) / totalSupplyRaw
                 : 0n;
 
-              console.log('CLAIMABLE YIELD RAW:', claimableYieldRaw.toString());
+              const claimableYieldCanonical = toCanonical(claimableYieldRaw, 6);
 
               const yieldInfo: any = {
                 settlementDistributed: true,
-                claimableYield: claimableYieldRaw.toString(), // in raw USDC (6 decimals)
-                claimableYieldFormatted: `${(Number(claimableYieldRaw) / 1e6).toFixed(2)} USDC`,
+                claimableYield: claimableYieldCanonical.value, // in canonical USDC
+                claimableYieldFormatted: `${claimableYieldCanonical.value} USDC`,
                 settlementDate: settlement.settlementDate,
                 settlementId: settlement._id,
               };
-
-              console.log('YIELD INFO:', yieldInfo);
 
               // If status is CLAIMED, fetch yield claim transaction hash
               if (item.status === 'CLAIMED') {
@@ -607,8 +540,8 @@ export class PurchaseTrackerService {
             ...item,
             yieldInfo: {
               settlementDistributed: false,
-              claimableYield: '0',
-              claimableYieldFormatted: '0.00 USDC',
+              claimableYield: '0.0000',
+              claimableYieldFormatted: '0.0000 USDC',
             },
           };
         } catch (error) {
@@ -731,11 +664,12 @@ export class PurchaseTrackerService {
             harvestHistory,
             leverageInfo: {
               type: 'ACTIVE',
-              mETHCollateralFormatted: `${(Number(position.mETHCollateral) / 1e18).toFixed(4)} mETH`,
-              usdcBorrowedFormatted: `${(Number(position.usdcBorrowed) / 1e6).toFixed(2)} USDC`,
+              // Schema now stores canonical 4-decimal format - format directly
+              mETHCollateralFormatted: `${Number(position.mETHCollateral).toFixed(4)} mETH`,
+              usdcBorrowedFormatted: `${Number(position.usdcBorrowed).toFixed(2)} USDC`,
               healthFactorFormatted: `${(position.currentHealthFactor / 10000).toFixed(2)}%`,
               healthStatus: position.healthStatus,
-              totalInterestPaidFormatted: `${(Number(position.totalInterestPaid) / 1e6).toFixed(2)} USDC`,
+              totalInterestPaidFormatted: `${Number(position.totalInterestPaid).toFixed(2)} USDC`,
               claimableYield: '0', // Active positions haven't settled yet
               claimableYieldFormatted: '0.00 USDC',
               totalHarvests: harvestHistory.length,
@@ -751,9 +685,10 @@ export class PurchaseTrackerService {
             harvestHistory,
             leverageInfo: {
               type: 'SETTLED',
-              mETHCollateralFormatted: `${(Number(position.mETHCollateral) / 1e18).toFixed(4)} mETH`,
-              usdcBorrowedFormatted: `${(Number(position.usdcBorrowed) / 1e6).toFixed(2)} USDC`,
-              totalInterestPaidFormatted: `${(Number(position.totalInterestPaid) / 1e6).toFixed(2)} USDC`,
+              // Schema now stores canonical 4-decimal format - format directly
+              mETHCollateralFormatted: `${Number(position.mETHCollateral).toFixed(4)} mETH`,
+              usdcBorrowedFormatted: `${Number(position.usdcBorrowed).toFixed(2)} USDC`,
+              totalInterestPaidFormatted: `${Number(position.totalInterestPaid).toFixed(2)} USDC`,
               userYield: position.userYieldDistributed || '0',
               userYieldFormatted: `${(Number(position.userYieldDistributed || '0') / 1e6).toFixed(2)} USDC`,
               mETHReturned: position.mETHReturnedToUser || '0',
@@ -776,17 +711,18 @@ export class PurchaseTrackerService {
             harvestHistory,
             leverageInfo: {
               type: 'LIQUIDATED',
-              mETHCollateralFormatted: `${(Number(position.mETHCollateral) / 1e18).toFixed(4)} mETH`,
-              usdcBorrowedFormatted: `${(Number(position.usdcBorrowed) / 1e6).toFixed(2)} USDC`,
-              totalInterestPaidFormatted: `${(Number(position.totalInterestPaid) / 1e6).toFixed(2)} USDC`,
+              // Schema now stores canonical 4-decimal format - format directly
+              mETHCollateralFormatted: `${Number(position.mETHCollateral).toFixed(4)} mETH`,
+              usdcBorrowedFormatted: `${Number(position.usdcBorrowed).toFixed(2)} USDC`,
+              totalInterestPaidFormatted: `${Number(position.totalInterestPaid).toFixed(2)} USDC`,
               healthFactorAtLiquidation: position.currentHealthFactor,
               healthFactorAtLiquidationFormatted: `${(position.currentHealthFactor / 10000).toFixed(2)}%`,
               liquidationDate: position.liquidatedAt,
               liquidationTxHash: position.liquidationTxHash,
-              debtRecovered: position.debtRecovered || '0',
-              debtRecoveredFormatted: `${(Number(position.debtRecovered || '0') / 1e6).toFixed(2)} USDC`,
-              userRefund: position.userRefund || '0',
-              userRefundFormatted: `${(Number(position.userRefund || '0') / 1e6).toFixed(2)} USDC`,
+              debtRecovered: position.debtRecovered || '0.0000',
+              debtRecoveredFormatted: `${Number(position.debtRecovered || '0').toFixed(2)} USDC`,
+              userRefund: position.userRefund || '0.0000',
+              userRefundFormatted: `${Number(position.userRefund || '0').toFixed(2)} USDC`,
               totalHarvests: harvestHistory.length,
             },
           };

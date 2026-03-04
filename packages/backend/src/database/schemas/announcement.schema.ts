@@ -1,21 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { AnnouncementType, AnnouncementStatus } from '@openassets/types';
 
 export type AnnouncementDocument = Announcement & Document;
-
-export enum AnnouncementType {
-  AUCTION_SCHEDULED = 'AUCTION_SCHEDULED',
-  AUCTION_LIVE = 'AUCTION_LIVE',
-  AUCTION_FAILED = 'AUCTION_FAILED',
-  AUCTION_ENDED = 'AUCTION_ENDED',
-  AUCTION_RESULTS_DECLARED = 'AUCTION_RESULTS_DECLARED',
-  ASSET_LISTED = 'ASSET_LISTED',
-}
-
-export enum AnnouncementStatus {
-  ACTIVE = 'ACTIVE',
-  ARCHIVED = 'ARCHIVED',
-}
 
 @Schema({ timestamps: true })
 export class Announcement {
@@ -25,7 +12,7 @@ export class Announcement {
   @Prop({ required: true })
   assetId!: string; // Reference to Asset
 
-  @Prop({ required: true, enum: AnnouncementType })
+  @Prop({ required: true, enum: AnnouncementType, type: String })
   type!: AnnouncementType;
 
   @Prop({ required: true })
@@ -34,7 +21,7 @@ export class Announcement {
   @Prop({ required: true })
   message!: string;
 
-  @Prop({ required: true, enum: AnnouncementStatus, default: AnnouncementStatus.ACTIVE })
+  @Prop({ required: true, enum: AnnouncementStatus, default: AnnouncementStatus.ACTIVE, type: String })
   status!: AnnouncementStatus;
 
   @Prop({ type: Object })

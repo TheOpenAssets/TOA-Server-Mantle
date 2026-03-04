@@ -1,5 +1,5 @@
 import { IsString, IsNotEmpty, IsNumberString, IsEnum, IsBoolean, IsOptional } from 'class-validator';
-import { TokenType } from '../../../database/schemas/solvency-position.schema';
+import { TokenType } from '@openassets/types';
 
 export class DepositCollateralDto {
   @IsString()

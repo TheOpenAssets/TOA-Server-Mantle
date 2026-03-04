@@ -4,22 +4,30 @@ import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
 import { createPublicClient, http, type Address } from 'viem';
 import { mantleSepolia } from '../../../config/mantle-chain';
-import { Settlement, SettlementDocument, SettlementStatus } from '../../../database/schemas/settlement.schema';
+import { Settlement, SettlementDocument } from '../../../database/schemas/settlement.schema';
 import { DistributionHistory, DistributionHistoryDocument } from '../../../database/schemas/distribution-history.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { TokenHolderTrackingService } from './token-holder-tracking.service';
 import { TransferEventBackfillService } from './transfer-event-backfill.service';
-import { BlockchainService } from '../../blockchain/services/blockchain.service';
+import { ModuleRegistryService } from '../../registry/services/module-registry.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
-import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { 
+  SettlementStatus, 
+  TokenType, 
+  SolvencyPositionStatus as PositionStatus, 
+  AssetStatus,
+  NotificationType,
+  NotificationSeverity,
+  NotificationAction,
+  WalletAddress
+} from '@openassets/types';
 import { RecordSettlementDto } from '../dto/yield-ops.dto';
 import { LeveragePositionService } from '../../leverage/services/leverage-position.service';
 import { LeverageBlockchainService } from '../../leverage/services/leverage-blockchain.service';
 import { SolvencyPositionService } from '../../solvency/services/solvency-position.service';
 import { SolvencyBlockchainService } from '../../solvency/services/solvency-blockchain.service';
-import { PositionStatus, TokenType } from '../../../database/schemas/solvency-position.schema';
 import { SecondaryMarketService } from '../../secondary-market/services/secondary-market.service';
+import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
 @Injectable()
 export class YieldDistributionService {
@@ -31,7 +39,7 @@ export class YieldDistributionService {
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     private holderTrackingService: TokenHolderTrackingService,
     private backfillService: TransferEventBackfillService,
-    private blockchainService: BlockchainService,
+    private moduleRegistryService: ModuleRegistryService,
     private notificationService: NotificationService,
     private configService: ConfigService,
     @Inject(forwardRef(() => LeveragePositionService))
@@ -88,9 +96,9 @@ export class YieldDistributionService {
 
     const settlementAmount = dto.settlementAmount; // e.g., $100 USD
 
-    // FIX: amountRaised is stored in USDC WEI (6 decimals), convert to USD
-    const amountRaisedWei = parseFloat(asset.listing?.amountRaised || '0');
-    const amountRaised = amountRaisedWei / 1e6; // Convert USDC WEI to USD
+    // Asset schema now stores amountRaised in canonical 4-decimal format
+    const amountRaisedCanonical = asset.listing?.amountRaised || '0';
+    const amountRaised = parseFloat(amountRaisedCanonical); // Already in USD
 
     const platformFeeRate = 0.015; // 1.5% platform fee
     const platformFee = settlementAmount * platformFeeRate; // e.g., $1.5
@@ -171,9 +179,14 @@ export class YieldDistributionService {
       `Investors will burn their tokens to claim their pro-rata share`,
     );
 
-    // Simply deposit the settlement to YieldVault
-    // Investors will claim directly by burning tokens (no backend distribution needed!)
-    await this.blockchainService.depositYield(tokenAddress, settlement.usdcAmount!);
+    // Use admin domain strategy to supply yield settlement (network-agnostic)
+    // This handles both fee transfer AND vault deposit
+    const adminStrategy = this.moduleRegistryService.getAdminDomainStrategy();
+    const result = await adminStrategy.supplyYieldSettlement(settlementId);
+
+    this.logger.log(`Yield settlement supplied on-chain:`);
+    this.logger.log(`  Fee Transfer: ${result.feeTransferTxHash} (skipped: ${result.feeSkipped || false})`);
+    this.logger.log(`  Vault Deposit: ${result.vaultDepositTxHash} (skipped: ${result.vaultSkipped || false})`);
 
     // Update Settlement Status
     settlement.status = SettlementStatus.DISTRIBUTED;
@@ -264,7 +277,8 @@ export class YieldDistributionService {
             this.logger.log(`🔄 Processing Position ${position.positionId}...`);
             this.logger.log(`   User: ${position.userAddress}`);
             this.logger.log(`   Status: ${position.status}`);
-            this.logger.log(`   RWA Tokens: ${Number(position.rwaTokenAmount) / 1e18}`);
+            // Schema now stores canonical format, display directly
+            this.logger.log(`   RWA Tokens: ${position.rwaTokenAmount}`);
 
             // Check if position was liquidated
             const isLiquidated = position.status === 'LIQUIDATED';
@@ -329,9 +343,11 @@ export class YieldDistributionService {
 
               // Step 1: Claim yield by burning RWA tokens
               this.logger.log(`\n🔥 Step 1: Burning RWA tokens to claim USDC from YieldVault...`);
+              // Convert canonical format to wei for blockchain call
+              const rwaTokenAmountWei = fromCanonical(position.rwaTokenAmount, 18);
               const claimResult = await this.leverageBlockchainService.claimYieldFromBurn(
                 position.positionId,
-                BigInt(position.rwaTokenAmount), // Burn ALL RWA tokens
+                rwaTokenAmountWei, // Burn ALL RWA tokens
               );
 
               this.logger.log(`✅ Tokens burned: ${Number(claimResult.tokensBurned) / 1e18} RWA`);

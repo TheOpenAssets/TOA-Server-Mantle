@@ -12,7 +12,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "paths": {
-      "@mantle/types/*": ["./packages/types/src/*"],
+      "@openassets/types": ["./packages/types/src/index.ts"],
+      "@openassets/types/*": ["./packages/types/src/*"],
       "@mantle/contracts/*": ["./packages/contracts/generated/*"]
     },
     "types": ["jest", "node", "multer"]

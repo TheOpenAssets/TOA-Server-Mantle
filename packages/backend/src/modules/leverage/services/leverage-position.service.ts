@@ -3,10 +3,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
   LeveragePosition,
-  PositionStatus,
-  PositionHealth,
   HarvestRecord,
 } from '../../../database/schemas/leverage-position.schema';
+import { 
+  LeveragePositionStatus as PositionStatus, 
+  LeveragePositionHealth as PositionHealth 
+} from '@openassets/types';
+import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 
 @Injectable()
 export class LeveragePositionService {
@@ -15,6 +19,9 @@ export class LeveragePositionService {
   constructor(
     @InjectModel(LeveragePosition.name)
     private leveragePositionModel: Model<LeveragePosition>,
+    @InjectModel(Asset.name)
+    private assetModel: Model<AssetDocument>,
+    private userPortfolioService: UserPortfolioService,
   ) { }
 
   /**
@@ -50,6 +57,9 @@ export class LeveragePositionService {
       this.logger.log(
         `✅ Leverage position created: ID ${data.positionId} for user ${data.userAddress}`,
       );
+
+      // Update portfolio document
+      await this.updatePortfolio(data.assetId, data.positionId);
 
       return position;
     } catch (error) {
@@ -207,6 +217,8 @@ export class LeveragePositionService {
     this.logger.log(
       `🌾 Harvest recorded for position ${positionId}: ${parseFloat(harvest.usdcReceived) / 1e6} USDC interest paid`,
     );
+
+    await this.updatePortfolio(position.assetId, positionId);
   }
 
   /**
@@ -238,6 +250,10 @@ export class LeveragePositionService {
     );
 
     this.logger.log(`⚠️ Position ${positionId} liquidated`);
+    const position = await this.getPosition(positionId);
+    if (position) {
+      await this.updatePortfolio(position.assetId, positionId);
+    }
   }
 
   /**
@@ -277,6 +293,8 @@ export class LeveragePositionService {
     this.logger.log(
       `🔥 Yield claim recorded for position ${positionId}: ${parseFloat(claim.usdcReceived) / 1e6} USDC claimed`,
     );
+
+    await this.updatePortfolio(position.assetId, positionId);
   }
 
   /**
@@ -312,6 +330,11 @@ export class LeveragePositionService {
     this.logger.log(
       `✅ Settlement recorded for position ${positionId}: ${parseFloat(settlement.userYield) / 1e6} USDC pushed to user, ${parseFloat(settlement.mETHReturned) / 1e18} mETH returned`,
     );
+
+    const position = await this.getPosition(positionId);
+    if (position) {
+      await this.updatePortfolio(position.assetId, positionId);
+    }
   }
 
   /**
@@ -508,6 +531,18 @@ export class LeveragePositionService {
     } else {
       // >= 140%
       return PositionHealth.HEALTHY;
+    }
+  }
+
+  /**
+   * Helper to update user portfolio document
+   */
+  private async updatePortfolio(assetId: string, positionId: number) {
+    try {
+      const asset = await this.assetModel.findOne({ assetId });
+      await this.userPortfolioService.updateOnLeverageEvent(positionId, asset?.network || 'mantle');
+    } catch (error: any) {
+      this.logger.error(`Failed to update portfolio for leverage position ${positionId}: ${error.message}`);
     }
   }
 }

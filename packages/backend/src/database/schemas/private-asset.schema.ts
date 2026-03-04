@@ -19,7 +19,7 @@ export class PrivateAsset {
   @Prop({ required: true, unique: true, index: true })
   tokenAddress!: string; // PrivateAssetToken contract address
 
-  @Prop({ required: true, enum: PrivateAssetType })
+  @Prop({ required: true, enum: PrivateAssetType, type: String })
   assetType!: PrivateAssetType;
 
   @Prop({ required: true })

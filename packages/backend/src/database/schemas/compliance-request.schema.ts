@@ -1,13 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { ComplianceRequestStatus, WalletAddress } from '@openassets/types';
 
 export type ComplianceRequestDocument = ComplianceRequest & Document;
-
-export enum ComplianceRequestStatus {
-  PENDING = 'PENDING',
-  APPROVED = 'APPROVED',
-  REJECTED = 'REJECTED',
-}
 
 @Schema({ timestamps: true })
 export class ComplianceRequest {
@@ -17,13 +12,13 @@ export class ComplianceRequest {
   @Prop({ required: true, index: true })
   tokenAddress!: string; // Token contract address
 
-  @Prop({ required: true, index: true })
-  investorAddress!: string; // Wallet requesting access
+  @Prop({ required: true, index: true, type: String })
+  investorAddress!: WalletAddress; // Wallet requesting access
 
   @Prop({ required: true })
   requestedAmount!: string; // How many tokens they want to buy (for context)
 
-  @Prop({ required: true, enum: ComplianceRequestStatus, default: ComplianceRequestStatus.PENDING })
+  @Prop({ required: true, enum: ComplianceRequestStatus, default: ComplianceRequestStatus.PENDING, type: String })
   status!: ComplianceRequestStatus;
 
   @Prop()

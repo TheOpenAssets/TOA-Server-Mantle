@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { createHash, randomBytes } from 'crypto';
-import { Partner, PartnerDocument, PartnerStatus } from '../../../database/schemas/partner.schema';
+import { Partner, PartnerDocument } from '../../../database/schemas/partner.schema';
+import { PartnerStatus } from '@openassets/types';
 
 @Injectable()
 export class PartnerService {

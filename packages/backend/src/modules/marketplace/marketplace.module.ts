@@ -12,6 +12,8 @@ import { User, UserSchema } from '../../database/schemas/user.schema';
 import { AuctionService } from './services/auction.service';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
+import { RegistryModule } from '../registry/registry.module';
 
 @Module({
   imports: [
@@ -25,6 +27,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ]),
     BlockchainModule,
     NotificationsModule,
+    UserPortfolioModule,
+    RegistryModule,
   ],
   controllers: [MarketplaceController],
   providers: [PurchaseTrackerService, BidTrackerService, AuctionService],

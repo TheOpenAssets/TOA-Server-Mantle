@@ -16,6 +16,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { LeverageModule } from '../leverage/leverage.module';
 import { SolvencyModule } from '../solvency/solvency.module';
 import { SecondaryMarketModule } from '../secondary-market/secondary-market.module';
+import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { SecondaryMarketModule } from '../secondary-market/secondary-market.modu
     forwardRef(() => SolvencyModule),
     forwardRef(() => SecondaryMarketModule),
     NotificationsModule,
+    UserPortfolioModule,
   ],
   controllers: [YieldController],
   providers: [

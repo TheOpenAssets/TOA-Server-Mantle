@@ -1,25 +1,16 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { BidStatus, WalletAddress } from '@openassets/types';
 
 export type BidDocument = Bid & Document;
-
-export enum BidStatus {
-  PENDING = 'PENDING', // Bid created but not submitted
-  PLACED = 'PLACED', // Bid placed on-chain
-  FINALIZED = 'FINALIZED', // Auction ended, result pending
-  WON = 'WON', // Bid won after result declared
-  LOST = 'LOST', // Bid lost after result declared
-  SETTLED = 'SETTLED', // Rewards claimed / refunds processed
-  REFUNDED = 'REFUNDED', // Lost and received full refund
-}
 
 @Schema({ timestamps: true })
 export class Bid {
   @Prop({ required: true, index: true })
   assetId!: string;
 
-  @Prop({ required: true, index: true })
-  bidder!: string; // Wallet address
+  @Prop({ required: true, index: true, type: String })
+  bidder!: WalletAddress; // Wallet address
 
   @Prop({ required: true })
   tokenAmount!: string; // BigInt as string
@@ -33,7 +24,7 @@ export class Bid {
   @Prop({ required: true })
   bidIndex!: number; // Index in smart contract array
 
-  @Prop({ required: true, enum: BidStatus, default: BidStatus.PENDING })
+  @Prop({ required: true, enum: BidStatus, default: BidStatus.PENDING, type: String })
   status!: BidStatus;
 
   @Prop({ type: String })
@@ -45,8 +36,14 @@ export class Bid {
   @Prop({ type: String })
   settlementTxHash?: string; // Transaction hash for settlement
 
+  @Prop({ type: String, enum: ['mantle', 'stellar'], default: 'mantle', index: true })
+  network!: string;
+
   @Prop({ type: Date })
   settledAt?: Date; // When the bid was settled
+
+  @Prop({ type: Boolean })
+  rawPrecise?: boolean; // Precise representation for calculations
 
   // Timestamps added by Mongoose
   createdAt?: Date;

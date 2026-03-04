@@ -16,20 +16,26 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { AssetLifecycleService } from '../services/asset-lifecycle.service';
+import { ModuleRegistryService } from '../../registry/services/module-registry.service';
 import { CreateAssetDto } from '../dto/create-asset.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { OriginatorGuard } from '../guards/originator.guard';
 import { AdminGuard } from '../../admin/guards/admin.guard';
-import { AssetStatus } from '../../../database/schemas/asset.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { AssetStatus } from '@openassets/types';
 
 @Controller('assets')
 @UseGuards(JwtAuthGuard)
 export class AssetsController {
   constructor(
+    private readonly moduleRegistryService: ModuleRegistryService,
     private readonly assetLifecycleService: AssetLifecycleService,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) { }
+
+  private get assetService() {
+    return this.moduleRegistryService.getAssetOriginationService();
+  }
 
   @Get()
   async getAllMyAssets(
@@ -45,7 +51,7 @@ export class AssetsController {
       limit: limit ? parseInt(limit, 10) : undefined,
     };
 
-    return this.assetLifecycleService.getAllAssets(filters);
+    return this.assetService.getAllAssets(filters);
   }
 
   @Post('upload')
@@ -69,31 +75,24 @@ export class AssetsController {
     @Body() dto: CreateAssetDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.assetLifecycleService.createAsset(req.user.walletAddress, dto, file);
+    return this.assetService.createAsset(req.user.walletAddress, dto, file);
   }
 
   @Get(':assetId')
   async getAsset(@Param('assetId') assetId: string) {
-    return this.assetLifecycleService.getAsset(assetId);
+    return this.assetService.getAsset(assetId);
   }
 
   @Get('originator/my-assets')
   @UseGuards(OriginatorGuard)
   async getMyAssets(@Req() req: any) {
-    return this.assetLifecycleService.getAssetsByOriginator(req.user.walletAddress);
+    return this.assetService.getAssetsByOriginator(req.user.walletAddress);
   }
 
   @Post(':assetId/payout')
   @UseGuards(AdminGuard)
   async payoutOriginator(@Param('assetId') assetId: string) {
-    const result = await this.assetLifecycleService.payoutOriginator(assetId);
-    if (result?.success) {
-      await this.assetModel.updateOne(
-        { assetId },
-        { $set: { status: AssetStatus.PAYOUT_COMPLETE, 'listing.phase': 'PAYOUT_COMPLETE' } },
-      );
-    }
-    return result;
+    return this.assetService.payoutOriginator(assetId);
   }
 
   @Get(':assetId/purchase-history')

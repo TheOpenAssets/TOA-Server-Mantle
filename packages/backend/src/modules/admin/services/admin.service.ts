@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { User, UserDocument, UserRole } from '../../../database/schemas/user.schema';
+import { User, UserDocument } from '../../../database/schemas/user.schema';
+import { UserRole } from '@openassets/types';
 
 @Injectable()
 export class AdminService {

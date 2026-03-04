@@ -1,6 +1,9 @@
-import { IsString, IsNotEmpty, IsNumberString, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsCanonicalAmount } from '../../../utils/validators/canonical-amount.validator';
 
 export class NotifyBidDto {
+  @ApiProperty({ description: 'Network transaction identifier (EVM hash or Stellar hash)' })
   @IsString()
   @IsNotEmpty()
   txHash!: string;
@@ -9,15 +12,15 @@ export class NotifyBidDto {
   @IsNotEmpty()
   assetId!: string;
 
-  @IsNumberString()
+  @IsCanonicalAmount()
   @IsNotEmpty()
-  tokenAmount!: string; // Token amount to buy (in wei)
+  tokenAmount!: string; // Canonical 4-decimal format (e.g., "100.0000" for 100 tokens)
 
-  @IsNumberString()
+  @IsCanonicalAmount()
   @IsNotEmpty()
-  price!: string; // Bid price per token (in USDC wei)
+  price!: string; // Canonical 4-decimal format (e.g., "0.8500" for 0.85 USDC per token)
 
   @IsOptional()
-  @IsNumberString()
+  @IsString()
   blockNumber?: string;
 }

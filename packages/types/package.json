@@ -1,5 +1,5 @@
 {
-  "name": "@mantle/types",
+  "name": "@openassets/types",
   "version": "1.0.0",
   "main": "src/index.ts",
   "license": "MIT",

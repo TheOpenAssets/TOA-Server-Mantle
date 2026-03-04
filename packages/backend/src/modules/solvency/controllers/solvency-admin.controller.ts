@@ -22,7 +22,7 @@ import { MintPrivateAssetDto } from '../dto/mint-private-asset.dto';
 import { ApprovePrivateAssetRequestDto } from '../dto/approve-private-asset-request.dto';
 import { RejectPrivateAssetRequestDto } from '../dto/reject-private-asset-request.dto';
 import { PrivateAssetRequestStatus } from '../../../database/schemas/private-asset-request.schema';
-import { PositionStatus } from '../../../database/schemas/solvency-position.schema';
+import { SolvencyPositionStatus } from '@openassets/types';
 import { ethers } from 'ethers';
 
 @Controller('admin/solvency')
@@ -350,7 +350,7 @@ export class SolvencyAdminController {
         };
       }
 
-      if (position.status !== PositionStatus.LIQUIDATED) {
+      if (position.status !== SolvencyPositionStatus.LIQUIDATED) {
         return {
           success: false,
           message: 'Position is not liquidated',
@@ -555,7 +555,7 @@ export class SolvencyAdminController {
       };
     }
 
-    if (position.status !== PositionStatus.LIQUIDATED) {
+    if (position.status !== SolvencyPositionStatus.LIQUIDATED) {
       return {
         success: false,
         message: 'Position is not liquidated',
@@ -578,7 +578,7 @@ export class SolvencyAdminController {
     );
 
     // Update position in database
-    position.status = PositionStatus.SETTLED;
+    position.status = SolvencyPositionStatus.SETTLED;
     position.settledAt = new Date();
     await position.save();
 

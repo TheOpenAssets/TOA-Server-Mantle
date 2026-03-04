@@ -32,10 +32,10 @@ export class Purchase {
   @Prop()
   blockTimestamp?: Date;
 
-  @Prop({ default: 'CONFIRMED' })
+  @Prop({ default: 'CONFIRMED', type: String })
   status!: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'CLAIMED';
 
-  @Prop({ default: 'PRIMARY_MARKET' })
+  @Prop({ default: 'PRIMARY_MARKET', type: String })
   source!: 'PRIMARY_MARKET' | 'AUCTION' | 'SECONDARY_MARKET' | 'P2P_SELL_ORDER' | 'SECONDARY_MARKET_PURCHASE' | 'P2P_ORDER_CANCELLED';
 
   @Prop()
@@ -46,6 +46,21 @@ export class Purchase {
 
   @Prop()
   soldP2PTradeId?: string; // Reference to P2PTrade when sold
+
+  @Prop({ type: String, enum: ['mantle', 'stellar'], default: 'mantle' })
+  network!: string;
+
+  @Prop({ type: Boolean })
+  rawPrecise?: boolean;
+
+  @Prop({ type: String })
+  rawAmount?: string;
+
+  @Prop({ type: String })
+  rawPrice?: string;
+
+  @Prop({ type: String })
+  rawTotalPayment?: string;
 
   @Prop({ type: Object })
   metadata?: {

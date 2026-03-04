@@ -1,7 +1,8 @@
 import { Controller, Get, Post, Param, UseGuards, Query, Body, Request } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { AssetStatus } from '@openassets/types';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { Settlement, SettlementDocument } from '../../../database/schemas/settlement.schema';
@@ -13,6 +14,7 @@ import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
 import { NotifyBidDto } from '../dto/notify-bid.dto';
 import { NotifySettlementDto } from '../dto/notify-settlement.dto';
 import { NotifyYieldClaimDto } from '../dto/notify-yield-claim.dto';
+import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
 @Controller('marketplace')
 export class MarketplaceController {
@@ -60,11 +62,16 @@ export class MarketplaceController {
       count: listings.length,
       listings: listings.map(asset => {
         // Calculate percentage sold
-        const totalSupply = BigInt(asset.tokenParams.totalSupply || '0');
-        const sold = BigInt(asset.listing?.sold || '0');
+        // Convert canonical decimal strings to BigInt using fromCanonical
+        const totalSupply = fromCanonical(asset.tokenParams.totalSupply || '0', 18);
+        const sold = fromCanonical(asset.listing?.sold || '0', 18);
         const percentageSold = totalSupply > 0n
           ? Number((sold * 10000n) / totalSupply) / 100 // Use 10000 for 2 decimal precision
           : 0;
+
+        // Use listing price if it's non-zero, otherwise fall back to tokenParams
+        const listingPrice = asset.listing?.price;
+        const hasValidListingPrice = listingPrice && parseFloat(listingPrice) > 0;
 
         return {
           assetId: asset.assetId,
@@ -78,7 +85,7 @@ export class MarketplaceController {
           totalSupply: asset.tokenParams.totalSupply,
           sold: asset.listing?.sold || '0',
           percentageSold,
-          pricePerToken: asset.listing?.price || asset.tokenParams.pricePerToken,
+          pricePerToken: hasValidListingPrice ? listingPrice : asset.tokenParams.pricePerToken,
           minInvestment: asset.tokenParams.minInvestment,
           listingType: asset.listing?.type,
           listedAt: asset.listing?.listedAt,
@@ -304,11 +311,16 @@ export class MarketplaceController {
       if (!asset) return null;
 
       // Calculate percentage sold
-      const totalSupply = BigInt(asset.tokenParams?.totalSupply || '0');
-      const sold = BigInt(asset.listing?.sold || '0');
+      // Convert canonical decimal strings to BigInt using fromCanonical
+      const totalSupply = fromCanonical(asset.tokenParams?.totalSupply || '0', 18);
+      const sold = fromCanonical(asset.listing?.sold || '0', 18);
       const percentageSold = totalSupply > 0n
         ? Number((sold * 10000n) / totalSupply) / 100
         : 0;
+
+      // Use listing price if it's non-zero, otherwise fall back to tokenParams
+      const listingPrice = asset.listing?.price;
+      const hasValidListingPrice = listingPrice && parseFloat(listingPrice) > 0;
 
       return {
         assetId: asset.assetId,
@@ -322,7 +334,7 @@ export class MarketplaceController {
         totalSupply: asset.tokenParams?.totalSupply,
         sold: asset.listing?.sold || '0',
         percentageSold,
-        pricePerToken: asset.listing?.price || asset.tokenParams?.pricePerToken,
+        pricePerToken: hasValidListingPrice ? listingPrice : asset.tokenParams?.pricePerToken,
         minInvestment: asset.tokenParams?.minInvestment,
         listingType: asset.listing?.type,
         listedAt: asset.listing?.listedAt,

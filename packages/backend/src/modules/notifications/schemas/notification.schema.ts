@@ -1,7 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { NotificationType, NotificationSeverity } from '../enums/notification-type.enum';
-import { NotificationAction } from '../enums/notification-action.enum';
+import { NotificationType, NotificationSeverity, NotificationAction } from '@openassets/types';
 
 export type NotificationDocument = Notification & Document;
 

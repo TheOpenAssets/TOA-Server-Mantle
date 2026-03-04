@@ -1,20 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { PartnerLoanStatus, RepaymentSource, WalletAddress } from '@openassets/types';
 
 export type PartnerLoanDocument = PartnerLoan & Document;
-
-export enum PartnerLoanStatus {
-  ACTIVE = 'ACTIVE',
-  REPAID = 'REPAID',
-  DEFAULTED = 'DEFAULTED',
-  LIQUIDATED = 'LIQUIDATED',
-}
-
-export enum RepaymentSource {
-  USER = 'USER',
-  PARTNER = 'PARTNER',
-  LIQUIDATION = 'LIQUIDATION',
-}
 
 @Schema({ timestamps: true })
 export class PartnerLoan {
@@ -32,8 +20,8 @@ export class PartnerLoan {
   partnerName!: string;               // Cached for queries
 
   // User & Position
-  @Prop({ required: true, index: true })
-  userWallet!: string;                // Borrower's wallet
+  @Prop({ required: true, index: true, type: String })
+  userWallet!: WalletAddress;                // Borrower's wallet
 
   @Prop({ required: true, index: true })
   oaidTokenId!: number;               // OAID used for credit line
@@ -70,7 +58,7 @@ export class PartnerLoan {
   }>;
 
   // Status
-  @Prop({ required: true, enum: PartnerLoanStatus, default: PartnerLoanStatus.ACTIVE })
+  @Prop({ required: true, enum: PartnerLoanStatus, default: PartnerLoanStatus.ACTIVE, type: String })
   status!: PartnerLoanStatus;
 
   // On-chain References

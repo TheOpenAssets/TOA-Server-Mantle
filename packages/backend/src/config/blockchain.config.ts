@@ -4,6 +4,7 @@ export default registerAs('blockchain', () => ({
   rpcUrl: process.env.MANTLE_RPC_URL || 'https://rpc.sepolia.mantle.xyz',
   wssUrl: process.env.MANTLE_WSS_URL || 'wss://rpc.sepolia.mantle.xyz',
   chainId: parseInt(process.env.CHAIN_ID || '5003', 10), // Mantle Sepolia
+  network: process.env.BLOCKCHAIN_NETWORK || 'mantle-testnet', // Network identifier for contract loading
 
   // Wallets
   adminPrivateKey: process.env.ADMIN_PRIVATE_KEY,

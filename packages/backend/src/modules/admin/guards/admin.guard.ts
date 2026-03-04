@@ -1,5 +1,5 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
-import { UserRole } from '../../../database/schemas/user.schema';
+import { UserRole } from '@openassets/types';
 
 @Injectable()
 export class AdminGuard implements CanActivate {

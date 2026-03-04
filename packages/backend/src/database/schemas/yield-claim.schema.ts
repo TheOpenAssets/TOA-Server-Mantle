@@ -32,6 +32,15 @@ export class YieldClaim {
   @Prop({ default: 'CONFIRMED' })
   status!: 'PENDING' | 'CONFIRMED' | 'FAILED';
 
+  @Prop({ type: Boolean })
+  rawPrecise?: boolean;
+
+  @Prop({ type: String })
+  rawTokensBurned?: string;
+
+  @Prop({ type: String })
+  rawUsdcReceived?: string;
+
   @Prop({ type: Object })
   metadata?: {
     assetName?: string;

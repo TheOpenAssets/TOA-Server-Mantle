@@ -1,21 +1,16 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { OrderStatus, WalletAddress } from '@openassets/types';
 
 export type P2POrderDocument = P2POrder & Document;
-
-export enum OrderStatus {
-  OPEN = 'OPEN',
-  FILLED = 'FILLED',
-  CANCELLED = 'CANCELLED',
-}
 
 @Schema({ timestamps: true })
 export class P2POrder {
   @Prop({ required: true, unique: true })
   orderId!: string; // On-chain ID
 
-  @Prop({ required: true, index: true })
-  maker!: string; // Wallet address
+  @Prop({ required: true, index: true, type: String })
+  maker!: WalletAddress;
 
   @Prop({ required: true, index: true })
   assetId!: string;
@@ -35,7 +30,7 @@ export class P2POrder {
   @Prop({ required: true })
   pricePerToken!: string; // USDC per 1 whole token
 
-  @Prop({ required: true, enum: OrderStatus, default: OrderStatus.OPEN, index: true })
+  @Prop({ required: true, enum: OrderStatus, default: OrderStatus.OPEN, index: true, type: String })
   status!: OrderStatus;
 
   @Prop({ required: true })

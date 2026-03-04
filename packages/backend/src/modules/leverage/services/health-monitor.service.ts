@@ -7,7 +7,7 @@ import { NotificationService } from '../../notifications/services/notification.s
 import { NotificationType } from '../../notifications/enums/notification-type.enum';
 import { NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
-import { PositionHealth } from '../../../database/schemas/leverage-position.schema';
+import { LeveragePositionHealth as PositionHealth } from '@openassets/types';
 
 /**
  * @title HealthMonitorService

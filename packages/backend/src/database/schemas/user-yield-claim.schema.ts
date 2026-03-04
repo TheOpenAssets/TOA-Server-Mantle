@@ -1,16 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { YieldClaimStatus, WalletAddress } from '@openassets/types';
 
-export enum YieldClaimStatus {
-  PENDING = 'PENDING',       // Event detected but not processed
-  CONFIRMED = 'CONFIRMED',   // Claim confirmed on-chain
-  FAILED = 'FAILED',         // Claim failed
-}
+export type UserYieldClaimDocument = UserYieldClaim & Document;
 
 @Schema({ timestamps: true })
-export class UserYieldClaim extends Document {
-  @Prop({ required: true, index: true })
-  userAddress!: string; // Investor who claimed
+export class UserYieldClaim {
+  @Prop({ required: true, index: true, type: String })
+  userAddress!: WalletAddress; // Investor who claimed
 
   @Prop({ required: true, index: true })
   tokenAddress!: string; // RWA token address
@@ -33,7 +30,7 @@ export class UserYieldClaim extends Document {
   @Prop({ required: true })
   claimTimestamp!: Date; // Blockchain timestamp of claim
 
-  @Prop({ enum: YieldClaimStatus, default: YieldClaimStatus.PENDING })
+  @Prop({ enum: YieldClaimStatus, default: YieldClaimStatus.PENDING, type: String })
   status!: YieldClaimStatus;
 
   @Prop()
@@ -41,6 +38,9 @@ export class UserYieldClaim extends Document {
 
   @Prop({ default: false })
   notificationSent!: boolean; // Whether user was notified
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const UserYieldClaimSchema = SchemaFactory.createForClass(UserYieldClaim);

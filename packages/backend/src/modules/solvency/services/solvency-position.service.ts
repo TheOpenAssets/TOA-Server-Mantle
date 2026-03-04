@@ -4,12 +4,16 @@ import { Model } from 'mongoose';
 import {
   SolvencyPosition,
   SolvencyPositionDocument,
-  TokenType,
-  HealthStatus,
-  PositionStatus,
 } from '../../../database/schemas/solvency-position.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { 
+  TokenType, 
+  SolvencyHealthStatus as HealthStatus, 
+  SolvencyPositionStatus as PositionStatus,
+  WalletAddress 
+} from '@openassets/types';
 import { SolvencyBlockchainService } from './solvency-blockchain.service';
+import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
 
 @Injectable()
 export class SolvencyPositionService {
@@ -21,6 +25,7 @@ export class SolvencyPositionService {
     @InjectModel(Asset.name)
     private assetModel: Model<AssetDocument>,
     private blockchainService: SolvencyBlockchainService,
+    private userPortfolioService: UserPortfolioService,
   ) {}
 
   /**
@@ -231,6 +236,8 @@ export class SolvencyPositionService {
     await position.save();
     this.logger.log(`Position ${positionId} borrowed ${amountBorrowed}, total: ${newBorrowed}`);
 
+    await this.updatePortfolio(positionId);
+
     return position;
   }
 
@@ -294,6 +301,8 @@ export class SolvencyPositionService {
     this.logger.log("Position Afeter Repayment:", await this.positionModel.findOne({ positionId }));
     this.logger.log(`Position ${positionId} repaid ${amountRepaid}, remaining debt: ${newBorrowed}`);
 
+    await this.updatePortfolio(positionId);
+
     return position;
   }
 
@@ -329,6 +338,8 @@ export class SolvencyPositionService {
     await position.save();
     this.logger.log(`Position ${positionId} withdrew ${amountWithdrawn}, remaining: ${newCollateral}`);
 
+    await this.updatePortfolio(positionId);
+
     return position;
   }
 
@@ -350,6 +361,8 @@ export class SolvencyPositionService {
 
     await position.save();
     this.logger.log(`Position ${positionId} marked as liquidated`);
+
+    await this.updatePortfolio(positionId);
 
     return position;
   }
@@ -651,5 +664,27 @@ export class SolvencyPositionService {
       message: 'Loan repayment recorded successfully',
       position: updatedPosition,
     };
+  }
+
+  /**
+   * Helper to update user portfolio document
+   */
+  private async updatePortfolio(positionId: number) {
+    try {
+      // Determine network from asset if possible, otherwise default to mantle
+      const position = await this.positionModel.findOne({ positionId });
+      if (!position) return;
+      const asset = await this.assetModel.findOne({
+        'token.address': new RegExp(`^${position.collateralTokenAddress}$`, 'i'),
+      });
+      await this.userPortfolioService.updateOnSolvencyEvent(
+        positionId,
+        asset?.network || 'mantle',
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to update portfolio for solvency position ${positionId}: ${error.message}`,
+      );
+    }
   }
 }

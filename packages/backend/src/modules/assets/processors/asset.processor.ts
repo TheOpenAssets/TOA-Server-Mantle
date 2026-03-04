@@ -5,14 +5,18 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { Asset, AssetDocument, AssetStatus } from '../../../database/schemas/asset.schema';
-import { User, UserDocument, UserRole } from '../../../database/schemas/user.schema';
+import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { User, UserDocument } from '../../../database/schemas/user.schema';
 import * as fs from 'fs';
 import { keccak256, toHex } from 'viem';
-import { EigenDAService } from '../services/eigenda.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
-import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { 
+  AssetStatus, 
+  UserRole, 
+  NotificationType, 
+  NotificationSeverity, 
+  NotificationAction 
+} from '@openassets/types';
 
 @Processor('asset-processing')
 export class AssetProcessor extends WorkerHost {
@@ -22,7 +26,6 @@ export class AssetProcessor extends WorkerHost {
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectQueue('asset-processing') private assetQueue: Queue,
-    private eigenDAService: EigenDAService,
     private notificationService: NotificationService,
   ) {
     super();
@@ -66,8 +69,6 @@ export class AssetProcessor extends WorkerHost {
         return this.processHash(job.data);
       case 'build-merkle':
         return this.processMerkle(job.data);
-      case 'eigenda-anchoring': 
-        return this.processEigenDA(job.data);
       default:
         this.logger.warn(`Unknown job name: ${job.name}`);
     }
@@ -182,64 +183,4 @@ export class AssetProcessor extends WorkerHost {
     return { merkleRoot };
   }
 
-  private async processEigenDA(data: { assetId: string }) {
-    const { assetId } = data;
-    this.logger.log(`Anchoring asset ${assetId} to EigenDA`);
-
-    try {
-      const asset = await this.assetModel.findOne({ assetId });
-      if (!asset) throw new Error('Asset not found');
-
-      // Verify asset has attestation
-      if (!asset.attestation?.signature) {
-        throw new Error('Asset must be attested before EigenDA anchoring');
-      }
-
-      // Prepare blob data including attestation
-      const blobData = {
-        assetId: asset.assetId,
-        merkleRoot: asset.cryptography.merkleRoot,
-        leaves: asset.cryptography.merkleLeaves,
-        metadata: asset.metadata,
-        attestation: {
-          payload: asset.attestation.payload,
-          hash: asset.attestation.hash,
-          signature: asset.attestation.signature,
-          attestor: asset.attestation.attestor,
-          timestamp: asset.attestation.timestamp,
-        },
-      };
-
-      const blobBuffer = Buffer.from(JSON.stringify(blobData));
-
-      // 1. Disperse to EigenDA
-      const { requestId } = await this.eigenDAService.disperse(blobBuffer);
-      this.logger.log(`Blob dispersed to EigenDA. Request ID: ${requestId}`);
-
-      // 2. Wait for confirmation
-      const blobId = await this.eigenDAService.waitForConfirmation(requestId);
-      this.logger.log(`Blob confirmed by EigenDA. Blob ID: ${blobId}`);
-
-      // 3. Update Asset with EigenDA data
-      await this.assetModel.updateOne(
-        { assetId },
-        {
-          $set: {
-            'eigenDA.blobId': blobId,
-            'eigenDA.requestId': requestId,
-            'eigenDA.blobHash': keccak256(toHex(blobBuffer)),
-            'eigenDA.dispersedAt': new Date(),
-            status: AssetStatus.DA_ANCHORED,
-            'checkpoints.daAnchored': true,
-          }
-        }
-      );
-
-      this.logger.log(`Asset ${assetId} anchored to EigenDA. BlobID: ${blobId}`);
-      return { blobId, requestId };
-    } catch (error) {
-      this.logger.error(`EigenDA anchoring failed for asset ${assetId}`, error);
-      throw error;
-    }
-  }
 }

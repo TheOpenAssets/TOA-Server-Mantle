@@ -3,14 +3,17 @@ import { Job } from 'bullmq';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { DocumentStorageService } from '../services/document-storage.service';
 import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { SolvencyBlockchainService } from '../../solvency/services/solvency-blockchain.service';
 import { NotificationService } from '../../notifications/services/notification.service';
+import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
 import { NotificationType } from '../../notifications/enums/notification-type.enum';
 import { NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { isStellarWallet, isEvmWallet, detectWalletNetwork } from '../utils/wallet-detector.util';
 import * as fs from 'fs';
 import * as path from 'path';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -30,6 +33,8 @@ export class VerificationProcessor extends WorkerHost {
     private blockchainService: BlockchainService,
     private solvencyBlockchainService: SolvencyBlockchainService,
     private notificationService: NotificationService,
+    private userPortfolioService: UserPortfolioService,
+    private configService: ConfigService,
   ) {
     super();
   }
@@ -246,45 +251,73 @@ export class VerificationProcessor extends WorkerHost {
             try {
                 const user = await this.userModel.findById(userId);
                 if (user && user.walletAddress) {
-                    this.logger.log(`🔗 Registering investor ${user.walletAddress} on blockchain...`);
-                    const txHash = await this.blockchainService.registerIdentity(user.walletAddress);
-                    this.logger.log(`✅ Investor registered on blockchain: ${txHash}`);
-
-                    // Check if OAID registration already exists, register if not
-                    this.logger.log(`🔍 Checking for existing OAID registration for ${user.walletAddress}...`);
-                    const hasOAID = await this.solvencyBlockchainService.hasOAIDCreditLine(user.walletAddress);
-                    
+                    // Detect wallet network from address format, not deployment config
+                    const isStellar = isStellarWallet(user.walletAddress);
+                    const walletNetwork = detectWalletNetwork(user.walletAddress);
+                    const deploymentNetwork = this.configService.get<string>('network.networkType') || 'mantle';
+                    let txHash: string | undefined;
                     let oaidTxHash: string | undefined;
+                    let hasOAID = false;
 
-                    if (!hasOAID) {
-                        try {
-                            this.logger.log(`🆔 Registering user in OAID system for ${user.walletAddress}...`);
-                            const oaidResult = await this.solvencyBlockchainService.registerUserInOAID(user.walletAddress);
-                            oaidTxHash = oaidResult.txHash;
-                            this.logger.log(`✅ User registered in OAID system: TX: ${oaidTxHash}`);
-                        } catch (oaidError) {
-                            this.logger.error(`⚠️ Failed to register user in OAID: ${oaidError}`);
-                            // Don't fail the whole operation if OAID registration fails
+                    this.logger.log(`🔍 Detected wallet network: ${walletNetwork}, Deployment network: ${deploymentNetwork}`);
+
+                    // Stellar wallets use trustlines for compliance - skip on-chain identity registration
+                    if (!isStellar) {
+                        this.logger.log(`🔗 Registering investor ${user.walletAddress} on blockchain (${deploymentNetwork})...`);
+                        txHash = await this.blockchainService.registerIdentity(user.walletAddress);
+                        this.logger.log(`✅ Investor registered on blockchain: ${txHash}`);
+
+                        // Check if OAID registration already exists, register if not
+                        this.logger.log(`🔍 Checking for existing OAID registration for ${user.walletAddress}...`);
+                        hasOAID = await this.solvencyBlockchainService.hasOAIDCreditLine(user.walletAddress);
+                        
+                        if (!hasOAID) {
+                            try {
+                                this.logger.log(`🆔 Registering user in OAID system for ${user.walletAddress}...`);
+                                const oaidResult = await this.solvencyBlockchainService.registerUserInOAID(user.walletAddress);
+                                oaidTxHash = oaidResult.txHash;
+                                this.logger.log(`✅ User registered in OAID system: TX: ${oaidTxHash}`);
+                            } catch (oaidError) {
+                                this.logger.error(`⚠️ Failed to register user in OAID: ${oaidError}`);
+                                // Don't fail the whole operation if OAID registration fails
+                            }
+                        } else {
+                            this.logger.log(`✅ User already registered in OAID system`);
                         }
                     } else {
-                        this.logger.log(`✅ User already registered in OAID system`);
+                        this.logger.log(`ℹ️ Stellar wallet detected - skipping on-chain identity registration (trustline-based compliance)`);
                     }
 
-                    // Send success notification
+                    // Initialize portfolio for the newly verified investor (all networks)
+                    try {
+                        // Use wallet's network for portfolio, not deployment network
+                        const portfolioNetwork = isStellar ? 'stellar' : deploymentNetwork;
+                        await this.userPortfolioService.initializePortfolio(user.walletAddress, portfolioNetwork);
+                        this.logger.log(`✅ Portfolio initialized for ${user.walletAddress} on ${portfolioNetwork}`);
+                    } catch (portfolioError) {
+                        this.logger.error(`⚠️ Failed to initialize portfolio: ${portfolioError}`);
+                        // Don't fail the whole operation if portfolio initialization fails
+                    }
+
+                    // Send success notification (all networks)
                     await this.notificationService.create({
                         userId: user.walletAddress,
                         walletAddress: user.walletAddress,
                         header: 'KYC Verified - Ready to Invest!',
-                        detail: hasOAID 
-                            ? 'Your KYC has been approved and your identity has been registered on-chain. You can now purchase RWA tokens!'
-                            : 'Your KYC has been approved, identity registered, and OAID profile created on-chain. You can now purchase RWA tokens and access credit features when you deposit collateral!',
+                        detail: isStellar
+                            ? 'Your KYC has been approved. You can now request trustline approval for Stellar assets!'
+                            : hasOAID 
+                                ? 'Your KYC has been approved and your identity has been registered on-chain. You can now purchase RWA tokens!'
+                                : 'Your KYC has been approved, identity registered, and OAID profile created on-chain. You can now purchase RWA tokens and access credit features when you deposit collateral!',
                         type: NotificationType.KYC_STATUS,
                         severity: NotificationSeverity.SUCCESS,
                         action: NotificationAction.VIEW_MARKETPLACE,
                         actionMetadata: {
+                            walletNetwork,
+                            deploymentNetwork,
                             txHash,
                             verificationScore: score,
-                            oaidRegistered: !hasOAID,
+                            oaidRegistered: !isStellar && !hasOAID,
                             oaidTxHash,
                         },
                     });
@@ -292,7 +325,7 @@ export class VerificationProcessor extends WorkerHost {
                     this.logger.log(`📧 Notification sent to ${user.walletAddress}`);
                 }
             } catch (error) {
-                this.logger.error(`Failed to register investor on blockchain: ${error}`);
+                this.logger.error(`Failed to process post-KYC operations: ${error}`);
                 // Don't fail the whole operation if blockchain registration fails
                 // KYC is still approved in database
             }

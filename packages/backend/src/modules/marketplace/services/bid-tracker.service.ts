@@ -1,64 +1,34 @@
-import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, Inject } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
-import { createPublicClient, http, Hash, decodeEventLog } from 'viem';
-import { mantleSepolia } from '../../../config/mantle-chain';
-import { Bid, BidDocument, BidStatus } from '../../../database/schemas/bid.schema';
+import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
+import { BidStatus } from '@openassets/types';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
-import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { NotifyBidDto } from '../dto/notify-bid.dto';
 import { NotifySettlementDto } from '../dto/notify-settlement.dto';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
+import { BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
+import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
+import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
+import { toCanonical, fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
 @Injectable()
 export class BidTrackerService {
   private readonly logger = new Logger(BidTrackerService.name);
-  private publicClient;
 
   constructor(
     private configService: ConfigService,
-    private contractLoader: ContractLoaderService,
+    @Inject(BLOCKCHAIN_ADAPTER) private blockchainAdapter: BlockchainAdapter,
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     private notificationService: NotificationService,
-  ) {
-    this.publicClient = createPublicClient({
-      chain: mantleSepolia,
-      transport: http(this.configService.get('blockchain.rpcUrl')),
-    });
-  }
-
-  private async executeWithRetry<T>(
-    operation: () => Promise<T>,
-    description: string,
-    maxRetries = 5,
-    initialDelay = 2000,
-  ): Promise<T> {
-    let retries = 0;
-    let delay = initialDelay;
-
-    while (true) {
-      try {
-        return await operation();
-      } catch (error: any) {
-        retries++;
-        if (retries > maxRetries) {
-          this.logger.error(`Failed ${description} after ${maxRetries} retries: ${error.message}`);
-          throw error;
-        }
-        this.logger.warn(
-          `Error in ${description} (attempt ${retries}/${maxRetries}): ${error.message}. Retrying in ${delay}ms...`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        delay *= 2;
-      }
-    }
-  }
+    private userPortfolioService: UserPortfolioService,
+  ) {}
 
   /**
    * Validate and record a bid transaction
@@ -74,8 +44,8 @@ export class BidTrackerService {
     }
 
     // Validate transaction on-chain
-    const bidData = await this.validateBidTransaction(
-      dto.txHash as Hash,
+    const bidData = await this.blockchainAdapter.verifyBidTransaction(
+      dto.txHash,
       dto.assetId,
       investorWallet,
     );
@@ -96,28 +66,35 @@ export class BidTrackerService {
     }
 
     // Calculate USDC deposited: payment = price * tokenAmount / 1e18
-    const tokenAmountBigInt = BigInt(bidData.tokenAmount);
-    const priceBigInt = BigInt(bidData.price);
-    const usdcDeposited = (priceBigInt * tokenAmountBigInt) / BigInt(10 ** 18);
+    // We use raw bigints for internal calculation to maintain precision
+    const tokenAmountBigInt = fromCanonical(bidData.tokenAmount.value, 18);
+    const priceBigInt = fromCanonical(bidData.price.value, 6);
+    const usdcDepositedRaw = (priceBigInt * tokenAmountBigInt) / BigInt(10 ** 18);
+    const usdcDepositedCanonical = toCanonical(usdcDepositedRaw, 6);
+
+    const network = this.configService.get<string>('network.networkType') || 'mantle';
 
     // Record bid in database
     const bid = await this.bidModel.create({
       assetId: dto.assetId,
       bidder: investorWallet.toLowerCase(),
-      tokenAmount: bidData.tokenAmount,
-      price: bidData.price,
-      usdcDeposited: usdcDeposited.toString(),
+      tokenAmount: bidData.tokenAmount.value,
+      price: bidData.price.value,
+      usdcDeposited: usdcDepositedCanonical.value,
       bidIndex: bidData.bidIndex,
       status: BidStatus.PLACED,
       transactionHash: dto.txHash,
+      network,
+      // Companion fields for precision
+      rawPrecise: bidData.tokenAmount.rawPrecise || bidData.price.rawPrecise || usdcDepositedCanonical.rawPrecise,
       // blockNumber: bidData.blockNumber,
     });
 
-    this.logger.log(`Bid recorded: ${bid._id}`);
+    this.logger.log(`Bid recorded: ${(bid as any)._id}`);
 
     // Send notification to bidder
     try {
-      const usdcDepositedFormatted = (Number(usdcDeposited) / 1e6).toFixed(2);
+      const usdcDepositedFormatted = (Number(usdcDepositedCanonical.value)).toFixed(2);
       const assetName = `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`;
 
       await this.notificationService.create({
@@ -130,10 +107,10 @@ export class BidTrackerService {
         action: NotificationAction.VIEW_ASSET,
         actionMetadata: {
           assetId: dto.assetId,
-          bidId: bid._id.toString(),
-          tokenAmount: bidData.tokenAmount,
-          price: bidData.price,
-          usdcDeposited: usdcDeposited.toString(),
+          bidId: (bid as any)._id.toString(),
+          tokenAmount: bidData.tokenAmount.value,
+          price: bidData.price.value,
+          usdcDeposited: usdcDepositedCanonical.value,
         },
       });
     } catch (error: any) {
@@ -143,84 +120,13 @@ export class BidTrackerService {
 
     return {
       success: true,
-      bidId: bid._id,
+      bidId: (bid as any)._id,
       assetId: dto.assetId,
       tokenAmount: bidData.tokenAmount,
       price: bidData.price,
-      usdcDeposited: usdcDeposited.toString(),
+      usdcDeposited: usdcDepositedCanonical.value,
       bidIndex: bidData.bidIndex,
     };
-  }
-
-  /**
-   * Validate bid transaction on-chain
-   */
-  private async validateBidTransaction(
-    txHash: Hash,
-    assetId: string,
-    expectedBidder: string,
-  ): Promise<{
-    tokenAmount: string;
-    price: string;
-    bidIndex: number;
-    // blockNumber: number;
-  } | null> {
-    try {
-      // Get transaction receipt
-      const receipt = await this.executeWithRetry(() => this.publicClient.getTransactionReceipt({ hash: txHash }), 'getTransactionReceipt');
-
-      if (!receipt || receipt.status !== 'success') {
-        this.logger.error(`Transaction not found or failed: ${txHash}`);
-        return null;
-      }
-
-      // Decode BidSubmitted event from logs
-      const marketplaceAddress = this.contractLoader.getContractAddress('PrimaryMarketplace');
-      const abi = this.contractLoader.getContractAbi('PrimaryMarketplace');
-
-      // Convert assetId to bytes32 for comparison
-      const assetIdBytes32 = '0x' + assetId.replace(/-/g, '').padEnd(64, '0');
-
-      for (const log of receipt.logs) {
-        if (log.address.toLowerCase() !== marketplaceAddress.toLowerCase()) {
-          continue;
-        }
-
-        try {
-          const decoded = decodeEventLog({
-            abi,
-            data: log.data,
-            topics: log.topics,
-          }) as { eventName: string; args: any };
-
-          if (decoded.eventName === 'BidSubmitted') {
-            const { assetId: eventAssetId, bidder, tokenAmount, price, bidIndex } = decoded.args;
-
-            // Validate this is the correct bid
-            if (
-              eventAssetId.toLowerCase() === assetIdBytes32.toLowerCase() &&
-              bidder.toLowerCase() === expectedBidder.toLowerCase()
-            ) {
-              return {
-                tokenAmount: tokenAmount.toString(),
-                price: price.toString(),
-                bidIndex: Number(bidIndex),
-                // blockNumber: Number(receipt.blockNumber),
-              };
-            }
-          }
-        } catch (e) {
-          // Skip logs that don't match
-          continue;
-        }
-      }
-
-      this.logger.error(`BidSubmitted event not found in transaction ${txHash}`);
-      return null;
-    } catch (error: any) {
-      this.logger.error(`Error validating transaction ${txHash}:`, error.message);
-      return null;
-    }
   }
 
   /**
@@ -243,7 +149,7 @@ export class BidTrackerService {
       success: true,
       count: bids.length,
       bids: bids.map(b => ({
-        bidId: b._id,
+        bidId: (b as any)._id,
         assetId: b.assetId,
         tokenAmount: b.tokenAmount,
         price: b.price,
@@ -272,7 +178,7 @@ export class BidTrackerService {
     for (const bid of bids) {
       const existing = pricePoints.get(bid.price);
       if (existing) {
-        existing.totalDemand = (BigInt(existing.totalDemand) + BigInt(bid.tokenAmount)).toString();
+        existing.totalDemand = (parseFloat(existing.totalDemand) + parseFloat(bid.tokenAmount)).toFixed(4);
         existing.bidCount += 1;
       } else {
         pricePoints.set(bid.price, {
@@ -324,10 +230,9 @@ export class BidTrackerService {
 
     this.logger.log('Validating settlement transaction on-chain...');
     // Validate settlement transaction on-chain
-    const settlementData = await this.validateSettlementTransaction(
-      dto.txHash as Hash,
+    const settlementData = await this.blockchainAdapter.verifyBidSettlement(
+      dto.txHash,
       dto.assetId,
-      dto.bidIndex,
       investorWallet,
     );
 
@@ -337,22 +242,30 @@ export class BidTrackerService {
     this.logger.log('Settlement validated on-chain', {
       assetId: dto.assetId,
       bidder: investorWallet,
-      tokensReceived: settlementData.tokensReceived.toString(),
-      refundAmount: settlementData.refundAmount.toString(),
+      tokensReceived: settlementData.tokensReceived.value,
+      refundAmount: settlementData.refundAmount.value,
     });
-    const pricePerTokenWei =
-      settlementData.tokensReceived > 0n
-        ? (settlementData.cost * 10n ** 18n) / settlementData.tokensReceived
+    
+    // Convert to BigInt for comparison
+    const tokensReceivedBigInt = fromCanonical(settlementData.tokensReceived.value, 18);
+    const costBigInt = fromCanonical(settlementData.cost.value, 6);
+
+    const pricePerTokenRaw =
+      tokensReceivedBigInt > 0n
+        ? (costBigInt * 10n ** 18n) / tokensReceivedBigInt
         : 0n;
+    
+    const pricePerTokenCanonical = toCanonical(pricePerTokenRaw, 6);
+
     // Update bid status based on whether they won or were refunded
-    const newStatus = settlementData.tokensReceived > 0n
+    const newStatus = tokensReceivedBigInt > 0n
       ? BidStatus.SETTLED
       : BidStatus.REFUNDED;
 
     this.logger.log(`Bid outcome resolved: ${newStatus}`);
 
     await this.bidModel.updateOne(
-      { _id: bid._id },
+      { _id: (bid as any)._id },
       {
         $set: {
           status: newStatus,
@@ -362,7 +275,7 @@ export class BidTrackerService {
       },
     );
 
-    this.logger.log(`DB updated for bid ${bid._id} with status ${newStatus}`);
+    this.logger.log(`DB updated for bid ${(bid as any)._id} with status ${newStatus}`);
 
     // NOTE: listing.sold is updated automatically by the event processor
     // when it processes the BidSettled blockchain event (event.processor.ts)
@@ -373,11 +286,11 @@ export class BidTrackerService {
       const asset = await this.assetModel.findOne({ assetId: dto.assetId });
       const assetName = asset ? `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}` : dto.assetId;
 
-      if (newStatus === BidStatus.SETTLED && settlementData.tokensReceived > 0n) {
+      if (newStatus === BidStatus.SETTLED && tokensReceivedBigInt > 0n) {
         this.logger.log('Sending auction-won notification');
         // Auction won
-        const tokensReceivedFormatted = (Number(settlementData.tokensReceived) / 1e18).toFixed(2);
-        const clearingPriceFormatted = (Number(pricePerTokenWei) / 1e6).toFixed(2);
+        const tokensReceivedFormatted = Number(settlementData.tokensReceived.value).toFixed(2);
+        const clearingPriceFormatted = Number(pricePerTokenCanonical.value).toFixed(2);
 
         await this.notificationService.create({
           userId: investorWallet,
@@ -389,15 +302,15 @@ export class BidTrackerService {
           action: NotificationAction.VIEW_PORTFOLIO,
           actionMetadata: {
             assetId: dto.assetId,
-            bidId: bid._id.toString(),
-            tokensReceived: settlementData.tokensReceived.toString(),
-            clearingPrice: pricePerTokenWei.toString(),
+            bidId: (bid as any)._id.toString(),
+            tokensReceived: settlementData.tokensReceived.value,
+            clearingPrice: pricePerTokenCanonical.value,
           },
         });
       } else if (newStatus === BidStatus.REFUNDED) {
         this.logger.log('Bid lost; processing refund notification flow');
         // Bid refunded
-        const refundAmountFormatted = (Number(settlementData.refundAmount) / 1e6).toFixed(2);
+        const refundAmountFormatted = Number(settlementData.refundAmount.value).toFixed(2);
 
         await this.notificationService.create({
           userId: investorWallet,
@@ -409,8 +322,8 @@ export class BidTrackerService {
           action: NotificationAction.VIEW_MARKETPLACE,
           actionMetadata: {
             assetId: dto.assetId,
-            bidId: bid._id.toString(),
-            refundAmount: settlementData.refundAmount.toString(),
+            bidId: (bid as any)._id.toString(),
+            refundAmount: settlementData.refundAmount.value,
           },
         });
       }
@@ -420,7 +333,7 @@ export class BidTrackerService {
     }
 
     // Create purchase record if tokens were received
-    if (newStatus === BidStatus.SETTLED && settlementData.tokensReceived > 0n) {
+    if (newStatus === BidStatus.SETTLED && tokensReceivedBigInt > 0n) {
       try {
         const asset = await this.assetModel.findOne({ assetId: dto.assetId });
         if (!asset) {
@@ -431,36 +344,49 @@ export class BidTrackerService {
           throw new Error(`Asset ${dto.assetId} has no token address`);
         }
 
-        const tokensReceivedNum = Number(settlementData.tokensReceived) / 1e18;
-        const totalPaidUSDC = Number(settlementData.cost) / 1e6; // actual on-chain cost
-        // pricePerTokenWei is already computed above
+        const tokensReceivedNum = Number(settlementData.tokensReceived.value);
+        const totalPaidUSDC = Number(settlementData.cost.value); 
+        // pricePerTokenCanonical is already computed above
 
         this.logger.log(
-          `Creating purchase record for ${investorWallet}: ${tokensReceivedNum} tokens at clearing price ${Number(pricePerTokenWei) / 1e6} USDC`,
+          `Creating purchase record for ${investorWallet}: ${tokensReceivedNum} tokens at clearing price ${pricePerTokenCanonical.value} USDC`,
         );
 
         this.logger.log('✅ Settlement confirmed; creating purchase record for portfolio visibility');
-        await this.purchaseModel.create({
+        const purchase = await this.purchaseModel.create({
           txHash: dto.txHash,
           assetId: dto.assetId,
           investorWallet: investorWallet.toLowerCase(),
           tokenAddress: asset.token.address,
-          amount: settlementData.tokensReceived.toString(), // Token amount in wei
-          price: pricePerTokenWei.toString(), // Clearing price per token in USDC wei
-          totalPayment: settlementData.cost.toString(), // Actual USDC paid in wei
+          amount: settlementData.tokensReceived.value, // Canonical
+          price: pricePerTokenCanonical.value, // Canonical
+          totalPayment: settlementData.cost.value, // Canonical
           status: 'CONFIRMED',
           source: 'PRIMARY_MARKET',
+          network: asset.network || 'mantle',
           metadata: {
             assetName: asset.metadata?.invoiceNumber,
             industry: asset.metadata?.industry,
           },
         });
         this.logger.log('Purchase record persisted; should surface in portfolio queries');
+
+        // Update portfolio
+        try {
+          await this.userPortfolioService.updateOnPurchase(purchase, asset.network || 'mantle');
+          this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || 'mantle'}`);
+        } catch (error: any) {
+          this.logger.error(`❌ CRITICAL: Failed to update portfolio after auction settlement for ${investorWallet}: ${error.message}`);
+          this.logger.error(`Error stack: ${error.stack}`);
+          this.logger.error(`Purchase details - assetId: ${dto.assetId}, amount: ${settlementData.tokensReceived.value}, network: ${asset.network || 'mantle'}`);
+          // Continue operation - portfolio can be rebuilt later via admin endpoint
+        }
+
         await this.syncListingSold(dto.assetId);
 
         // Send notification about successful token acquisition
         try {
-          const pricePerToken = Number(pricePerTokenWei) / 1e6;
+          const pricePerToken = Number(pricePerTokenCanonical.value);
           await this.notificationService.create({
             userId: investorWallet,
             walletAddress: investorWallet,
@@ -491,7 +417,7 @@ export class BidTrackerService {
 
     return {
       success: true,
-      bidId: bid._id,
+      bidId: (bid as any)._id,
       assetId: dto.assetId,
       bidIndex: dto.bidIndex,
       status: newStatus,
@@ -501,85 +427,6 @@ export class BidTrackerService {
     };
   }
 
-  /**
-   * Validate settlement transaction on-chain
-   */
-  private async validateSettlementTransaction(
-    txHash: Hash,
-    assetId: string,
-    bidIndex: number,
-    expectedBidder: string,
-  ): Promise<{
-    tokensReceived: bigint;
-    refundAmount: bigint;
-    cost: bigint;
-  } | null> {
-    try {
-      // Get transaction receipt
-      const receipt = await this.executeWithRetry(() => this.publicClient.getTransactionReceipt({ hash: txHash }), 'getTransactionReceipt');
-
-      if (!receipt || receipt.status !== 'success') {
-        this.logger.error(`Transaction not found or failed: ${txHash}`);
-        return null;
-      }
-
-      // Decode BidSettled event from logs
-      const marketplaceAddress = this.contractLoader.getContractAddress('PrimaryMarketplace');
-      const abi = this.contractLoader.getContractAbi('PrimaryMarketplace');
-
-      // Convert assetId to bytes32 for comparison
-      const assetIdBytes32 = '0x' + assetId.replace(/-/g, '').padEnd(64, '0');
-
-      for (const log of receipt.logs) {
-        if (log.address.toLowerCase() !== marketplaceAddress.toLowerCase()) {
-          continue;
-        }
-
-        try {
-          const decoded = decodeEventLog({
-            abi,
-            data: log.data,
-            topics: log.topics,
-          }) as { eventName: string; args: any };
-          if (decoded.eventName === 'BidSettled') {
-            const {
-              assetId: eventAssetId,
-              bidder,
-              tokensReceived,
-              cost,
-              refund,
-            } = decoded.args;
-            if (
-              eventAssetId.toLowerCase() === assetIdBytes32.toLowerCase() &&
-              bidder.toLowerCase() === expectedBidder.toLowerCase()
-            ) {
-              this.logger.log('Decoded BidSettled event', {
-                assetId: assetId,
-                bidder,
-                tokensReceived: tokensReceived.toString(),
-                refundAmount: refund.toString(),
-              });
-              return {
-                tokensReceived: BigInt(tokensReceived),
-                refundAmount: BigInt(refund),
-                cost: BigInt(cost),
-              };
-            }
-          }
-        } catch (e) {
-          // Skip logs that don't match
-          continue;
-        }
-      }
-
-      this.logger.error(`BidSettled event not found in transaction ${txHash}`);
-      return null;
-    } catch (error: any) {
-      this.logger.error(`Error validating settlement transaction ${txHash}:`, error.message);
-      return null;
-    }
-  }
-
   private async syncListingSold(assetId: string) {
     try {
       const purchases = await this.purchaseModel.find({
@@ -587,15 +434,16 @@ export class BidTrackerService {
         status: { $in: ['CONFIRMED', 'CLAIMED'] },
       }).select({ amount: 1 });
       const totalSold = purchases.reduce(
-        (acc, p) => acc + BigInt(p.amount || '0'),
-        0n,
+        (acc, p) => acc + parseFloat(p.amount || '0'),
+        0,
       );
+      const totalSoldCanonical = totalSold.toFixed(4);
       await this.assetModel.updateOne(
         { assetId },
-        { $set: { 'listing.sold': totalSold.toString() } },
+        { $set: { 'listing.sold': totalSoldCanonical } },
       );
       this.logger.log(
-        `listing.sold synced for ${assetId}: ${Number(totalSold) / 1e18} tokens`,
+        `listing.sold synced for ${assetId}: ${totalSoldCanonical} tokens`,
       );
     } catch (error: any) {
       this.logger.error(`Failed to sync listing.sold for ${assetId}: ${error.message}`);

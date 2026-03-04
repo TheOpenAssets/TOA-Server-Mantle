@@ -13,6 +13,7 @@ const config: Config = {
   moduleNameMapper: {
     '^src/(.*)$': '<rootDir>/$1',
     '^uuid$': '<rootDir>/../__mocks__/uuid.js',
+    '^@openassets/types$': '<rootDir>/../../types/src/index.ts',
   },
 };
 

@@ -16,7 +16,7 @@ import { PartnerService } from '../services/partner.service';
 import { AdminGuard } from '../../admin/guards/admin.guard';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CreatePartnerDto, UpdatePartnerDto } from '../dto/partner-admin.dto';
-import { PartnerStatus } from '../../../database/schemas/partner.schema';
+import { PartnerStatus } from '@openassets/types';
 
 @ApiTags('Admin - Partners')
 @Controller('admin/partners')

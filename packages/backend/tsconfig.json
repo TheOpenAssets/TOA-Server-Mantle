@@ -5,7 +5,10 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "paths": {
-      "@mantle/types/*": [
+      "@openassets/types": [
+        "../types/src/index.ts"
+      ],
+      "@openassets/types/*": [
         "../types/src/*"
       ],
       "@mantle/contracts/*": [

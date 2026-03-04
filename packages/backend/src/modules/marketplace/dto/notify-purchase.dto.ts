@@ -1,6 +1,9 @@
-import { IsString, IsNotEmpty, IsNumberString, IsOptional, Matches } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsCanonicalAmount } from '../../../utils/validators/canonical-amount.validator';
 
 export class NotifyPurchaseDto {
+  @ApiProperty({ description: 'Network transaction identifier (EVM hash or Stellar hash)' })
   @IsString()
   @IsNotEmpty()
   txHash!: string;
@@ -9,12 +12,12 @@ export class NotifyPurchaseDto {
   @IsNotEmpty()
   assetId!: string;
 
-  @Matches(/^-?\d+$/, { message: 'amount must be a valid number string (can be negative)' })
+  @IsCanonicalAmount()
   @IsNotEmpty()
-  amount!: string; // Token amount purchased (in wei) - can be negative
+  amount!: string; // Canonical 4-decimal format (e.g., "100.0000") - can be negative for refunds
 
   @IsOptional()
-  @IsNumberString()
+  @IsString()
   blockNumber?: string;
 
   @IsOptional()
