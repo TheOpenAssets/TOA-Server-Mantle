@@ -12,19 +12,19 @@ import { User, UserDocument } from '../../../database/schemas/user.schema';
 import { LeveragePosition, LeveragePositionDocument } from '../../../database/schemas/leverage-position.schema';
 import { CreateAssetDto } from '../dto/create-asset.dto';
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  AssetStatus, 
-  UserRole, 
-  NotificationType, 
-  NotificationSeverity, 
-  NotificationAction 
+import {
+  AssetStatus,
+  UserRole,
+  NotificationType,
+  NotificationSeverity,
+  NotificationAction
 } from '@openassets/types';
 
 import { RegisterAssetDto } from '../../blockchain/dto/register-asset.dto';
 import { AttestationService } from '../../compliance-engine/services/attestation.service';
 import { AnnouncementService } from '../../announcements/services/announcement.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { getConfiguredNetworkType } from '../../auth/utils/wallet.util';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 import { PAYMENT_ADAPTER, BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
 import { PaymentAdapter } from '../../blockchain/adapters/payment-adapter.interface';
@@ -47,6 +47,7 @@ export class AssetLifecycleService {
     @Inject(forwardRef(() => AnnouncementService))
     private announcementService: AnnouncementService,
     private notificationService: NotificationService,
+    private networkContextService: NetworkContextService,
     @Inject(PAYMENT_ADAPTER) private paymentAdapter: PaymentAdapter,
     @Inject(BLOCKCHAIN_ADAPTER) private blockchainAdapter: BlockchainAdapter,
     @InjectConnection() connection: Connection,
@@ -105,8 +106,8 @@ export class AssetLifecycleService {
     const assetId = uuidv4();
     this.logger.log(`Creating ${dto.assetType} asset ${assetId} for originator ${userWallet}`);
 
-    // Get configured network type from environment
-    const network = getConfiguredNetworkType();
+    // Get configured network type from context
+    const network = this.networkContextService.getNetwork();
 
     // All DTO values are now in canonical 4-decimal format
     // Parse them as floats for calculations
@@ -241,18 +242,22 @@ export class AssetLifecycleService {
   }
 
   async getAsset(assetId: string) {
-    return this.assetModel.findOne({ assetId });
+    const network = this.networkContextService.getNetwork();
+    return this.assetModel.findOne({ assetId, network });
   }
 
   async getAssetsByOriginator(originator: string) {
-    return this.assetModel.find({ originator });
+    const network = this.networkContextService.getNetwork();
+    return this.assetModel.find({ originator, network });
   }
 
   async approveAsset(assetId: string, adminWallet: string) {
     this.logger.log(`Asset ${assetId} approved by admin ${adminWallet}`);
 
+    const network = this.networkContextService.getNetwork();
+
     // Get the asset to generate attestation
-    const asset = await this.assetModel.findOne({ assetId });
+    const asset = await this.assetModel.findOne({ assetId, network });
     if (!asset) {
       throw new Error('Asset not found');
     }
@@ -262,7 +267,7 @@ export class AssetLifecycleService {
 
     // Update asset with attestation and set status to ATTESTED
     await this.assetModel.updateOne(
-      { assetId },
+      { assetId, network },
       {
         $set: {
           status: AssetStatus.ATTESTED,
@@ -562,8 +567,9 @@ export class AssetLifecycleService {
       throw new Error('Asset is not an auction type');
     }
 
-    // Determine the decimal precision based on network type
-    // Stellar uses 7 decimals, EVM uses 6 decimals
+    // Determine the decimal precision based on network type.
+    // Stellar uses 7 decimals; all other networks (Mantle, Arbitrum, CreditCoin) use 6 for USDC.
+    // ASSUMPTION: any non-Stellar network uses Mantle's precision. If a future chain differs, extend this.
     const decimals = asset.network === 'stellar' ? 7 : 6;
 
     // Normalize clearing price: if it's a decimal string (canonical format), convert to integer
@@ -850,7 +856,7 @@ export class AssetLifecycleService {
     page?: number;
     limit?: number;
   }) {
-    const query: any = {};
+    const query: any = { network: this.networkContextService.getNetwork() };
 
     // Apply status filter
     if (filters?.status) {
@@ -1053,7 +1059,7 @@ export class AssetLifecycleService {
         }
       } else {
         this.logger.log(`✅ No leverage positions found for this asset`);
-        
+
         // Debug: Check if any positions exist for this assetId at all
         const anyPositions = await this.leveragePositionModel.find({ assetId });
         this.logger.log(`   Debug: Total positions with assetId ${assetId}: ${anyPositions.length}`);

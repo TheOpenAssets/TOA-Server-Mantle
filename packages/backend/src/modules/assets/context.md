@@ -88,9 +88,20 @@ The payout system transfers raised USDC from the platform to originators after m
 - All database operations are network-agnostic
 - Transaction hashes and block numbers store in network-specific formats
 
+## Network Scoping (Multi-Network)
+All read and write operations in `AssetLifecycleService` that touch asset documents are scoped to the current request's network via `NetworkContextService.getNetwork()` (backed by `AsyncLocalStorage`). The following methods include `network` as a mandatory filter condition:
+- `createAsset()` — stamps the asset document with `network` from context
+- `getAsset()` — queries `{ assetId, network }`
+- `getAssetsByOriginator()` — queries `{ originator, network }`
+- `getAllAssets()` — queries include `{ network }` alongside optional status/originator filters
+- `approveAsset()` — both the `findOne` and the `updateOne` use `{ assetId, network }`
+
+**Note on decimal precision:** Several methods in this service apply decimal precision conditionally based on `asset.network === 'stellar'` to choose between 7 (Stellar) and 6 or 18 (EVM) decimal places. This assumes all non-Stellar networks use the same decimal conventions as Mantle (6 for USDC, 18 for ERC-20). This assumption is currently correct for Mantle, Arbitrum, and CreditCoin. If a future chain uses different precision, this logic must be extended.
+
 ## Invariants
 - Payout can only be executed once per asset (status check)
 - Only confirmed PRIMARY_MARKET purchases count toward payout
 - Leverage positions must reference the exact asset token address
 - Token burning is optional (skips if all tokens sold)
 - Notification failures never block payout completion
+- All asset queries are network-scoped; documents without a `network` field (pre-migration) will not appear in query results

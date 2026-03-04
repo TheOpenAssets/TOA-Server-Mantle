@@ -5,13 +5,8 @@ import { NetworkType } from '@openassets/types';
 import { NetworkContextService } from '../../blockchain/services/network-context.service';
 import {
   ASSET_ORIGINATION_SERVICE,
-  MANTLE_ASSET_ORIGINATION_TOKEN,
-  STELLAR_ASSET_ORIGINATION_TOKEN,
-  CREDITCOIN_ASSET_ORIGINATION_TOKEN,
   ADMIN_DOMAIN_STRATEGY,
-  MANTLE_ADMIN_STRATEGY_TOKEN,
-  STELLAR_ADMIN_STRATEGY_TOKEN,
-  CREDITCOIN_ADMIN_STRATEGY_TOKEN,
+  NETWORK_TOKEN_MAP,
 } from '../registry.constants';
 import { IAssetOriginationService } from '../interfaces/asset-origination.interface';
 import { IAdminDomainStrategy } from '../interfaces/admin-domain.interface';
@@ -19,7 +14,7 @@ import { IAdminDomainStrategy } from '../interfaces/admin-domain.interface';
 @Injectable()
 export class ModuleRegistryService implements OnModuleInit {
   private readonly logger = new Logger(ModuleRegistryService.name);
-  
+
   // Maps network -> (service key -> implementation)
   private readonly implementationMap = new Map<NetworkType, Map<string, any>>();
 
@@ -35,51 +30,25 @@ export class ModuleRegistryService implements OnModuleInit {
   }
 
   private async resolveAllImplementations() {
-    const networks = Object.values(NetworkType).filter(n => n !== NetworkType.UNKNOWN);
-    
+    const rawConfig = this.configService.get<string>('ENABLED_NETWORKS') || this.configService.get<string>('network.networkType') || 'mantle';
+    const networks = rawConfig.split(',').map(n => n.trim() as NetworkType).filter(n => n !== NetworkType.UNKNOWN);
+
     for (const network of networks) {
       const networkMap = new Map<string, any>();
       this.implementationMap.set(network, networkMap);
 
-      // Resolve Asset Origination
-      const assetToken = this.getAssetOriginationToken(network);
-      if (assetToken) {
-        await this.resolveAndRegister(network, ASSET_ORIGINATION_SERVICE, assetToken);
+      const tokens = NETWORK_TOKEN_MAP[network];
+      if (tokens) {
+        const assetToken = tokens[ASSET_ORIGINATION_SERVICE];
+        if (assetToken) {
+          await this.resolveAndRegister(network, ASSET_ORIGINATION_SERVICE, assetToken);
+        }
+
+        const adminToken = tokens[ADMIN_DOMAIN_STRATEGY];
+        if (adminToken) {
+          await this.resolveAndRegister(network, ADMIN_DOMAIN_STRATEGY, adminToken);
+        }
       }
-
-      // Resolve Admin Strategy
-      const adminToken = this.getAdminStrategyToken(network);
-      if (adminToken) {
-        await this.resolveAndRegister(network, ADMIN_DOMAIN_STRATEGY, adminToken);
-      }
-    }
-  }
-
-  private getAssetOriginationToken(network: NetworkType): string | null {
-    switch (network) {
-      case NetworkType.MANTLE:
-      case NetworkType.ARBITRUM:
-        return MANTLE_ASSET_ORIGINATION_TOKEN;
-      case NetworkType.STELLAR:
-        return STELLAR_ASSET_ORIGINATION_TOKEN;
-      case NetworkType.CREDITCOIN:
-        return CREDITCOIN_ASSET_ORIGINATION_TOKEN;
-      default:
-        return null;
-    }
-  }
-
-  private getAdminStrategyToken(network: NetworkType): string | null {
-    switch (network) {
-      case NetworkType.MANTLE:
-      case NetworkType.ARBITRUM:
-        return MANTLE_ADMIN_STRATEGY_TOKEN;
-      case NetworkType.STELLAR:
-        return STELLAR_ADMIN_STRATEGY_TOKEN;
-      case NetworkType.CREDITCOIN:
-        return CREDITCOIN_ADMIN_STRATEGY_TOKEN;
-      default:
-        return null;
     }
   }
 
