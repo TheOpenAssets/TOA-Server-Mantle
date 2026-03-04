@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, UseGuards, Request, UploadedFile, UseInterceptors, ParseFilePipeBuilder, HttpStatus, Res, StreamableFile } from '@nestjs/common';
+import { Controller, Post, Get, Delete, UseGuards, Request, UploadedFile, UseInterceptors, ParseFilePipeBuilder, HttpStatus, Res, StreamableFile, UnsupportedMediaTypeException } from '@nestjs/common';
 import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { KycService } from '../services/kyc.service';
@@ -10,12 +10,19 @@ export class KycController {
   constructor(private readonly kycService: KycService) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('document'))
+  @UseInterceptors(FileInterceptor('document', {
+    fileFilter: (_req, file, callback) => {
+      if (/\/(pdf|jpeg|jpg|png)$/.test(file.mimetype)) {
+        callback(null, true);
+      } else {
+        callback(new UnsupportedMediaTypeException('Only PDF, JPEG, and PNG files are allowed'), false);
+      }
+    },
+  }))
   async upload(
     @Request() req: any,
     @UploadedFile(
       new ParseFilePipeBuilder()
-        .addFileTypeValidator({ fileType: /(pdf|jpeg|jpg|png)$/ })
         .addMaxSizeValidator({ maxSize: 5 * 1024 * 1024 }) // 5MB
         .build({ errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY }),
     )

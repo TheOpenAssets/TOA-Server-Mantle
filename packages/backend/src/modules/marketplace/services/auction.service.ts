@@ -5,6 +5,7 @@ import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { AssetStatus } from '@openassets/types';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
 import { ModuleRegistryService } from '../../registry/services/module-registry.service';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 import { CreateAuctionDto } from '../dto/create-auction.dto';
 
 @Injectable()
@@ -15,10 +16,12 @@ export class AuctionService {
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     private moduleRegistry: ModuleRegistryService,
+    private networkContextService: NetworkContextService,
   ) {}
 
   async createAuction(dto: CreateAuctionDto) {
-    const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+    const network = this.networkContextService.getNetwork();
+    const asset = await this.assetModel.findOne({ assetId: dto.assetId, network });
     if (!asset || !asset.token?.address) {
       throw new HttpException('Asset or token not found', HttpStatus.NOT_FOUND);
     }
@@ -44,14 +47,15 @@ export class AuctionService {
 
   async calculateAndEndAuction(assetId: string) {
     this.logger.log(`Starting clearing price calculation for auction ${assetId}`);
-    const asset = await this.assetModel.findOne({ assetId });
+    const network = this.networkContextService.getNetwork();
+    const asset = await this.assetModel.findOne({ assetId, network });
     if (!asset || !asset.listing || !asset.token) {
       throw new HttpException('Auction not found or asset not tokenized', HttpStatus.NOT_FOUND);
     }
 
     const strategy = this.moduleRegistry.getAdminDomainStrategy();
 
-    const bids = await this.bidModel.find({ assetId }).sort({ price: -1 });
+    const bids = await this.bidModel.find({ assetId, network }).sort({ price: -1 });
     if (bids.length === 0) {
       this.logger.warn(`No bids found for auction ${assetId}. Ending without a sale.`);
       // End auction with a zero clearing price if no bids

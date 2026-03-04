@@ -1,10 +1,12 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Inject } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { LeveragePositionService } from './leverage-position.service';
 import { LeverageBlockchainService } from './leverage-blockchain.service';
 import { FluxionDEXService } from './fluxion-dex.service';
+import { ArbitrumDEXService } from './arbitrum-dex.service';
 import { NotificationService } from '../../notifications/services/notification.service';
+import { DEX_SERVICE } from '../leverage.constants';
 import { NotificationType } from '../../notifications/enums/notification-type.enum';
 import { NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
@@ -32,7 +34,7 @@ export class HarvestKeeperService implements OnModuleInit {
     private configService: ConfigService,
     private positionService: LeveragePositionService,
     private blockchainService: LeverageBlockchainService,
-    private dexService: FluxionDEXService,
+    @Inject(DEX_SERVICE) private dexService: FluxionDEXService | ArbitrumDEXService,
     private notificationService: NotificationService,
     private schedulerRegistry: SchedulerRegistry,
   ) {

@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { NetworkType } from '@openassets/types';
 import { UserPortfolio, UserPortfolioDocument, HoldingType, HoldingStatus } from '../schemas/user-portfolio.schema';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
@@ -10,6 +11,7 @@ import { LeveragePosition } from '../../../database/schemas/leverage-position.sc
 import { SolvencyPosition } from '../../../database/schemas/solvency-position.schema';
 import { PortfolioResponseDto, RuntimeHoldingDto, RecentActivityDto, PortfolioSummaryDto } from '../dto/portfolio-response.dto';
 import { toCanonical, fromCanonical } from '../../blockchain/utils/numeric-conversion';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 
 @Injectable()
 export class UserPortfolioService {
@@ -23,14 +25,17 @@ export class UserPortfolioService {
     @InjectModel(UserYieldClaim.name) private yieldClaimModel: Model<UserYieldClaimDocument>,
     @InjectModel(LeveragePosition.name) private leveragePositionModel: Model<any>,
     @InjectModel(SolvencyPosition.name) private solvencyPositionModel: Model<any>,
+    private networkContextService: NetworkContextService,
   ) {}
 
   /**
    * Get full enriched portfolio for a user
    */
-  async getPortfolio(walletAddress: string, network: string): Promise<PortfolioResponseDto> {
+  async getPortfolio(walletAddress: string, network?: NetworkType): Promise<PortfolioResponseDto> {
     const investorWallet = walletAddress.toLowerCase();
-    let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network });
+    const targetNetwork = network || this.networkContextService.getNetwork();
+    
+    let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network: targetNetwork });
 
     if (!portfolio) {
       // Return an empty portfolio structure if none exists yet
@@ -41,12 +46,12 @@ export class UserPortfolioService {
           totalYieldReceived: '$0.00',
           totalActivePositions: 0,
           totalCompletedPositions: 0,
-          networks: [network],
+          networks: [targetNetwork],
           lastUpdated: new Date(),
         },
         holdings: [],
         activityFeed: [],
-        networkContext: network,
+        networkContext: targetNetwork,
       };
     }
 
@@ -68,7 +73,7 @@ export class UserPortfolioService {
         const runtimeHolding = new RuntimeHoldingDto();
         runtimeHolding.assetId = holding.assetId;
         runtimeHolding.tokenIdentifier = holding.tokenIdentifier;
-        runtimeHolding.network = holding.network;
+        runtimeHolding.network = holding.network as any;
         runtimeHolding.holdingType = holding.holdingType;
         runtimeHolding.status = holding.status;
         runtimeHolding.tokenBalance = holding.tokenBalance;
@@ -118,7 +123,7 @@ export class UserPortfolioService {
         amount: act.amount,
         timestamp: act.timestamp,
       })),
-      networkContext: network,
+      networkContext: targetNetwork,
     };
   }
 
@@ -215,7 +220,7 @@ export class UserPortfolioService {
     const position = await this.leveragePositionModel.findById(holding.leveragePositionId);
     if (!position) return {};
 
-    const mETHCollateralCanonical = toCanonical(position.mETHCollateral, 18).value;
+    const mETHCollateralCanonical = position.mETHCollateral; // already canonical
     const usdcBorrowedCanonical = toCanonical(position.usdcBorrowed, 6).value;
     const totalInterestPaidCanonical = toCanonical(position.totalInterestPaid, 6).value;
 
@@ -266,20 +271,21 @@ export class UserPortfolioService {
    * Initialize an empty portfolio for a newly registered investor
    * Called when KYC is approved and investor is registered on-chain
    */
-  async initializePortfolio(walletAddress: string, network: string): Promise<UserPortfolioDocument> {
+  async initializePortfolio(walletAddress: string, network?: NetworkType): Promise<UserPortfolioDocument> {
     const investorWallet = walletAddress.toLowerCase();
+    const targetNetwork = network || this.networkContextService.getNetwork();
     
     // Check if portfolio already exists
-    let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network });
+    let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network: targetNetwork });
     if (portfolio) {
-      this.logger.log(`Portfolio already exists for ${investorWallet} on ${network}`);
+      this.logger.log(`Portfolio already exists for ${investorWallet} on ${targetNetwork}`);
       return portfolio;
     }
 
     // Create new empty portfolio
     portfolio = new this.portfolioModel({
       walletAddress: investorWallet,
-      network,
+      network: targetNetwork,
       holdings: [],
       totals: {
         totalUSDCInvested: '0',
@@ -288,7 +294,7 @@ export class UserPortfolioService {
         totalCompletedPositions: 0,
         totalActiveLeveragePositions: 0,
         totalActiveSolvencyPositions: 0,
-        networks: [network],
+        networks: [targetNetwork],
       },
       recentActivity: [],
       lastUpdated: new Date(),
@@ -296,28 +302,29 @@ export class UserPortfolioService {
     });
 
     await portfolio.save();
-    this.logger.log(`✅ Initialized portfolio for ${investorWallet} on ${network}`);
+    this.logger.log(`✅ Initialized portfolio for ${investorWallet} on ${targetNetwork}`);
     return portfolio;
   }
 
   /**
    * Update or create portfolio on new purchase
    */
-  async updateOnPurchase(purchase: PurchaseDocument, network: string) {
+  async updateOnPurchase(purchase: PurchaseDocument, network?: NetworkType) {
     try {
-      this.logger.log(`🔄 Updating portfolio for ${purchase.investorWallet} on ${network} for purchase ${purchase.txHash}`);
+      const targetNetwork = network || this.networkContextService.getNetwork();
+      this.logger.log(`🔄 Updating portfolio for ${purchase.investorWallet} on ${targetNetwork} for purchase ${purchase.txHash}`);
 
       const investorWallet = purchase.investorWallet.toLowerCase();
       const assetId = purchase.assetId;
 
-      this.logger.log(`Looking up portfolio: walletAddress=${investorWallet}, network=${network}`);
-      let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network });
+      this.logger.log(`Looking up portfolio: walletAddress=${investorWallet}, network=${targetNetwork}`);
+      let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network: targetNetwork });
 
       if (!portfolio) {
-        this.logger.warn(`⚠️  No portfolio found for ${investorWallet} on ${network}. Creating new portfolio document.`);
+        this.logger.warn(`⚠️  No portfolio found for ${investorWallet} on ${targetNetwork}. Creating new portfolio document.`);
         portfolio = new this.portfolioModel({
           walletAddress: investorWallet,
-          network,
+          network: targetNetwork,
           holdings: [],
           totals: {
             totalUSDCInvested: '0',
@@ -326,7 +333,7 @@ export class UserPortfolioService {
             totalCompletedPositions: 0,
             totalActiveLeveragePositions: 0,
             totalActiveSolvencyPositions: 0,
-            networks: [network],
+            networks: [targetNetwork],
           },
           recentActivity: [],
         });
@@ -340,7 +347,7 @@ export class UserPortfolioService {
         const newHolding = {
           assetId,
           tokenIdentifier: purchase.tokenAddress,
-          network,
+          network: targetNetwork,
           holdingType: HoldingType.STATIC,
           status: HoldingStatus.ACTIVE,
           tokenBalance: '0',
@@ -420,9 +427,10 @@ export class UserPortfolioService {
   /**
    * Update portfolio on yield claim
    */
-  async updateOnYieldClaim(claim: any, network: string) {
+  async updateOnYieldClaim(claim: any, network?: NetworkType) {
+    const targetNetwork = network || this.networkContextService.getNetwork();
     const investorWallet = (claim.userAddress || claim.investorWallet).toLowerCase();
-    const portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network });
+    const portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network: targetNetwork });
     if (!portfolio) return;
 
     const holding = portfolio.holdings.find(h => h.assetId === claim.assetId && h.holdingType === HoldingType.STATIC);
@@ -508,9 +516,10 @@ export class UserPortfolioService {
   /**
    * Rebuild portfolio from scratch (Admin/Recovery)
    */
-  async rebuildPortfolio(walletAddress: string, network: string) {
+  async rebuildPortfolio(walletAddress: string, network?: NetworkType) {
+    const targetNetwork = network || this.networkContextService.getNetwork();
     const investorWallet = walletAddress.toLowerCase();
-    this.logger.log(`Rebuilding portfolio for ${investorWallet} on ${network}`);
+    this.logger.log(`Rebuilding portfolio for ${investorWallet} on ${targetNetwork}`);
 
     // 1. Fetch all source data
     const purchases = await this.purchaseModel.find({ investorWallet }).sort({ createdAt: 1 });
@@ -521,7 +530,7 @@ export class UserPortfolioService {
     // 2. Initialize new portfolio document
     const portfolio = new this.portfolioModel({
       walletAddress: investorWallet,
-      network,
+      network: targetNetwork,
       holdings: [],
       totals: {
         totalUSDCInvested: '0.0000',
@@ -530,7 +539,7 @@ export class UserPortfolioService {
         totalCompletedPositions: 0,
         totalActiveLeveragePositions: 0,
         totalActiveSolvencyPositions: 0,
-        networks: [network],
+        networks: [targetNetwork],
       },
       recentActivity: [],
       version: 1,
@@ -538,7 +547,7 @@ export class UserPortfolioService {
 
     // 3. Process purchases to build static holdings
     for (const purchase of purchases) {
-       await this.updateOnPurchaseInternal(portfolio, purchase, network);
+       await this.updateOnPurchaseInternal(portfolio, purchase, targetNetwork);
     }
 
     // 4. Process yield claims
@@ -559,11 +568,11 @@ export class UserPortfolioService {
       portfolio.holdings.push({
         assetId: pos.assetId,
         tokenIdentifier: pos.rwaTokenAddress,
-        network,
+        network: targetNetwork,
         holdingType: HoldingType.LEVERAGE,
         status: pos.status === 'ACTIVE' ? HoldingStatus.ACTIVE : HoldingStatus.SETTLED,
-        tokenBalance: toCanonical(pos.rwaTokenAmount, 18).value,
-        totalInvested: '0.0000', 
+        tokenBalance: pos.rwaTokenAmount,
+        totalInvested: '0.0000',
         leveragePositionId: pos._id,
         firstEntryAt: pos.createdAt,
         lastActivityAt: pos.updatedAt || pos.createdAt,
@@ -575,7 +584,7 @@ export class UserPortfolioService {
       portfolio.holdings.push({
         assetId: pos.assetId,
         tokenIdentifier: pos.collateralTokenAddress || '', 
-        network,
+        network: targetNetwork,
         holdingType: HoldingType.SOLVENCY,
         status: pos.status === 'ACTIVE' ? HoldingStatus.ACTIVE : HoldingStatus.SETTLED,
         tokenBalance: '0.0000',
@@ -612,13 +621,13 @@ export class UserPortfolioService {
 
     portfolio.recentActivity = allActivity as any;
 
-    await this.portfolioModel.findOneAndDelete({ walletAddress: investorWallet, network });
+    await this.portfolioModel.findOneAndDelete({ walletAddress: investorWallet, network: targetNetwork });
     await portfolio.save();
     return portfolio;
   }
 
   // Internal helper for rebuild to avoid redundant saves
-  private async updateOnPurchaseInternal(portfolio: UserPortfolioDocument, purchase: PurchaseDocument, network: string) {
+  private async updateOnPurchaseInternal(portfolio: UserPortfolioDocument, purchase: PurchaseDocument, network: NetworkType) {
     const assetId = purchase.assetId;
     let holding = portfolio.holdings.find(h => h.assetId === assetId && h.holdingType === HoldingType.STATIC);
     if (!holding) {
@@ -671,16 +680,17 @@ export class UserPortfolioService {
   /**
    * Update portfolio on leverage event
    */
-  async updateOnLeverageEvent(positionId: number, network: string) {
+  async updateOnLeverageEvent(positionId: number, network?: NetworkType) {
+    const targetNetwork = network || this.networkContextService.getNetwork();
     const position = await this.leveragePositionModel.findOne({ positionId });
     if (!position) return;
 
     const investorWallet = position.userAddress.toLowerCase();
-    let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network });
+    let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network: targetNetwork });
     if (!portfolio) {
       portfolio = new this.portfolioModel({
         walletAddress: investorWallet,
-        network,
+        network: targetNetwork,
         holdings: [],
         totals: {
           totalUSDCInvested: '0',
@@ -689,7 +699,7 @@ export class UserPortfolioService {
           totalCompletedPositions: 0,
           totalActiveLeveragePositions: 0,
           totalActiveSolvencyPositions: 0,
-          networks: [network],
+          networks: [targetNetwork],
         },
         recentActivity: [],
       });
@@ -700,10 +710,10 @@ export class UserPortfolioService {
       const newHolding = {
         assetId: position.assetId,
         tokenIdentifier: position.rwaTokenAddress,
-        network,
+        network: targetNetwork,
         holdingType: HoldingType.LEVERAGE,
         status: HoldingStatus.ACTIVE,
-        tokenBalance: toCanonical(position.rwaTokenAmount, 18).value,
+        tokenBalance: position.rwaTokenAmount,
         totalInvested: '0.0000',
         leveragePositionId: position._id,
         firstEntryAt: position.createdAt || new Date(),
@@ -713,7 +723,7 @@ export class UserPortfolioService {
     } else {
       holding.status = position.status === 'ACTIVE' ? HoldingStatus.ACTIVE : 
                        (position.status === 'SETTLED' ? HoldingStatus.SETTLED : HoldingStatus.LIQUIDATED);
-      holding.tokenBalance = toCanonical(position.rwaTokenAmount, 18).value;
+      holding.tokenBalance = position.rwaTokenAmount;
       holding.lastActivityAt = new Date();
     }
 
@@ -726,16 +736,17 @@ export class UserPortfolioService {
   /**
    * Update portfolio on solvency event
    */
-  async updateOnSolvencyEvent(positionId: number, network: string) {
+  async updateOnSolvencyEvent(positionId: number, network?: NetworkType) {
+    const targetNetwork = network || this.networkContextService.getNetwork();
     const position = await this.solvencyPositionModel.findOne({ positionId });
     if (!position) return;
 
     const investorWallet = position.userAddress.toLowerCase();
-    let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network });
+    let portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network: targetNetwork });
     if (!portfolio) {
       portfolio = new this.portfolioModel({
         walletAddress: investorWallet,
-        network,
+        network: targetNetwork,
         holdings: [],
         totals: {
           totalUSDCInvested: '0',
@@ -744,7 +755,7 @@ export class UserPortfolioService {
           totalCompletedPositions: 0,
           totalActiveLeveragePositions: 0,
           totalActiveSolvencyPositions: 0,
-          networks: [network],
+          networks: [targetNetwork],
         },
         recentActivity: [],
       });
@@ -758,7 +769,7 @@ export class UserPortfolioService {
        const newHolding = {
         assetId: asset?.assetId || 'UNKNOWN',
         tokenIdentifier: position.collateralTokenAddress,
-        network,
+        network: targetNetwork,
         holdingType: HoldingType.SOLVENCY,
         status: position.status === 'ACTIVE' ? HoldingStatus.ACTIVE : HoldingStatus.SETTLED,
         tokenBalance: '0.0000',
@@ -783,16 +794,17 @@ export class UserPortfolioService {
   /**
    * Add assetId to requested_trustlines array for Stellar assets
    */
-  async addRequestedTrustline(walletAddress: string, network: string, assetId: string): Promise<void> {
+  async addRequestedTrustline(walletAddress: string, assetId: string, network?: NetworkType): Promise<void> {
     const investorWallet = walletAddress.toLowerCase();
+    const targetNetwork = network || this.networkContextService.getNetwork();
     
     await this.portfolioModel.updateOne(
-      { walletAddress: investorWallet, network },
+      { walletAddress: investorWallet, network: targetNetwork },
       {
         $addToSet: { requested_trustlines: assetId },
         $setOnInsert: {
           walletAddress: investorWallet,
-          network,
+          network: targetNetwork,
           holdings: [],
           totals: {},
           recentActivity: [],
@@ -803,35 +815,37 @@ export class UserPortfolioService {
       { upsert: true }
     );
 
-    this.logger.log(`Added assetId ${assetId} to requested_trustlines for wallet ${investorWallet} on ${network}`);
+    this.logger.log(`Added assetId ${assetId} to requested_trustlines for wallet ${investorWallet} on ${targetNetwork}`);
   }
 
   /**
    * Move assetId from requested_trustlines to approved_trustlines
    */
-  async approveTrustline(walletAddress: string, network: string, assetId: string): Promise<void> {
+  async approveTrustline(walletAddress: string, assetId: string, network?: NetworkType): Promise<void> {
     const investorWallet = walletAddress.toLowerCase();
+    const targetNetwork = network || this.networkContextService.getNetwork();
 
     await this.portfolioModel.updateOne(
-      { walletAddress: investorWallet, network },
+      { walletAddress: investorWallet, network: targetNetwork },
       {
         $pull: { requested_trustlines: assetId },
         $addToSet: { approved_trustlines: assetId },
       }
     );
 
-    this.logger.log(`Moved assetId ${assetId} from requested to approved trustlines for wallet ${investorWallet} on ${network}`);
+    this.logger.log(`Moved assetId ${assetId} from requested to approved trustlines for wallet ${investorWallet} on ${targetNetwork}`);
   }
 
   /**
    * Check if investor has approved trustline for an asset
    */
-  async hasTrustlineApproved(walletAddress: string, network: string, assetId: string): Promise<boolean> {
+  async hasTrustlineApproved(walletAddress: string, assetId: string, network?: NetworkType): Promise<boolean> {
     const investorWallet = walletAddress.toLowerCase();
+    const targetNetwork = network || this.networkContextService.getNetwork();
 
     const portfolio = await this.portfolioModel.findOne({
       walletAddress: investorWallet,
-      network,
+      network: targetNetwork,
     }).lean();
 
     if (!portfolio) {
@@ -845,13 +859,14 @@ export class UserPortfolioService {
    * Validate portfolio sync - compares portfolio data with actual purchases and bids
    * Returns discrepancies for debugging
    */
-  async validatePortfolioSync(walletAddress: string, network: string) {
+  async validatePortfolioSync(walletAddress: string, network?: NetworkType) {
     const investorWallet = walletAddress.toLowerCase();
+    const targetNetwork = network || this.networkContextService.getNetwork();
 
-    this.logger.log(`🔍 Validating portfolio sync for ${investorWallet} on ${network}`);
+    this.logger.log(`🔍 Validating portfolio sync for ${investorWallet} on ${targetNetwork}`);
 
     // Get portfolio document
-    const portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network });
+    const portfolio = await this.portfolioModel.findOne({ walletAddress: investorWallet, network: targetNetwork });
 
     // Get all purchases for this wallet
     const purchases = await this.purchaseModel.find({
@@ -986,7 +1001,7 @@ export class UserPortfolioService {
 
     return {
       walletAddress: investorWallet,
-      network,
+      network: targetNetwork,
       timestamp: new Date(),
       summary,
       issues,
@@ -996,4 +1011,3 @@ export class UserPortfolioService {
     };
   }
 }
-

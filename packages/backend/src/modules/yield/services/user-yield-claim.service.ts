@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { UserYieldClaim } from '../../../database/schemas/user-yield-claim.schema';
-import { YieldClaimStatus } from '@openassets/types';
+import { YieldClaimStatus, NetworkType } from '@openassets/types';
 import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 
@@ -56,7 +56,7 @@ export class UserYieldClaimService {
       // Update portfolio
       try {
         const asset = await this.assetModel.findOne({ assetId: data.assetId });
-        await this.userPortfolioService.updateOnYieldClaim(claim, asset?.network || 'mantle');
+        await this.userPortfolioService.updateOnYieldClaim(claim, (asset?.network || NetworkType.MANTLE) as NetworkType);
       } catch (error: any) {
         this.logger.error(`Failed to update portfolio on yield claim: ${error.message}`);
       }

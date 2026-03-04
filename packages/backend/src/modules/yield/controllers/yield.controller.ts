@@ -1,4 +1,5 @@
 import { Controller, Post, Get, UseGuards, Request, Body, Param, Query } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiHeader, ApiBody } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { UserYieldClaimService } from '../services/user-yield-claim.service';
 import { NotifyYieldClaimDto } from '../dto/notify-yield-claim.dto';
@@ -9,7 +10,9 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Logger } from '@nestjs/common';
+import { NetworkRegistryService } from '../../blockchain/services/network-registry.service';
 
+@ApiTags('Yield')
 @Controller('yield')
 export class YieldController {
   private readonly logger = new Logger(YieldController.name);
@@ -17,6 +20,7 @@ export class YieldController {
   constructor(
     private userYieldClaimService: UserYieldClaimService,
     private notificationService: NotificationService,
+    private networkRegistryService: NetworkRegistryService,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) {}
 
@@ -24,6 +28,10 @@ export class YieldController {
    * Notify backend when investor claims yield (burns tokens for USDC)
    * Called by frontend after successful claimYield() transaction
    */
+  @ApiOperation({ summary: 'Notify yield claim', description: 'Records a yield claim transaction after it has been executed on-chain.' })
+  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'stellar', 'arbitrum', 'creditcoin'] })
+  @ApiBody({ type: NotifyYieldClaimDto })
+  @ApiResponse({ status: 201, description: 'Claim recorded' })
   @Post('claims/notify')
   @UseGuards(JwtAuthGuard)
   async notifyYieldClaim(@Request() req: any, @Body() dto: NotifyYieldClaimDto) {
@@ -109,6 +117,9 @@ export class YieldController {
   /**
    * Get user's yield claim history
    */
+  @ApiOperation({ summary: 'Get my claims', description: 'Returns all yield claims for the authenticated investor.' })
+  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'stellar', 'arbitrum', 'creditcoin'] })
+  @ApiResponse({ status: 200, description: 'Claims history' })
   @Get('claims/my-claims')
   @UseGuards(JwtAuthGuard)
   async getMyClaims(@Request() req: any) {
@@ -145,6 +156,9 @@ export class YieldController {
   /**
    * Get yield claims for a specific asset (for admin/originator)
    */
+  @ApiOperation({ summary: 'Get asset claims', description: 'Returns all yield claims for a specific asset.' })
+  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'stellar', 'arbitrum', 'creditcoin'] })
+  @ApiResponse({ status: 200, description: 'Asset claims history' })
   @Get('claims/asset/:assetId')
   @UseGuards(JwtAuthGuard)
   async getAssetClaims(@Param('assetId') assetId: string) {
@@ -185,6 +199,9 @@ export class YieldController {
   /**
    * Get recent yield claims (admin view)
    */
+  @ApiOperation({ summary: 'Get recent claims', description: 'Returns recently recorded yield claims across all assets.' })
+  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'stellar', 'arbitrum', 'creditcoin'] })
+  @ApiResponse({ status: 200, description: 'Recent claims' })
   @Get('claims/recent')
   @UseGuards(JwtAuthGuard)
   async getRecentClaims(@Query('limit') limit?: string) {
@@ -211,6 +228,42 @@ export class YieldController {
       return {
         success: false,
         error: error,
+      };
+    }
+  }
+
+  /**
+   * Get exact on-chain claimable yield amount
+   */
+  @ApiOperation({ summary: 'Get claimable yield', description: 'Queries the on-chain YieldVault for exact claimable USDC amount.' })
+  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'stellar', 'arbitrum', 'creditcoin'] })
+  @ApiResponse({ status: 200, description: 'Claimable amount' })
+  @Get('claimable')
+  @UseGuards(JwtAuthGuard)
+  async getClaimableYield(
+    @Request() req: any,
+    @Query('tokenAddress') tokenAddress?: string,
+  ) {
+    const investorWallet = req.user.walletAddress;
+    
+    try {
+      const claimable = await this.networkRegistryService.getInvestorClaimableYield(
+        investorWallet,
+        tokenAddress,
+      );
+
+      return {
+        success: true,
+        investorWallet,
+        tokenAddress: tokenAddress || 'ALL',
+        claimableUSDC: claimable,
+        claimableFormatted: `${claimable} USDC`,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to get claimable yield: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
       };
     }
   }

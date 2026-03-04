@@ -1,5 +1,6 @@
 // Blockchain
 export * from './blockchain/addresses';
+export * from './blockchain/contracts';
 
 // Domain
 export * from './domain/user.types';
@@ -15,5 +16,6 @@ export * from './domain/compliance.types';
 export * from './domain/numeric.types';
 
 // Network
+export * from './network/network.types';
 export * from './network/evm.types';
 export * from './network/stellar.types';

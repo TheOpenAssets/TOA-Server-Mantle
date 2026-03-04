@@ -634,6 +634,7 @@ export class SecondaryMarketService {
           tokenAddress,
           orderIds,
         ],
+        account: wallet.account!,
       });
 
       this.logger.log(`[P2P Service] ⏳ Waiting for transaction confirmation: ${hash}`);

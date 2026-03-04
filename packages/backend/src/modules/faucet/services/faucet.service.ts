@@ -62,6 +62,7 @@ export class FaucetService {
         abi: faucetAbi,
         functionName: 'requestUSDC',
         args: [receiverAddress as Address, this.USDC_AMOUNT],
+        account: wallet.account!,
       });
 
       this.logger.log(`Faucet transaction submitted: ${requestHash}`);
@@ -125,6 +126,7 @@ export class FaucetService {
         abi: methFaucetAbi,
         functionName: 'requestMETH',
         args: [receiverAddress as Address, this.METH_AMOUNT],
+        account: wallet.account!,
       });
 
       this.logger.log(`Faucet transaction submitted: ${requestHash}`);

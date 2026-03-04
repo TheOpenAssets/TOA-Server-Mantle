@@ -19,7 +19,7 @@ async function bootstrap() {
       'https://dev.toa-client-mantle.pages.dev',
       'https://www.openassets.xyz',
       'https://openassets.xyz',
-      '*'
+      'http://10.155.192.113:5173',
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
@@ -29,12 +29,14 @@ async function bootstrap() {
       'Cache-Control',
       'Accept',
       'X-Requested-With',
+      'x-network'
     ],
     exposedHeaders: [
       'Content-Type',
       'Cache-Control',
       'Connection',
       'X-Accel-Buffering',
+      'x-network',
     ],
     credentials: true,
   });
@@ -64,7 +66,7 @@ async function bootstrap() {
     }),
   );
 
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 3005;
   await app.listen(port, '0.0.0.0');
 }
 

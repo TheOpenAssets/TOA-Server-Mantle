@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { NetworkType } from '@openassets/types';
 
 export type YieldClaimDocument = YieldClaim & Document;
 
@@ -16,6 +17,9 @@ export class YieldClaim {
 
   @Prop({ required: true })
   tokenAddress!: string;
+
+  @Prop({ type: String, enum: NetworkType, default: NetworkType.MANTLE, index: true })
+  network!: NetworkType;
 
   @Prop({ required: true })
   tokensBurned!: string; // Amount of tokens burned (wei format, 18 decimals)
@@ -59,3 +63,4 @@ export const YieldClaimSchema = SchemaFactory.createForClass(YieldClaim);
 YieldClaimSchema.index({ investorWallet: 1, assetId: 1 });
 YieldClaimSchema.index({ createdAt: -1 });
 YieldClaimSchema.index({ tokenAddress: 1 });
+YieldClaimSchema.index({ investorWallet: 1, network: 1 });

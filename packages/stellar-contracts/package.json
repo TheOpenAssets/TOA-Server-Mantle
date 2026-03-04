@@ -1,7 +1,9 @@
 {
-  "name": "@mantle/stellar-contracts",
+  "name": "@contracts/stellar",
   "version": "1.0.0",
   "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
   "description": "Soroban smart contracts for Open Assets platform",
   "scripts": {
     "build": "cargo build --target wasm32-unknown-unknown --release",
@@ -10,6 +12,7 @@
     "deploy:stack": "ts-node scripts/deploy/deploy_single.ts"
   },
   "devDependencies": {
+    "@openassets/types": "*",
     "@types/node": "^20.0.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.0.0"

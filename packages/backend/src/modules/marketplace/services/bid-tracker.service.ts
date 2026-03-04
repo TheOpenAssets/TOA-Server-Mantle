@@ -1,9 +1,9 @@
-import { Injectable, Logger, BadRequestException, ConflictException, Inject } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
 import { Bid, BidDocument } from '../../../database/schemas/bid.schema';
-import { BidStatus } from '@openassets/types';
+import { BidStatus, NetworkType } from '@openassets/types';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.schema';
 import { NotifyBidDto } from '../dto/notify-bid.dto';
@@ -11,8 +11,8 @@ import { NotifySettlementDto } from '../dto/notify-settlement.dto';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
-import { BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
-import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
+import { ChainManagerRegistry } from '../../blockchain/services/chain-manager-registry.service';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
 import { toCanonical, fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
@@ -22,7 +22,8 @@ export class BidTrackerService {
 
   constructor(
     private configService: ConfigService,
-    @Inject(BLOCKCHAIN_ADAPTER) private blockchainAdapter: BlockchainAdapter,
+    private chainManagerRegistry: ChainManagerRegistry,
+    private networkContextService: NetworkContextService,
     @InjectModel(Bid.name) private bidModel: Model<BidDocument>,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
@@ -35,16 +36,18 @@ export class BidTrackerService {
    */
   async notifyBid(dto: NotifyBidDto, investorWallet: string) {
     this.logger.log(`Processing bid notification: ${dto.txHash}`);
+    const network = this.networkContextService.getNetwork();
 
     // Check if already processed
-    const existing = await this.bidModel.findOne({ transactionHash: dto.txHash });
+    const existing = await this.bidModel.findOne({ transactionHash: dto.txHash, network });
     if (existing) {
-      this.logger.warn(`Bid ${dto.txHash} already processed`);
+      this.logger.warn(`Bid ${dto.txHash} already processed on ${network}`);
       throw new ConflictException('Bid already recorded');
     }
 
     // Validate transaction on-chain
-    const bidData = await this.blockchainAdapter.verifyBidTransaction(
+    const adapter = this.chainManagerRegistry.getManager(network).getBlockchainAdapter();
+    const bidData = await adapter.verifyBidTransaction(
       dto.txHash,
       dto.assetId,
       investorWallet,
@@ -55,7 +58,7 @@ export class BidTrackerService {
     }
 
     // Get asset details
-    const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+    const asset = await this.assetModel.findOne({ assetId: dto.assetId, network });
     if (!asset) {
       throw new BadRequestException('Asset not found');
     }
@@ -71,8 +74,6 @@ export class BidTrackerService {
     const priceBigInt = fromCanonical(bidData.price.value, 6);
     const usdcDepositedRaw = (priceBigInt * tokenAmountBigInt) / BigInt(10 ** 18);
     const usdcDepositedCanonical = toCanonical(usdcDepositedRaw, 6);
-
-    const network = this.configService.get<string>('network.networkType') || 'mantle';
 
     // Record bid in database
     const bid = await this.bidModel.create({
@@ -133,8 +134,10 @@ export class BidTrackerService {
    * Get investor's bids for an auction
    */
   async getInvestorBids(investorWallet: string, assetId?: string) {
+    const network = this.networkContextService.getNetwork();
     const query: any = {
       bidder: investorWallet.toLowerCase(),
+      network,
     };
 
     if (assetId) {
@@ -168,8 +171,9 @@ export class BidTrackerService {
    * Get all bids for an auction (admin/public view)
    */
   async getAuctionBids(assetId: string) {
+    const network = this.networkContextService.getNetwork();
     const bids = await this.bidModel
-      .find({ assetId })
+      .find({ assetId, network })
       .sort({ price: -1, createdAt: 1 }); // Highest price first, then chronological
 
     // Calculate total demand at each price point
@@ -210,12 +214,14 @@ export class BidTrackerService {
    */
   async notifySettlement(dto: NotifySettlementDto, investorWallet: string) {
     this.logger.log(`Processing settlement notification: ${dto.txHash} for bid index ${dto.bidIndex}`);
+    const network = this.networkContextService.getNetwork();
 
     // Find the bid by assetId, bidder, and bidIndex
     const bid = await this.bidModel.findOne({
       assetId: dto.assetId,
       bidder: investorWallet.toLowerCase(),
       bidIndex: dto.bidIndex,
+      network,
     });
 
     if (!bid) {
@@ -230,7 +236,8 @@ export class BidTrackerService {
 
     this.logger.log('Validating settlement transaction on-chain...');
     // Validate settlement transaction on-chain
-    const settlementData = await this.blockchainAdapter.verifyBidSettlement(
+    const adapter = this.chainManagerRegistry.getManager(network).getBlockchainAdapter();
+    const settlementData = await adapter.verifyBidSettlement(
       dto.txHash,
       dto.assetId,
       investorWallet,
@@ -283,7 +290,7 @@ export class BidTrackerService {
 
     // Send notification to bidder based on settlement outcome
     try {
-      const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+      const asset = await this.assetModel.findOne({ assetId: dto.assetId, network });
       const assetName = asset ? `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}` : dto.assetId;
 
       if (newStatus === BidStatus.SETTLED && tokensReceivedBigInt > 0n) {
@@ -335,7 +342,7 @@ export class BidTrackerService {
     // Create purchase record if tokens were received
     if (newStatus === BidStatus.SETTLED && tokensReceivedBigInt > 0n) {
       try {
-        const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+        const asset = await this.assetModel.findOne({ assetId: dto.assetId, network });
         if (!asset) {
           throw new Error(`Asset ${dto.assetId} not found`);
         }
@@ -363,7 +370,7 @@ export class BidTrackerService {
           totalPayment: settlementData.cost.value, // Canonical
           status: 'CONFIRMED',
           source: 'PRIMARY_MARKET',
-          network: asset.network || 'mantle',
+          network,
           metadata: {
             assetName: asset.metadata?.invoiceNumber,
             industry: asset.metadata?.industry,
@@ -373,12 +380,12 @@ export class BidTrackerService {
 
         // Update portfolio
         try {
-          await this.userPortfolioService.updateOnPurchase(purchase, asset.network || 'mantle');
-          this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || 'mantle'}`);
+          await this.userPortfolioService.updateOnPurchase(purchase, network);
+          this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${network}`);
         } catch (error: any) {
           this.logger.error(`❌ CRITICAL: Failed to update portfolio after auction settlement for ${investorWallet}: ${error.message}`);
           this.logger.error(`Error stack: ${error.stack}`);
-          this.logger.error(`Purchase details - assetId: ${dto.assetId}, amount: ${settlementData.tokensReceived.value}, network: ${asset.network || 'mantle'}`);
+          this.logger.error(`Purchase details - assetId: ${dto.assetId}, amount: ${settlementData.tokensReceived.value}, network: ${network}`);
           // Continue operation - portfolio can be rebuilt later via admin endpoint
         }
 
@@ -429,9 +436,11 @@ export class BidTrackerService {
 
   private async syncListingSold(assetId: string) {
     try {
+      const network = this.networkContextService.getNetwork();
       const purchases = await this.purchaseModel.find({
         assetId,
         status: { $in: ['CONFIRMED', 'CLAIMED'] },
+        network,
       }).select({ amount: 1 });
       const totalSold = purchases.reduce(
         (acc, p) => acc + parseFloat(p.amount || '0'),
@@ -439,11 +448,11 @@ export class BidTrackerService {
       );
       const totalSoldCanonical = totalSold.toFixed(4);
       await this.assetModel.updateOne(
-        { assetId },
+        { assetId, network },
         { $set: { 'listing.sold': totalSoldCanonical } },
       );
       this.logger.log(
-        `listing.sold synced for ${assetId}: ${totalSoldCanonical} tokens`,
+        `listing.sold synced for ${assetId} on ${network}: ${totalSoldCanonical} tokens`,
       );
     } catch (error: any) {
       this.logger.error(`Failed to sync listing.sold for ${assetId}: ${error.message}`);

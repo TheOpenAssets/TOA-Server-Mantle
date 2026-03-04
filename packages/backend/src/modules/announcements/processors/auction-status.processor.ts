@@ -18,21 +18,26 @@ import {
   ListingType,
 } from '@openassets/types';
 import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 import { toISTISOString } from '../../../utils/date.utils';
+import { NetworkType } from '@openassets/types';
 
 interface ActivateAuctionJob {
   assetId: string;
   scheduledStartTime: Date;
+  network: NetworkType;
 }
 
 interface CheckAuctionStatusJob {
   assetId: string;
   expectedStartTime: Date;
+  network: NetworkType;
 }
 
 interface CheckAuctionEndJob {
   assetId: string;
   expectedEndTime: Date;
+  network: NetworkType;
 }
 
 @Processor('auction-status-check')
@@ -52,6 +57,7 @@ export class AuctionStatusProcessor extends WorkerHost {
     private networkRegistryService: NetworkRegistryService,
     private notificationService: NotificationService,
     private assetLifecycleService: AssetLifecycleService,
+    private networkContextService: NetworkContextService,
   ) {
     super();
   }
@@ -87,26 +93,30 @@ export class AuctionStatusProcessor extends WorkerHost {
   }
 
   async process(job: Job<ActivateAuctionJob | CheckAuctionStatusJob | CheckAuctionEndJob>): Promise<void> {
-    if (job.name === 'activate-auction') {
-      await this.activateAuction(job as Job<ActivateAuctionJob>);
-    } else if (job.name === 'check-auction-status') {
-      await this.checkAuctionStatus(job as Job<CheckAuctionStatusJob>);
-    } else if (job.name === 'check-auction-end') {
-      await this.checkAuctionEnd(job as Job<CheckAuctionEndJob>);
-    } else {
-      this.logger.warn(`Unknown job type: ${job.name}`);
-    }
+    const network = (job.data as any).network || NetworkType.MANTLE;
+    
+    await this.networkContextService.runWithNetwork(network, async () => {
+      if (job.name === 'activate-auction') {
+        await this.activateAuction(job as Job<ActivateAuctionJob>);
+      } else if (job.name === 'check-auction-status') {
+        await this.checkAuctionStatus(job as Job<CheckAuctionStatusJob>);
+      } else if (job.name === 'check-auction-end') {
+        await this.checkAuctionEnd(job as Job<CheckAuctionEndJob>);
+      } else {
+        this.logger.warn(`Unknown job type: ${job.name}`);
+      }
+    });
   }
 
   private async activateAuction(job: Job<ActivateAuctionJob>): Promise<void> {
-    const { assetId, scheduledStartTime } = job.data;
+    const { assetId, scheduledStartTime, network } = job.data;
 
     this.logger.log(
-      `Activating auction for asset ${assetId} (scheduled: ${scheduledStartTime})`,
+      `Activating auction for asset ${assetId} on ${network} (scheduled: ${scheduledStartTime})`,
     );
 
     try {
-      const asset = await this.assetModel.findOne({ assetId });
+      const asset = await this.assetModel.findOne({ assetId, network });
 
       if (!asset) {
         this.logger.error(`Asset ${assetId} not found`);
@@ -154,7 +164,7 @@ export class AuctionStatusProcessor extends WorkerHost {
       // Activate the auction in database
       const actualStartTime = new Date();
       await this.assetModel.updateOne(
-        { assetId },
+        { assetId, network },
         {
           $set: {
             status: 'LISTED',
@@ -208,6 +218,7 @@ export class AuctionStatusProcessor extends WorkerHost {
         {
           assetId,
           expectedStartTime: actualStartTime,
+          network,
         },
         {
           delay: 60 * 1000, // 1 minute
@@ -226,14 +237,14 @@ export class AuctionStatusProcessor extends WorkerHost {
   }
 
   private async checkAuctionStatus(job: Job<CheckAuctionStatusJob>): Promise<void> {
-    const { assetId, expectedStartTime } = job.data;
+    const { assetId, expectedStartTime, network } = job.data;
 
     this.logger.log(
-      `Checking auction status for asset ${assetId} (expected start: ${expectedStartTime})`,
+      `Checking auction status for asset ${assetId} on ${network} (expected start: ${expectedStartTime})`,
     );
 
     try {
-      const asset = await this.assetModel.findOne({ assetId });
+      const asset = await this.assetModel.findOne({ assetId, network });
 
       if (!asset) {
         this.logger.error(`Asset ${assetId} not found`);
@@ -269,17 +280,17 @@ export class AuctionStatusProcessor extends WorkerHost {
   }
 
   private async checkAuctionEnd(job: Job<CheckAuctionEndJob>): Promise<void> {
-    const { assetId, expectedEndTime } = job.data;
+    const { assetId, expectedEndTime, network } = job.data;
 
     this.logger.log(
-      `Checking auction end for asset ${assetId} (expected end: ${expectedEndTime})`,
+      `Checking auction end for asset ${assetId} on ${network} (expected end: ${expectedEndTime})`,
     );
 
     try {
-      const asset = await this.assetModel.findOne({ assetId });
+      const asset = await this.assetModel.findOne({ assetId, network });
 
       if (!asset) {
-        this.logger.error(`Asset ${assetId} not found`);
+        this.logger.error(`Asset ${assetId} not found on ${network}`);
         return;
       }
 
@@ -304,8 +315,8 @@ export class AuctionStatusProcessor extends WorkerHost {
       this.logger.log(`Auction ${assetId} has ended. Checking if settled by admin...`);
 
       // Fetch all bids for this auction
-      const bids = await this.bidModel.find({ assetId }).sort({ price: -1 }).exec();
-      this.logger.log(`Found ${bids.length} bids for auction ${assetId}`);
+      const bids = await this.bidModel.find({ assetId, network }).sort({ price: -1 }).exec();
+      this.logger.log(`Found ${bids.length} bids for auction ${assetId} on ${network}`);
 
       // Calculate suggested clearing price and notify admins
       try {
@@ -445,7 +456,7 @@ ${bidSummary || '  No bids received'}
 
       // Update asset status to ENDED (bidding closed, but results not yet declared)
       await this.assetModel.updateOne(
-        { assetId },
+        { assetId, network },
         {
           $set: {
             status: 'ENDED', // Bidding closed
@@ -456,18 +467,18 @@ ${bidSummary || '  No bids received'}
         },
       );
 
-      this.logger.log(`Asset ${assetId} status updated to ENDED. Bidding is now closed.`);
+      this.logger.log(`Asset ${assetId} status updated to ENDED on ${network}. Bidding is now closed.`);
 
       // Update all bids for this auction from PLACED to FINALIZED
       const updateResult = await this.bidModel.updateMany(
-        { assetId, status: 'PLACED' },
+        { assetId, status: 'PLACED', network },
         { $set: { status: 'FINALIZED' } }
       );
-      this.logger.log(`Updated ${updateResult.modifiedCount} bids from PLACED to FINALIZED for auction ${assetId}`);
+      this.logger.log(`Updated ${updateResult.modifiedCount} bids from PLACED to FINALIZED for auction ${assetId} on ${network}`);
 
       // Send notifications to all bidders who participated in this auction
-      const bidders = await this.bidModel.distinct('bidder', { assetId });
-      this.logger.log(`Sending auction ended notifications to ${bidders.length} bidders for auction ${assetId}`);
+      const bidders = await this.bidModel.distinct('bidder', { assetId, network });
+      this.logger.log(`Sending auction ended notifications to ${bidders.length} bidders for auction ${assetId} on ${network}`);
 
       for (const bidderWallet of bidders) {
         try {

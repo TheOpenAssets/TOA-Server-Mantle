@@ -43,8 +43,8 @@ export function IsCanonicalAmount(validationOptions?: ValidationOptions) {
           }
 
           // Ensure no leading zeros in integer part (except "0.xxxx")
-          const [integerPart] = value.split('.');
-          if (integerPart.length > 1 && integerPart.startsWith('0') && integerPart !== '0') {
+          const integerPart = value.split('.')[0];
+          if (integerPart && integerPart.length > 1 && integerPart.startsWith('0') && integerPart !== '0') {
             return false;
           }
 
@@ -91,8 +91,8 @@ export function IsOptionalCanonicalAmount(validationOptions?: ValidationOptions)
             return false;
           }
 
-          const [integerPart] = value.split('.');
-          if (integerPart.length > 1 && integerPart.startsWith('0') && integerPart !== '0') {
+          const integerPart = value.split('.')[0];
+          if (integerPart && integerPart.length > 1 && integerPart.startsWith('0') && integerPart !== '0') {
             return false;
           }
 

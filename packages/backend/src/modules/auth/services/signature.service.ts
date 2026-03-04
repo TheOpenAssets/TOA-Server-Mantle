@@ -1,5 +1,6 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { detectNetworkType, NetworkType } from '../utils/wallet.util';
+import { detectNetworkType } from '../utils/wallet.util';
+import { NetworkType } from '@openassets/types';
 import { EvmVerificationAdapter } from '../adapters/evm-verification.adapter';
 import { StellarVerificationAdapter } from '../adapters/stellar-verification.adapter';
 

@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { SettlementStatus } from '@openassets/types';
+import { SettlementStatus, NetworkType } from '@openassets/types';
 
 export type SettlementDocument = Settlement & Document;
 
@@ -11,6 +11,9 @@ export class Settlement {
 
   @Prop({ required: true })
   tokenAddress!: string;
+
+  @Prop({ type: String, enum: NetworkType, default: NetworkType.MANTLE, index: true })
+  network!: NetworkType;
 
   @Prop({ required: true })
   settlementAmount!: number; // Full settlement received from debtor (₹50L)

@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Body, Param, Query, UseGuards, Request, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { v4 as uuidv4 } from 'uuid';
+import { NetworkType } from '@openassets/types';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { UserPortfolioService } from '../services/user-portfolio.service';
 import { NotifyTrustlineDto, CheckAbilityResponseDto } from '../dto/trustline.dto';
@@ -61,7 +62,7 @@ export class TrustlineController {
     }
 
     // Validate it's a Stellar asset
-    if (asset.network !== 'stellar') {
+    if (asset.network !== NetworkType.STELLAR) {
       throw new BadRequestException('Cannot request trustline for non-Stellar asset');
     }
 
@@ -107,8 +108,8 @@ export class TrustlineController {
 
     this.logger.log(`Created trustline request ${requestId} for investor ${investorAddress} and asset ${dto.assetId}`);
 
-    // Update portfolio: add assetId to requested_trustlines
-    await this.userPortfolioService.addRequestedTrustline(investorAddress, dto.network, dto.assetId);
+    // Update portfolio state: add to requested_trustlines
+    await this.userPortfolioService.addRequestedTrustline(investorAddress, dto.assetId, dto.network as NetworkType);
 
     // Note: Admin notification is handled by TrustlineApprovalService in AdminModule
     // via event listener or admin polling the endpoint
@@ -140,7 +141,7 @@ export class TrustlineController {
     // Query portfolio for trustline arrays
     const portfolio = await this.portfolioModel.findOne({
       walletAddress: investorAddress.toLowerCase(),
-      network: 'stellar', // Trustlines are Stellar-specific
+      network: NetworkType.STELLAR, // Trustlines are Stellar-specific
     }).lean();
 
     if (!portfolio) {

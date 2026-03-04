@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createPublicClient, http, Hash, Address, decodeEventLog } from 'viem';
-import { mantleSepolia } from '../../../config/mantle-chain';
+import { createPublicClient, http, Hash, Address, decodeEventLog, defineChain } from 'viem';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { WalletService } from '../../blockchain/services/wallet.service';
 import { MethPriceService } from '../../blockchain/services/meth-price.service';
+import { StArbPriceService } from '../../blockchain/services/starb-price.service';
+import { PRICE_SERVICE } from '../leverage.constants';
 
 /**
  * @title LeverageBlockchainService
@@ -15,16 +16,48 @@ import { MethPriceService } from '../../blockchain/services/meth-price.service';
 export class LeverageBlockchainService {
   private readonly logger = new Logger(LeverageBlockchainService.name);
   private publicClient;
+  private readonly vaultContractName: string;
+  private readonly swapIntegrationName: string;
 
   constructor(
     private configService: ConfigService,
     private contractLoader: ContractLoaderService,
     private walletService: WalletService,
-    private methPriceService: MethPriceService,
+    @Inject(PRICE_SERVICE) private priceService: MethPriceService | StArbPriceService,
   ) {
+    // Determine contract names based on network type
+    const networkType = this.configService.get('network.networkType');
+    if (networkType === 'arbitrum') {
+      this.vaultContractName = 'StARBLeverageVault';
+      this.swapIntegrationName = 'ArbitrumSwapIntegration';
+    } else {
+      this.vaultContractName = 'LeverageVault';
+      this.swapIntegrationName = 'FluxionIntegration';
+    }
+
+    // Create chain dynamically from config
+    const rpcUrl = this.configService.get('blockchain.rpcUrl');
+    const chainId = this.configService.get('blockchain.chainId');
+    const networkName = this.configService.get('network.networkName');
+    const nativeSymbol = this.configService.get('blockchain.evmNativeSymbol') || 'MNT';
+
+    const chain = defineChain({
+      id: chainId,
+      name: networkName,
+      nativeCurrency: {
+        decimals: 18,
+        name: nativeSymbol,
+        symbol: nativeSymbol,
+      },
+      rpcUrls: {
+        default: { http: [rpcUrl] },
+        public: { http: [rpcUrl] },
+      },
+    });
+
     this.publicClient = createPublicClient({
-      chain: mantleSepolia,
-      transport: http(this.configService.get('blockchain.rpcUrl')),
+      chain,
+      transport: http(rpcUrl),
     });
   }
 
@@ -76,8 +109,8 @@ export class LeverageBlockchainService {
     mETHPriceUSD: bigint;
   }): Promise<{ hash: Hash; positionId?: number }> {
     const wallet = this.walletService.getPlatformWallet();
-    const address = this.contractLoader.getContractAddress('LeverageVault');
-    const abi = this.contractLoader.getContractAbi('LeverageVault');
+    const address = this.contractLoader.getContractAddress(this.vaultContractName);
+    const abi = this.contractLoader.getContractAbi(this.vaultContractName);
 
     // Convert mETH price from 6 decimals (USDC wei) to 18 decimals (contract expects 18)
     // e.g., 2856450000 (6 decimals) → 2856450000000000000000 (18 decimals)
@@ -113,6 +146,7 @@ export class LeverageBlockchainService {
           assetIdBytes, // Pass bytes32 assetId
           mETHPriceUSD18,
         ],
+        account: wallet.account!,
       }), 'createPosition write');
 
       // Wait for transaction and parse event to get positionId
@@ -163,25 +197,26 @@ export class LeverageBlockchainService {
     interestPaid: bigint;
   }> {
     const wallet = this.walletService.getPlatformWallet();
-    const address = this.contractLoader.getContractAddress('LeverageVault');
-    const abi = this.contractLoader.getContractAbi('LeverageVault');
+    const address = this.contractLoader.getContractAddress(this.vaultContractName);
+    const abi = this.contractLoader.getContractAbi(this.vaultContractName);
 
     this.logger.log(`🌾 Harvesting yield for position ${positionId}...`);
 
     try {
-      // Get current mETH price and convert from 6 to 18 decimals
-      const methPriceUSDC = BigInt(this.methPriceService.getCurrentPrice());
-      const methPriceUSD = methPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
+      // Get current collateral price and convert from 6 to 18 decimals
+      const collateralPriceUSDC = BigInt(this.priceService.getCurrentPrice());
+      const collateralPriceUSD = collateralPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
 
       this.logger.log(
-        `Using mETH price: $${Number(methPriceUSDC) / 1e6} (${methPriceUSD.toString()} wei)`,
+        `Using collateral price: $${Number(collateralPriceUSDC) / 1e6} (${collateralPriceUSD.toString()} wei)`,
       );
 
       const hash = await this.executeWithRetry(() => wallet.writeContract({
         address: address as Address,
         abi,
         functionName: 'harvestYield',
-        args: [BigInt(positionId), methPriceUSD],
+        args: [BigInt(positionId), collateralPriceUSD],
+        account: wallet.account!,
       }), 'harvestYield write');
 
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
@@ -251,8 +286,8 @@ export class LeverageBlockchainService {
     debtRepaid: string;
   }> {
     const wallet = this.walletService.getPlatformWallet();
-    const address = this.contractLoader.getContractAddress('LeverageVault');
-    const abi = this.contractLoader.getContractAbi('LeverageVault');
+    const address = this.contractLoader.getContractAddress(this.vaultContractName);
+    const abi = this.contractLoader.getContractAbi(this.vaultContractName);
 
     this.logger.log(`⚠️ Liquidating position ${positionId}...`);
 
@@ -263,10 +298,10 @@ export class LeverageBlockchainService {
       this.logger.warn(`   Price in USD: $${Number(overridePrice) / 1e18}`);
       methPriceUSD = overridePrice;
     } else {
-      // Get current mETH price (6 decimals) and convert to 18 decimals
-      const methPriceUSDC = BigInt(this.methPriceService.getCurrentPrice());
-      methPriceUSD = methPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
-      this.logger.log(`   Using current mETH price: $${Number(methPriceUSDC) / 1e6}`);
+      // Get current collateral price (6 decimals) and convert to 18 decimals
+      const collateralPriceUSDC = BigInt(this.priceService.getCurrentPrice());
+      methPriceUSD = collateralPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
+      this.logger.log(`   Using current collateral price: $${Number(collateralPriceUSDC) / 1e6}`);
     }
 
     try {
@@ -276,6 +311,7 @@ export class LeverageBlockchainService {
         abi,
         functionName: 'liquidatePosition',
         args: [BigInt(positionId), methPriceUSD],
+        account: wallet.account!,
       }), 'liquidatePosition write');
 
       this.logger.log(`⏳ Waiting for confirmation... TX: ${hash}`);
@@ -399,8 +435,8 @@ export class LeverageBlockchainService {
     usdcReceived: bigint;
   }> {
     const wallet = this.walletService.getPlatformWallet();
-    const leverageVaultAddress = this.contractLoader.getContractAddress('LeverageVault');
-    const leverageVaultAbi = this.contractLoader.getContractAbi('LeverageVault');
+    const leverageVaultAddress = this.contractLoader.getContractAddress(this.vaultContractName);
+    const leverageVaultAbi = this.contractLoader.getContractAbi(this.vaultContractName);
     const yieldVaultAddress = this.contractLoader.getContractAddress('YieldVault');
     const yieldVaultAbi = this.contractLoader.getContractAbi('YieldVault');
 
@@ -415,7 +451,7 @@ export class LeverageBlockchainService {
 
       const hash = await this.executeWithRetry(async () => {
         const nonce = await this.publicClient.getTransactionCount({
-          address: wallet.account.address,
+          address: wallet.account!.address,
         });
         return wallet.writeContract({
           address: leverageVaultAddress as Address,
@@ -423,6 +459,7 @@ export class LeverageBlockchainService {
           functionName: 'claimYieldFromBurn',
           args: [BigInt(positionId), yieldVaultAddress, rwaToken, tokenAmount],
           nonce,
+          account: wallet.account!,
         });
       }, 'claimYieldFromBurn write');
 
@@ -510,7 +547,7 @@ export class LeverageBlockchainService {
 
       const hash = await this.executeWithRetry(async () => {
         const nonce = await this.publicClient.getTransactionCount({
-          address: wallet.account.address,
+          address: wallet.account!.address,
         });
         return wallet.writeContract({
           address: address as Address,
@@ -518,6 +555,7 @@ export class LeverageBlockchainService {
           functionName: 'processSettlement',
           args: [BigInt(positionId), settlementUSDC],
           nonce,
+          account: wallet.account!,
         });
       }, 'processSettlement write');
 
@@ -605,7 +643,7 @@ export class LeverageBlockchainService {
     try {
       const hash = await this.executeWithRetry(async () => {
         const nonce = await this.publicClient.getTransactionCount({
-          address: wallet.account.address,
+          address: wallet.account!.address,
         });
         return wallet.writeContract({
           address: address as Address,
@@ -613,6 +651,7 @@ export class LeverageBlockchainService {
           functionName: 'settleLiquidation',
           args: [BigInt(positionId)],
           nonce,
+          account: wallet.account!,
         });
       }, 'settleLiquidation write');
 
@@ -736,18 +775,18 @@ export class LeverageBlockchainService {
   async getHealthFactor(positionId: number): Promise<number> {
     try {
       const leverageVaultAddress =
-        this.contractLoader.getContractAddress('LeverageVault');
-      const leverageVaultABI = this.contractLoader.getContractAbi('LeverageVault');
+        this.contractLoader.getContractAddress(this.vaultContractName);
+      const leverageVaultABI = this.contractLoader.getContractAbi(this.vaultContractName);
 
-      // Get current mETH price (6 decimals) and convert to 18 decimals
-      const methPriceUSDC = BigInt(this.methPriceService.getCurrentPrice());
-      const methPriceUSD = methPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
+      // Get current collateral price (6 decimals) and convert to 18 decimals
+      const collateralPriceUSDC = BigInt(this.priceService.getCurrentPrice());
+      const collateralPriceUSD = collateralPriceUSDC * BigInt(1e12); // Convert from 6 to 18 decimals
 
       const healthFactor = (await this.executeWithRetry(() => this.publicClient.readContract({
         address: leverageVaultAddress as Address,
         abi: leverageVaultABI,
         functionName: 'getHealthFactor',
-        args: [BigInt(positionId), methPriceUSD],
+        args: [BigInt(positionId), collateralPriceUSD],
       }), 'getHealthFactor')) as bigint;
 
       return Number(healthFactor);
@@ -803,6 +842,7 @@ export class LeverageBlockchainService {
         abi,
         functionName: 'addCollateral',
         args: [BigInt(positionId), mETHAmount],
+        account: wallet.account!,
       }), 'addCollateral write');
 
       await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({

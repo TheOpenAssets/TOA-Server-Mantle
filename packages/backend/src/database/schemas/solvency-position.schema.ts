@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 import { Settlement } from './settlement.schema';
-import { TokenType, SolvencyHealthStatus, SolvencyPositionStatus, WalletAddress } from '@openassets/types';
+import { TokenType, SolvencyHealthStatus, SolvencyPositionStatus, WalletAddress, NetworkType } from '@openassets/types';
 
 export type SolvencyPositionDocument = SolvencyPosition & Document;
 
@@ -12,6 +12,9 @@ export class SolvencyPosition {
 
   @Prop({ required: true, index: true, type: String })
   userAddress!: WalletAddress; // Wallet address
+
+  @Prop({ type: String, enum: NetworkType, default: NetworkType.MANTLE, index: true })
+  network!: NetworkType;
 
   @Prop({ required: true })
   collateralTokenAddress!: string; // RWA or PrivateAsset token address
@@ -169,3 +172,4 @@ export const SolvencyPositionSchema = SchemaFactory.createForClass(SolvencyPosit
 SolvencyPositionSchema.index({ userAddress: 1, status: 1 }); // User's positions
 SolvencyPositionSchema.index({ healthStatus: 1, status: 1 }); // Liquidatable positions
 SolvencyPositionSchema.index({ collateralTokenAddress: 1 }); // Positions by token
+SolvencyPositionSchema.index({ userAddress: 1, network: 1 });

@@ -15,7 +15,8 @@ import {
   DeployedTokenResult,
   PurchaseVerificationResult,
   BidVerificationResult,
-  BidSettlementResult
+  BidSettlementResult,
+  YieldClaimVerificationResult
 } from '../blockchain-adapter.interface';
 import { EvmWalletAdapter } from './evm-wallet.adapter';
 import { EvmContractAdapter } from './evm-contract-loader.adapter';
@@ -26,24 +27,34 @@ import { toCanonical, fromCanonical } from '../../utils/numeric-conversion';
 export class EvmBlockchainAdapter implements BlockchainAdapter {
   private readonly logger = new Logger(EvmBlockchainAdapter.name);
   private publicClient: PublicClient;
+  private custodyAddress?: string;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly walletAdapter: EvmWalletAdapter,
     private readonly contractAdapter: EvmContractAdapter,
     private readonly assetModel: Model<AssetDocument>,
+    configOverride?: {
+      rpcUrl?: string;
+      chainId?: number;
+      networkName?: string;
+      nativeSymbol?: string;
+      custodyAddress?: string;
+    }
   ) {
-    const rpcUrl = this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
-    const chainId = this.configService.get<number>('blockchain.chainId') || 5003;
-    const networkName = this.configService.get<string>('network.networkName') || 'Mantle Sepolia';
+    const rpcUrl = configOverride?.rpcUrl || this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
+    const chainId = configOverride?.chainId || this.configService.get<number>('blockchain.chainId') || 5003;
+    const networkName = configOverride?.networkName || this.configService.get<string>('network.networkName') || 'Mantle Sepolia';
+    const nativeSymbol = configOverride?.nativeSymbol || this.configService.get<string>('blockchain.evmNativeSymbol') || 'MNT';
+    this.custodyAddress = configOverride?.custodyAddress;
 
     const chain = defineChain({
       id: chainId,
       name: networkName,
       nativeCurrency: {
         decimals: 18,
-        name: 'MNT',
-        symbol: 'MNT',
+        name: nativeSymbol,
+        symbol: nativeSymbol,
       },
       rpcUrls: {
         default: { http: [rpcUrl] },
@@ -193,14 +204,22 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     const abi = this.contractAdapter.getContractInterface('PrimaryMarketplace');
 
     const listingTypeEnum = listingType === ListingType.STATIC ? 0 : 1;
-    const dummyAssetId = '0x' + '0'.repeat(64); 
+
+    // Look up the real assetId from the DB using the token address
+    const asset = await this.assetModel.findOne({ 'token.address': new RegExp(`^${tokenIdentifier}$`, 'i') });
+    if (!asset) {
+      throw new Error(`Asset not found for token ${tokenIdentifier}`);
+    }
+    const assetIdBytes32 = ('0x' + asset.assetId.replace(/-/g, '').padEnd(64, '0')) as `0x${string}`;
+
+    this.logger.log(`Creating listing for asset ${asset.assetId} (token ${tokenIdentifier})...`);
 
     const txId = await this.executeWithRetry(() => (wallet as any).writeContract({
       address: address as Address,
       abi,
       functionName: 'createListing',
       args: [
-        dummyAssetId,
+        assetIdBytes32,
         tokenIdentifier as Address,
         listingTypeEnum,
         fromCanonical(price.toString(), 6), // USDC Price (6 decimals)
@@ -494,10 +513,10 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     const tokenAbi = this.contractAdapter.getContractInterface('RWAToken');
 
     // Get custody wallet address (where unsold tokens are held)
-    const custodyWalletAddress = this.configService.get<string>('blockchain.custodyAddress');
+    const custodyWalletAddress = this.custodyAddress || this.configService.get<string>('blockchain.custodyAddress');
 
     if (!custodyWalletAddress) {
-      throw new Error('Custody wallet address not configured in .env (CUSTODY_WALLET_ADDRESS)');
+      throw new Error('Custody wallet address not configured');
     }
 
     this.logger.log(`   Checking custody wallet: ${custodyWalletAddress}`);
@@ -667,6 +686,98 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     this.logger.log(`[EVM] USDC transferred in tx: ${hash}`);
     
     return { txId: hash };
+  }
+
+  async verifyYieldClaimTransaction(
+    txHash: string,
+    tokenAddress: string,
+    expectedInvestor: string,
+  ): Promise<YieldClaimVerificationResult | null> {
+    try {
+      const receipt = await this.executeWithRetry(() => this.publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` }), 'getTransactionReceipt');
+
+      if (!receipt || receipt.status !== 'success') {
+        this.logger.error(`Transaction not found or failed: ${txHash}`);
+        return null;
+      }
+
+      const block = await this.publicClient.getBlock({ blockNumber: receipt.blockNumber });
+      const yieldVaultAddress = this.contractAdapter.getContractAddress('YieldVault');
+      const abi = this.contractAdapter.getContractInterface('YieldVault');
+
+      for (const log of receipt.logs) {
+        if (log.address.toLowerCase() !== yieldVaultAddress.toLowerCase()) {
+          continue;
+        }
+
+        try {
+          const decoded = decodeEventLog({
+            abi,
+            data: log.data,
+            topics: log.topics,
+          }) as unknown as { eventName: string; args: any };
+
+          if (decoded.eventName === 'YieldClaimed') {
+            const { user, tokenAddress: eventTokenAddress, tokensBurned, usdcReceived } = decoded.args;
+
+            if (
+              user.toLowerCase() === expectedInvestor.toLowerCase() &&
+              eventTokenAddress.toLowerCase() === tokenAddress.toLowerCase()
+            ) {
+              return {
+                tokensBurned: toCanonical(tokensBurned, 18),
+                usdcReceived: toCanonical(usdcReceived, 6),
+                blockNumber: Number(receipt.blockNumber),
+                timestamp: Number(block.timestamp),
+              };
+            }
+          }
+        } catch { continue; }
+      }
+
+      this.logger.error(`YieldClaimed event not found in transaction ${txHash}`);
+      return null;
+    } catch (error: any) {
+      this.logger.error(`Error validating yield claim ${txHash}:`, error.message);
+      return null;
+    }
+  }
+
+  async getClaimableYield(
+    userAddress: string,
+    tokenAddress?: string,
+  ): Promise<string> {
+    const yieldVaultAddress = this.contractAdapter.getContractAddress('YieldVault');
+    const abi = this.contractAdapter.getContractInterface('YieldVault');
+
+    let claimableRaw: bigint;
+
+    if (tokenAddress) {
+      // Get user's RWA token balance first
+      const rwaTokenAbi = this.contractAdapter.getContractInterface('RWAToken');
+      const balance = await this.executeWithRetry(() => this.publicClient.readContract({
+        address: tokenAddress as Address,
+        abi: rwaTokenAbi,
+        functionName: 'balanceOf',
+        args: [userAddress],
+      }), 'balanceOf read') as bigint;
+
+      claimableRaw = await this.executeWithRetry(() => this.publicClient.readContract({
+        address: yieldVaultAddress as Address,
+        abi,
+        functionName: 'getClaimableForTokens',
+        args: [tokenAddress, balance],
+      }), 'getClaimableForTokens read') as bigint;
+    } else {
+      claimableRaw = await this.executeWithRetry(() => this.publicClient.readContract({
+        address: yieldVaultAddress as Address,
+        abi,
+        functionName: 'getUserClaimable',
+        args: [userAddress],
+      }), 'getUserClaimable read') as bigint;
+    }
+
+    return toCanonical(claimableRaw, 6).value;
   }
 }
 

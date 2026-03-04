@@ -84,6 +84,7 @@ export class PrivateAssetService {
         BigInt(params.valuation),
         params.documentHash || '',
       ],
+      account: wallet.account!,
     });
 
     this.logger.log(`Deployment transaction submitted: ${hash}`);
@@ -239,6 +240,7 @@ export class PrivateAssetService {
       abi: tokenAbi,
       functionName: 'updateValuation',
       args: [BigInt(newValuation)],
+      account: wallet.account!,
     });
 
     this.logger.log(`Valuation update transaction submitted: ${hash}`);
@@ -283,6 +285,7 @@ export class PrivateAssetService {
       abi: tokenAbi,
       functionName: 'setActive',
       args: [isActive],
+      account: wallet.account!,
     });
 
     await this.publicClient.waitForTransactionReceipt({ hash, timeout: 180000 });

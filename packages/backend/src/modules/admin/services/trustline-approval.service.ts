@@ -10,7 +10,7 @@ import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
 import { NetworkRegistryService } from '../../blockchain/services/network-registry.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { NotificationType, NotificationSeverity, NotificationAction } from '@openassets/types';
+import { NotificationType, NotificationSeverity, NotificationAction, NetworkType } from '@openassets/types';
 
 interface TrustlineRequestFilters {
   status?: TrustlineRequestStatus;
@@ -128,7 +128,7 @@ export class TrustlineApprovalService {
     this.logger.log(`Created trustline request ${requestId} for investor ${investorAddress} and asset ${assetId}`);
 
     // Update portfolio: add assetId to requested_trustlines
-    await this.userPortfolioService.addRequestedTrustline(investorAddress, network, assetId);
+    await this.userPortfolioService.addRequestedTrustline(investorAddress, assetId, network as NetworkType);
 
     // Notify all admins
     await this.notifyAllAdmins(
@@ -209,8 +209,8 @@ export class TrustlineApprovalService {
       // Update portfolio: move from requested to approved
       await this.userPortfolioService.approveTrustline(
         request.investorAddress,
-        request.network,
-        request.assetId
+        request.assetId,
+        request.network as NetworkType
       );
 
       // Notify investor

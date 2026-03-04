@@ -40,6 +40,7 @@ export class AppModule {
     // So we read from process.env directly here as a bootstrap step.
     const networkType = process.env.NETWORK_TYPE || 'mantle';
     const isMantle = networkType === 'mantle';
+    const isArbitrum = networkType === 'arbitrum';
 
     const imports: any[] = [
       ConfigModule.forRoot({
@@ -110,12 +111,19 @@ export class AppModule {
     ];
 
     // Conditional Modules
+    // Leverage and SecondaryMarket are available on both Mantle and Arbitrum
+    if (isMantle || isArbitrum) {
+      imports.push(
+        LeverageModule.forRoot(),
+        SecondaryMarketModule,
+      );
+    }
+
+    // Mantle-only modules
     if (isMantle) {
       imports.push(
         FaucetModule,
-        LeverageModule,
         SolvencyModule,
-        SecondaryMarketModule,
         PartnersModule,
       );
     }

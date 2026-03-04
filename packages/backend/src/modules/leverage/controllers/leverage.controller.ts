@@ -1,12 +1,13 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request, Logger, Inject, Query } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { LeveragePositionService } from '../services/leverage-position.service';
-import { FluxionDEXService } from '../services/fluxion-dex.service';
 import { LeverageBlockchainService } from '../services/leverage-blockchain.service';
-import { InitiateLeveragePurchaseDto, GetSwapQuoteDto, UnwindPositionDto } from '../dto/leverage.dto';
+import { InitiateLeveragePurchaseDto } from '../dto/leverage.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { DEX_SERVICE, PRICE_SERVICE } from '../leverage.constants';
+import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
 @Controller('leverage')
 @UseGuards(JwtAuthGuard)
@@ -16,7 +17,8 @@ export class LeverageController {
 
   constructor(
     private readonly positionService: LeveragePositionService,
-    private readonly dexService: FluxionDEXService,
+    @Inject(DEX_SERVICE) private readonly dexService: { calculateMETHValueUSD: (amount: bigint) => Promise<bigint>; getMETHPrice: () => Promise<bigint>; getQuote: (amount: bigint) => Promise<bigint> },
+    @Inject(PRICE_SERVICE) private readonly priceService: { getCurrentPriceUSD: () => number; getPriceChartData: (days?: number) => { date: string; price: number }[]; getStats: () => { current: number; min: number; max: number; avg: number; changePercent: number } },
     private readonly blockchainService: LeverageBlockchainService,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) { }
@@ -28,7 +30,7 @@ export class LeverageController {
   @Post('initiate')
   async initiateLeveragePurchase(@Request() req: any, @Body() dto: InitiateLeveragePurchaseDto) {
     const userAddress = req.user.walletAddress;
-    const lockKey = `${userAddress}:${dto.assetId}:${dto.tokenAmount}:${dto.pricePerToken}:${dto.mETHCollateral}`;
+    const lockKey = `${userAddress}:${dto.assetId}:${dto.tokenAmount}:${dto.pricePerToken}:${dto.collateral}`;
 
     if (this.pendingPurchases.has(lockKey)) {
       this.logger.warn(`Duplicate leverage initiate blocked for ${lockKey}`);
@@ -60,7 +62,7 @@ export class LeverageController {
 
       this.logger.log(`Token Amount: ${dto.tokenAmount}`);
       this.logger.log(`Price Per Token (request): ${dto.pricePerToken}`);
-      this.logger.log(`mETH Collateral: ${dto.mETHCollateral}`);
+      this.logger.log(`mETH Collateral: ${dto.collateral}`);
       this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       // Get actual on-chain listing price (single source of truth)
@@ -70,37 +72,44 @@ export class LeverageController {
 
       this.logger.log(`💰 On-chain price per token: ${actualPricePerToken} USDC wei (${Number(actualPricePerToken) / 1e6} USDC)`);
 
-      if (dto.pricePerToken && BigInt(dto.pricePerToken) !== actualPricePerToken) {
+      if (dto.pricePerToken && fromCanonical(dto.pricePerToken, 6) !== actualPricePerToken) {
         this.logger.warn(`⚠️  Price mismatch! Request: ${dto.pricePerToken}, On-chain: ${actualPricePerToken}. Using on-chain value.`);
       }
 
       // Calculate total USDC needed using ACTUAL on-chain price
-      const tokenAmountBigInt = BigInt(dto.tokenAmount);
+      // tokenAmount is human-readable (e.g. "100.0000"), convert to wei (18 decimals)
+      const tokenAmountBigInt = fromCanonical(dto.tokenAmount, 18);
       const pricePerTokenBigInt = actualPricePerToken;
       const totalUSDCNeeded = (tokenAmountBigInt * pricePerTokenBigInt) / BigInt(10 ** 18);
 
       this.logger.log(`💰 Total USDC needed: ${totalUSDCNeeded.toString()} (${Number(totalUSDCNeeded) / 1e6} USDC)`);
 
-      // Validate mETH collateral meets 150% LTV requirement
-      const mETHCollateralBigInt = BigInt(dto.mETHCollateral);
-      this.logger.log(`🔍 Calculating mETH collateral value...`);
-      const mETHValueUSD = await this.dexService.calculateMETHValueUSD(mETHCollateralBigInt);
-      const requiredCollateral = (totalUSDCNeeded * BigInt(150)) / BigInt(100);
+      // Collateral: if user provides 0, auto-calculate minimum 150% LTV from position size.
+      // On Arbitrum the platform wallet provides stARB from its reserves, not the user.
+      const requiredCollateralUSDC = (totalUSDCNeeded * BigInt(150)) / BigInt(100);
+      let mETHCollateralBigInt = fromCanonical(dto.collateral, 18);
 
-      this.logger.log(`📈 mETH Collateral Value: ${mETHValueUSD.toString()} USDC wei (${Number(mETHValueUSD) / 1e6} USDC)`);
-      this.logger.log(`📊 Required Collateral (150% LTV): ${requiredCollateral.toString()} USDC wei (${Number(requiredCollateral) / 1e6} USDC)`);
-
-      if (mETHValueUSD < requiredCollateral) {
-        this.logger.error(`❌ Insufficient collateral!`);
-        this.logger.error(`   Required: ${Number(requiredCollateral) / 1e6} USDC worth`);
-        this.logger.error(`   Provided: ${Number(mETHValueUSD) / 1e6} USDC worth`);
-        throw new Error(
-          `Insufficient collateral. Required: ${requiredCollateral.toString()} USDC worth of mETH, ` +
-          `Provided: ${mETHValueUSD.toString()} USDC worth`,
+      if (mETHCollateralBigInt === 0n) {
+        // Convert required USDC (6 decimals) to stARB (18 decimals) using current price.
+        // Use ceiling division so the contract's own LTV check (stARB * price / 1e30 >= required)
+        // never fails due to rounding: ceil(a/b) = (a + b - 1) / b
+        // Also use 10n**18n instead of BigInt(1e18) — 1e18 > MAX_SAFE_INTEGER so BigInt() is unsafe.
+        const collateralPriceUSDC = BigInt(Math.floor(this.priceService.getCurrentPriceUSD() * 1e6));
+        const numerator = requiredCollateralUSDC * (10n ** 18n);
+        mETHCollateralBigInt = (numerator + collateralPriceUSDC - 1n) / collateralPriceUSDC; // ceiling
+        this.logger.log(
+          `ℹ️  No collateral provided — auto-calculated ${Number(mETHCollateralBigInt) / 1e18} stARB ` +
+          `($${Number(requiredCollateralUSDC) / 1e6} @ $${Number(collateralPriceUSDC) / 1e6}/stARB)`,
         );
       }
 
-      this.logger.log(`✅ Collateral validation passed`);
+      this.logger.log(`🔍 Calculating collateral value...`);
+      const mETHValueUSD = await this.dexService.calculateMETHValueUSD(mETHCollateralBigInt);
+
+      this.logger.log(`📈 Collateral Value: ${mETHValueUSD.toString()} USDC wei (${Number(mETHValueUSD) / 1e6} USDC)`);
+      this.logger.log(`📊 Required Collateral (150% LTV): ${requiredCollateralUSDC.toString()} USDC wei (${Number(requiredCollateralUSDC) / 1e6} USDC)`);
+
+      this.logger.log(`✅ Collateral set`);
 
       // Get current mETH price for contract (6 decimals USDC wei format)
       const mETHPriceUSD = await this.dexService.getMETHPrice();
@@ -143,7 +152,7 @@ export class LeverageController {
         assetId: dto.assetId,
         rwaTokenAddress: rwaTokenAddress, // Use DB value
         rwaTokenAmount: dto.tokenAmount,
-        mETHCollateral: dto.mETHCollateral,
+        mETHCollateral: dto.collateral,
         usdcBorrowed: totalUSDCNeeded.toString(),
         initialLTV,
         currentHealthFactor: healthFactor,
@@ -309,6 +318,26 @@ export class LeverageController {
     return {
       price: price.toString(),
       priceFormatted: `$${Number(price)}`,
+    };
+  }
+
+  /**
+   * GET /leverage/stARB-price
+   * Get current stARB price, chart data, and stats
+   */
+  @Get('stARB-price')
+  async getStARBPrice(@Query('days') days?: string) {
+    const chartDays = days ? parseInt(days, 10) : 30;
+    const priceUSD = this.priceService.getCurrentPriceUSD();
+    const chartData = this.priceService.getPriceChartData(chartDays);
+    const stats = this.priceService.getStats();
+
+    return {
+      price: Math.floor(priceUSD * 1e6).toString(),
+      priceUSD,
+      priceFormatted: `$${priceUSD.toFixed(4)}`,
+      chartData,
+      stats,
     };
   }
 

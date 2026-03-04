@@ -1,0 +1,29 @@
+node_modules
+.env
+artifacts
+cache
+typechain-types
+coverage
+coverage.json
+dist
+
+# Hardhat files
+cache
+artifacts
+
+# TypeChain
+typechain
+typechain-types
+
+# solidity-coverage
+coverage
+coverage.json
+.coverage_artifacts
+.coverage_cache
+.coverage_contracts
+
+# Hardhat Ignition
+ignition/deployments/chain-*
+
+# VS Code
+.vscode

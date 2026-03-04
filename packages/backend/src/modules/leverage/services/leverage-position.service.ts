@@ -7,7 +7,8 @@ import {
 } from '../../../database/schemas/leverage-position.schema';
 import { 
   LeveragePositionStatus as PositionStatus, 
-  LeveragePositionHealth as PositionHealth 
+  LeveragePositionHealth as PositionHealth,
+  NetworkType
 } from '@openassets/types';
 import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
@@ -540,7 +541,7 @@ export class LeveragePositionService {
   private async updatePortfolio(assetId: string, positionId: number) {
     try {
       const asset = await this.assetModel.findOne({ assetId });
-      await this.userPortfolioService.updateOnLeverageEvent(positionId, asset?.network || 'mantle');
+      await this.userPortfolioService.updateOnLeverageEvent(positionId, (asset?.network || NetworkType.MANTLE) as NetworkType);
     } catch (error: any) {
       this.logger.error(`Failed to update portfolio for leverage position ${positionId}: ${error.message}`);
     }

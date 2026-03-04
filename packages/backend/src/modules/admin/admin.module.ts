@@ -3,7 +3,6 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AssetModule } from '../assets/assets.module';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { YieldModule } from '../yield/yield.module';
-import { LeverageModule } from '../leverage/leverage.module';
 import { ComplianceController } from './controllers/compliance.controller';
 import { AssetOpsController } from './controllers/asset-ops.controller';
 import { YieldOpsController } from './controllers/yield-ops.controller';
@@ -23,7 +22,12 @@ import { RegistryModule } from '../registry/registry.module';
 import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
 import { MantleAdminStrategy } from './implementations/mantle/mantle-admin-strategy.service';
 import { StellarAdminStrategy } from './implementations/stellar/stellar-admin-strategy.service';
-import { MANTLE_ADMIN_STRATEGY_TOKEN, STELLAR_ADMIN_STRATEGY_TOKEN } from '../registry/registry.constants';
+import { CreditCoinAdminStrategy } from './implementations/creditcoin/creditcoin-admin-strategy.service';
+import { 
+  MANTLE_ADMIN_STRATEGY_TOKEN, 
+  STELLAR_ADMIN_STRATEGY_TOKEN,
+  CREDITCOIN_ADMIN_STRATEGY_TOKEN,
+} from '../registry/registry.constants';
 
 @Module({
   imports: [
@@ -36,7 +40,6 @@ import { MANTLE_ADMIN_STRATEGY_TOKEN, STELLAR_ADMIN_STRATEGY_TOKEN } from '../re
     AssetModule,
     BlockchainModule,
     YieldModule,
-    LeverageModule,
     AuthModule,
     MarketplaceModule,
     NotificationsModule,
@@ -62,10 +65,15 @@ import { MANTLE_ADMIN_STRATEGY_TOKEN, STELLAR_ADMIN_STRATEGY_TOKEN } from '../re
       provide: STELLAR_ADMIN_STRATEGY_TOKEN,
       useClass: StellarAdminStrategy,
     },
+    {
+      provide: CREDITCOIN_ADMIN_STRATEGY_TOKEN,
+      useClass: CreditCoinAdminStrategy,
+    },
   ],
   exports: [
     MANTLE_ADMIN_STRATEGY_TOKEN,
     STELLAR_ADMIN_STRATEGY_TOKEN,
+    CREDITCOIN_ADMIN_STRATEGY_TOKEN,
     TrustlineApprovalService,
   ],
 })

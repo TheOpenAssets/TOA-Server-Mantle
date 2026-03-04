@@ -9,6 +9,7 @@ import { P2POrder, P2POrderDocument } from '../../../database/schemas/p2p-order.
 import { LeveragePosition } from '../../../database/schemas/leverage-position.schema';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { OrderStatus, WalletAddress } from '@openassets/types';
+import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
 export interface TokenBalanceInfo {
     assetId: string;
@@ -146,7 +147,7 @@ export class TokenBalanceService {
             });
 
             for (const position of leveragePositions) {
-                inLeverageVault += BigInt(position.rwaTokenAmount);
+                inLeverageVault += fromCanonical(position.rwaTokenAmount, 18);
             }
             this.logger.debug(`[Balance Service] Found ${leveragePositions.length} active leverage positions, total: ${(Number(inLeverageVault) / 1e18).toFixed(4)} tokens`);
         } catch (error: any) {

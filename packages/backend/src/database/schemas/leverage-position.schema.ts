@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import { LeveragePositionStatus, LeveragePositionHealth, WalletAddress } from '@openassets/types';
+import { LeveragePositionStatus, LeveragePositionHealth, WalletAddress, NetworkType } from '@openassets/types';
 
 export type LeveragePositionDocument = LeveragePosition & Document;
 
@@ -76,6 +76,9 @@ export class LeveragePosition extends Document {
 
   @Prop({ required: true, index: true })
   assetId!: string; // Asset ID reference
+
+  @Prop({ type: String, enum: NetworkType, default: NetworkType.MANTLE, index: true })
+  network!: NetworkType;
 
   @Prop({ required: true })
   rwaTokenAddress!: string; // RWA token contract address
@@ -251,3 +254,4 @@ LeveragePositionSchema.index({ assetId: 1, status: 1 });
 LeveragePositionSchema.index({ healthStatus: 1, status: 1 });
 LeveragePositionSchema.index({ positionId: 1 }, { unique: true });
 LeveragePositionSchema.index({ createdAt: -1 });
+LeveragePositionSchema.index({ userAddress: 1, network: 1 });
