@@ -29,12 +29,14 @@ async function bootstrap() {
       'Cache-Control',
       'Accept',
       'X-Requested-With',
+      'x-network'
     ],
     exposedHeaders: [
       'Content-Type',
       'Cache-Control',
       'Connection',
       'X-Accel-Buffering',
+      'x-network',
     ],
     credentials: true,
   });
