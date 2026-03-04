@@ -25,6 +25,7 @@ import { ContractLoaderService } from '../../blockchain/services/contract-loader
 import { Address, createPublicClient, http, PublicClient } from 'viem';
 import { getActiveChain } from '@/src/config/active-chain';
 import { PartnerLoanStatus, RepaymentSource, WalletAddress } from '@openassets/types';
+import { CreditScoreService } from '@/src/modules/credit-score/credit-score.service';
 
 @Injectable()
 export class PartnerLoanService {
@@ -41,6 +42,7 @@ export class PartnerLoanService {
     private configService: ConfigService,
     private walletService: WalletService,
     private contractLoader: ContractLoaderService,
+    private creditScoreService: CreditScoreService,
   ) {
     this.publicClient = createPublicClient({
       chain: getActiveChain(),
@@ -94,6 +96,28 @@ export class PartnerLoanService {
     );
     if (!position) {
       throw new BadRequestException('No active collateral position found for this OAID in backend');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // STEP 2.5: CREDIT SCORE LTV CHECK
+    // ═══════════════════════════════════════════════════════
+    const DEFAULT_LTV = 7000;
+    let effectiveLtv = DEFAULT_LTV;
+    try {
+      effectiveLtv = await this.creditScoreService.getEffectiveLtv(borrowDto.userWallet);
+    } catch (_err) {
+      effectiveLtv = DEFAULT_LTV;
+    }
+
+    // Use creditLimit as proxy for collateral value (creditLimit already reflects collateral * LTV)
+    // Derive collateral value from creditLimit at standard LTV: collateralValue = creditLimit * 10000 / standardLtv
+    const collateralValueProxy = Math.floor((Number(creditLine.creditLimit) * 10000) / DEFAULT_LTV);
+    const adjustedMax = Math.floor((collateralValueProxy * effectiveLtv) / 10000);
+
+    if (Number(borrowDto.borrowAmount) > adjustedMax) {
+      throw new BadRequestException(
+        `Your credit score tier allows a maximum LTV of ${effectiveLtv / 100}%. Current maximum borrowable: ${adjustedMax} USDC`,
+      );
     }
 
     // ═══════════════════════════════════════════════════════

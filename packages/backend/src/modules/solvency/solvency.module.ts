@@ -15,6 +15,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PartnersModule } from '../partners/partners.module';
 import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
+import { CreditScoreModule } from '@/src/modules/credit-score/credit-score.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
     NotificationsModule,
     forwardRef(() => PartnersModule), // For accessing PartnerLoanService (circular dependency)
     UserPortfolioModule,
+    CreditScoreModule,
   ],
   controllers: [SolvencyController, SolvencyAdminController],
   providers: [

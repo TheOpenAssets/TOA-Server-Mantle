@@ -9,6 +9,7 @@ import { PartnerLoan, PartnerLoanSchema } from '../../database/schemas/partner-l
 import { PartnerApiLog, PartnerApiLogSchema } from '../../database/schemas/partner-api-log.schema';
 import { SolvencyModule } from '../solvency/solvency.module';
 import { BlockchainModule } from '../blockchain/blockchain.module';
+import { CreditScoreModule } from '@/src/modules/credit-score/credit-score.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
     ]),
     forwardRef(() => SolvencyModule), // Circular dependency with SolvencyModule
     forwardRef(() => BlockchainModule), // Circular dependency via BlockchainModule
+    CreditScoreModule,
   ],
   controllers: [PartnerController, PartnerAdminController],
   providers: [PartnerService, PartnerLoanService],

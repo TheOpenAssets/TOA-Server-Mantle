@@ -206,6 +206,7 @@ export class SolvencyBlockchainService {
     amount: string,
     loanDuration: number,
     numberOfInstallments: number,
+    ltv?: number,
   ): Promise<{
     txHash: string;
     blockNumber: number;
@@ -215,8 +216,10 @@ export class SolvencyBlockchainService {
     const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
     const vaultAbi = this.contractLoader.getContractAbi('SolvencyVault');
 
+    const effectiveLtv = ltv ?? 7000;
+
     this.logger.log(`Borrowing ${amount} USDC for position ${positionId}`);
-    this.logger.log(`Terms: ${loanDuration}s duration, ${numberOfInstallments} installments`);
+    this.logger.log(`Terms: ${loanDuration}s duration, ${numberOfInstallments} installments, LTV: ${effectiveLtv} bps`);
 
     const hash = await this.retryWithBackoff(() => wallet.writeContract({
       address: vaultAddress as Address,

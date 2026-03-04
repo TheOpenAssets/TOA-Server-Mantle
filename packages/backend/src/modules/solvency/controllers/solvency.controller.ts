@@ -22,6 +22,7 @@ import { UploadPrivateAssetRequestDto } from '../dto/upload-private-asset-reques
 import { NotifyLoanBorrowDto } from '../dto/notify-loan-borrow.dto';
 import { NotifyLoanRepaymentDto } from '../dto/notify-loan-repayment.dto';
 import { PartnerLoanService } from '../../partners/services/partner-loan.service';
+import { CreditScoreService } from '@/src/modules/credit-score/credit-score.service';
 
 @Controller('solvency')
 @UseGuards(JwtAuthGuard)
@@ -31,6 +32,7 @@ export class SolvencyController {
     private positionService: SolvencyPositionService,
     private privateAssetService: PrivateAssetService,
     private partnerLoanService: PartnerLoanService,
+    private creditScoreService: CreditScoreService,
   ) {}
 
   /**
@@ -101,17 +103,33 @@ export class SolvencyController {
       throw new Error('Not authorized to borrow from this position');
     }
 
-    // Borrow on-chain
+    // Resolve effective LTV from credit score — never block borrow on failure
+    const DEFAULT_LTV = 7000;
+    let terms = {
+      compositeScore: 0,
+      tier: 'GOOD' as 'EXCELLENT' | 'GOOD' | 'FAIR' | 'POOR',
+      effectiveLtv: DEFAULT_LTV,
+      standardLtv: DEFAULT_LTV,
+      hasBoost: false,
+    };
+    try {
+      terms = await this.creditScoreService.getBorrowTerms(userAddress);
+    } catch (_err) {
+      // Credit score failure must never block a borrow — use defaults
+    }
+
+    // Borrow on-chain with credit-adjusted LTV
     const result = await this.blockchainService.borrowUSDC(
       positionId,
       dto.amount,
       dto.loanDuration,
       dto.numberOfInstallments,
+      terms.effectiveLtv,
     );
 
     // Update database
     const updatedPosition = await this.positionService.recordBorrow(
-      positionId, 
+      positionId,
       dto.amount,
       dto.loanDuration,
       dto.numberOfInstallments
@@ -132,6 +150,13 @@ export class SolvencyController {
       txHash: result.txHash,
       blockNumber: result.blockNumber,
       position: updatedPosition,
+      creditBoost: {
+        score: terms.compositeScore,
+        tier: terms.tier,
+        appliedLtv: terms.effectiveLtv,
+        standardLtv: DEFAULT_LTV,
+        boosted: terms.hasBoost,
+      },
     };
   }
 
