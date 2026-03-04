@@ -11,6 +11,7 @@ import { ContractLoaderService } from './services/contract-loader.service';
 import { EventListenerService } from './services/event-listener.service';
 import { MethPriceService } from './services/meth-price.service';
 import { StArbPriceService } from './services/starb-price.service';
+import { CreditcoinSubstrateService } from './services/creditcoin-substrate.service';
 import { NetworkRegistryService } from './services/network-registry.service';
 import { ChainManagerRegistry } from './services/chain-manager-registry.service';
 import { NetworkContextService } from './services/network-context.service';
@@ -89,6 +90,7 @@ export class BlockchainModule implements NestModule {
         MethPriceService,
         StArbPriceService,
         EventProcessor,
+        CreditcoinSubstrateService,
       ],
       exports: [
         NetworkRegistryService,
@@ -101,6 +103,7 @@ export class BlockchainModule implements NestModule {
         MethPriceService,
         StArbPriceService,
         MongooseModule,
+        CreditcoinSubstrateService,
       ],
     };
   }
