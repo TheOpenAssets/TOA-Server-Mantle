@@ -1,0 +1,7 @@
+node_modules
+dist
+cache
+artifacts
+typechain-types
+.env
+deployed_contracts.json

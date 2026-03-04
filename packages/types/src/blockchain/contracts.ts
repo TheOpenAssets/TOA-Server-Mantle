@@ -31,6 +31,13 @@ export const ContractNameRegistry = {
   MockStARB: 'MockStARB',
   MockArbitrumDEX: 'MockArbitrumDEX',
 
+  // Credit Coin-only
+  CTCLeverageVault: 'CTCLeverageVault',
+  CTCDEXIntegration: 'CTCDEXIntegration',
+  MockCTC: 'MockCTC',
+  MockCTCDEX: 'MockCTCDEX',
+  CTCFaucet: 'CTCFaucet',
+
   // Stellar-only
   AssetRegistry: 'AssetRegistry',
 } as const;
