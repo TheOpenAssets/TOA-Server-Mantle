@@ -257,10 +257,11 @@ export class CreditCoinAdminStrategy implements IAdminDomainStrategy {
     this.logger.log(`   Platform Fee: $${settlement.platformFee.toFixed(2)} (${platformFeeUsdcWei} USDC wei)`);
     this.logger.log(`   Net Distribution: $${settlement.netDistribution.toFixed(2)} (${netDistributionUsdcWei} USDC wei)`);
 
-    // Get admin wallet address for fee transfer
-    let adminWalletAddress = this.configService.get<string>('blockchain.adminWallet');
+    // Get admin wallet address for fee transfer (try Credit Coin specific first)
+    let adminWalletAddress = this.configService.get<string>('blockchain.creditcoin.adminWallet');
     if (!adminWalletAddress) {
-      const pk = this.configService.get<string>('blockchain.adminPrivateKey');
+      const pk = this.configService.get<string>('blockchain.creditcoin.adminPrivateKey') || 
+                 this.configService.get<string>('blockchain.adminPrivateKey');
       if (!pk) {
         throw new HttpException('Admin wallet address not configured', HttpStatus.INTERNAL_SERVER_ERROR);
       }

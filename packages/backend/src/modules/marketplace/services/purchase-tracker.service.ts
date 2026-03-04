@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, ConflictException, Inject } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Model, Connection } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
@@ -12,8 +12,8 @@ import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { NotificationType, NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
-import { BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
-import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
+import { ChainManagerRegistry } from '../../blockchain/services/chain-manager-registry.service';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
 import { toCanonical, fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
@@ -23,7 +23,8 @@ export class PurchaseTrackerService {
 
   constructor(
     private configService: ConfigService,
-    @Inject(BLOCKCHAIN_ADAPTER) private blockchainAdapter: BlockchainAdapter,
+    private chainManagerRegistry: ChainManagerRegistry,
+    private networkContextService: NetworkContextService,
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Settlement.name) private settlementModel: Model<SettlementDocument>,
@@ -38,16 +39,17 @@ export class PurchaseTrackerService {
    */
   async notifyPurchase(dto: NotifyPurchaseDto, investorWallet: string, type?: string) {
     this.logger.log(`Processing purchase notification: ${dto.txHash}`);
+    const network = this.networkContextService.getNetwork();
 
     // Check if already processed
-    const existing = await this.purchaseModel.findOne({ txHash: dto.txHash });
+    const existing = await this.purchaseModel.findOne({ txHash: dto.txHash, network });
     if (existing) {
-      this.logger.warn(`Purchase ${dto.txHash} already processed`);
+      this.logger.warn(`Purchase ${dto.txHash} already processed on ${network}`);
       throw new ConflictException('Purchase already recorded');
     }
 
     // Get asset details
-    const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+    const asset = await this.assetModel.findOne({ assetId: dto.assetId, network });
     if (!asset) {
       throw new BadRequestException('Asset not found');
     }
@@ -81,7 +83,7 @@ export class PurchaseTrackerService {
         blockNumber: blockNumber,
         blockTimestamp: new Date(),
         status: 'CONFIRMED',
-        network: (asset.network || NetworkType.MANTLE) as NetworkType,
+        network,
         metadata: {
           assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
           industry: asset.metadata?.industry,
@@ -94,12 +96,12 @@ export class PurchaseTrackerService {
 
       // Update portfolio
       try {
-        await this.userPortfolioService.updateOnPurchase(purchase, (asset.network || NetworkType.MANTLE) as NetworkType);
-        this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || NetworkType.MANTLE}`);
+        await this.userPortfolioService.updateOnPurchase(purchase, network);
+        this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${network}`);
       } catch (error: any) {
         this.logger.error(`❌ CRITICAL: Failed to update portfolio for ${investorWallet}: ${error.message}`);
         this.logger.error(`Error stack: ${error.stack}`);
-        this.logger.error(`Purchase details - assetId: ${purchase.assetId}, amount: ${purchase.amount}, network: ${asset.network || NetworkType.MANTLE}`);
+        this.logger.error(`Purchase details - assetId: ${purchase.assetId}, amount: ${purchase.amount}, network: ${network}`);
         // Continue operation - portfolio can be rebuilt later via admin endpoint
       }
 
@@ -117,7 +119,8 @@ export class PurchaseTrackerService {
     // Handle normal purchase (positive amount) - validate on-chain
 
     // Validate transaction on-chain
-    const purchaseData = await this.blockchainAdapter.verifyPurchaseTransaction(
+    const adapter = this.chainManagerRegistry.getManager(network).getBlockchainAdapter();
+    const purchaseData = await adapter.verifyPurchaseTransaction(
       dto.txHash,
       dto.assetId,
       investorWallet,
@@ -145,7 +148,7 @@ export class PurchaseTrackerService {
       blockTimestamp: new Date(purchaseData.timestamp * 1000),
       status: 'CONFIRMED',
       source: 'PRIMARY_MARKET',
-      network: (asset.network || NetworkType.MANTLE) as NetworkType,
+      network,
       metadata: {
         assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
         industry: asset.metadata?.industry,
@@ -158,12 +161,12 @@ export class PurchaseTrackerService {
 
     // Update portfolio
     try {
-      await this.userPortfolioService.updateOnPurchase(purchase as any, (asset.network || NetworkType.MANTLE) as NetworkType);
-      this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${asset.network || NetworkType.MANTLE}`);
+      await this.userPortfolioService.updateOnPurchase(purchase as any, network);
+      this.logger.log(`✅ Portfolio updated successfully for ${investorWallet} on ${network}`);
     } catch (error: any) {
       this.logger.error(`❌ CRITICAL: Failed to update portfolio for ${investorWallet}: ${error.message}`);
       this.logger.error(`Error stack: ${error.stack}`);
-      this.logger.error(`Purchase details - assetId: ${dto.assetId}, amount: ${purchaseData.amount.value}, network: ${asset.network || NetworkType.MANTLE}`);
+      this.logger.error(`Purchase details - assetId: ${dto.assetId}, amount: ${purchaseData.amount.value}, network: ${network}`);
       // Continue operation - portfolio can be rebuilt later via admin endpoint
     }
 
@@ -176,7 +179,7 @@ export class PurchaseTrackerService {
       const newSoldAmountCanonical = toCanonical(newSoldAmountRaw, 18);
 
       const updateResult = await this.assetModel.updateOne(
-        { assetId: dto.assetId },
+        { assetId: dto.assetId, network },
         {
           $set: {
             'listing.sold': newSoldAmountCanonical.value,
@@ -237,25 +240,39 @@ export class PurchaseTrackerService {
    */
   async notifyYieldClaim(dto: any, investorWallet: string) {
     this.logger.log(`Processing yield claim notification: ${dto.txHash}`);
+    const network = this.networkContextService.getNetwork();
 
     // Check if already processed
-    const existing = await this.yieldClaimModel.findOne({ txHash: dto.txHash });
+    const existing = await this.yieldClaimModel.findOne({ txHash: dto.txHash, network });
     if (existing) {
-      this.logger.warn(`Yield claim ${dto.txHash} already processed`);
+      this.logger.warn(`Yield claim ${dto.txHash} already processed on ${network}`);
       throw new ConflictException('Yield claim already recorded');
     }
 
     // Get asset details
-    const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+    const asset = await this.assetModel.findOne({ assetId: dto.assetId, network });
     if (!asset) {
       throw new BadRequestException('Asset not found');
     }
 
     // Get settlement info for metadata
-    const settlement = await this.settlementModel.findOne({ assetId: dto.assetId }).sort({ createdAt: -1 });
+    const settlement = await this.settlementModel.findOne({ assetId: dto.assetId, network }).sort({ createdAt: -1 });
 
-    const tokensBurnedCanonical = toCanonical(dto.tokensBurned, 18);
-    const usdcReceivedCanonical = toCanonical(dto.usdcReceived, 6);
+    this.logger.log('Validating yield claim transaction on-chain...');
+    // Validate transaction on-chain
+    const adapter = this.chainManagerRegistry.getManager(network).getBlockchainAdapter();
+    const claimData = await adapter.verifyYieldClaimTransaction(
+      dto.txHash,
+      asset.token?.address || '',
+      investorWallet,
+    );
+
+    if (!claimData) {
+      throw new BadRequestException('Invalid yield claim transaction');
+    }
+
+    const tokensBurnedCanonical = claimData.tokensBurned;
+    const usdcReceivedCanonical = claimData.usdcReceived;
 
     // Save yield claim record
     const yieldClaim = await this.yieldClaimModel.create({
@@ -266,12 +283,12 @@ export class PurchaseTrackerService {
       tokensBurned: tokensBurnedCanonical.value,
       usdcReceived: usdcReceivedCanonical.value,
       // Companion fields for precision
-      rawPrecise: (tokensBurnedCanonical as any).rawPrecise || (usdcReceivedCanonical as any).rawPrecise,
+      rawPrecise: tokensBurnedCanonical.rawPrecise || usdcReceivedCanonical.rawPrecise,
       rawTokensBurned: tokensBurnedCanonical.rawPrice,
       rawUsdcReceived: usdcReceivedCanonical.rawPrice,
-      blockNumber: dto.blockNumber ? parseInt(dto.blockNumber) : undefined,
+      blockNumber: claimData.blockNumber,
       status: 'CONFIRMED',
-      network: (asset.network || NetworkType.MANTLE) as NetworkType,
+      network,
       metadata: {
         assetName: `${asset.metadata?.invoiceNumber} - ${asset.metadata?.buyerName}`,
         industry: asset.metadata?.industry,
@@ -283,7 +300,7 @@ export class PurchaseTrackerService {
 
     // Update portfolio
     try {
-      await this.userPortfolioService.updateOnYieldClaim(yieldClaim as any, (asset.network || NetworkType.MANTLE) as NetworkType);
+      await this.userPortfolioService.updateOnYieldClaim(yieldClaim as any, network);
     } catch (error: any) {
       this.logger.error(`Failed to update portfolio on yield claim: ${error.message}`);
     }
@@ -295,6 +312,7 @@ export class PurchaseTrackerService {
         assetId: dto.assetId,
         status: 'CONFIRMED',
         source: { $in: ['PRIMARY_MARKET', 'SECONDARY_MARKET'] },
+        network,
       },
       {
         $set: { status: 'CLAIMED' },
@@ -344,11 +362,12 @@ export class PurchaseTrackerService {
    * Get investor's portfolio (includes both static purchases and leverage positions)
    */
   async getInvestorPortfolio(investorWallet: string) {
-    this.logger.log(`Building portfolio for ${investorWallet.toLowerCase()} including CONFIRMED/CLAIMED purchases`);
+    const network = this.networkContextService.getNetwork();
+    this.logger.log(`Building portfolio for ${investorWallet.toLowerCase()} on ${network} including CONFIRMED/CLAIMED purchases`);
     const purchases = await this.purchaseModel.find({
       investorWallet: investorWallet.toLowerCase(),
       status: { $in: ['CLAIMED', 'CONFIRMED'] },
-
+      network,
     })
       .sort({ createdAt: -1 });
 
@@ -485,12 +504,13 @@ export class PurchaseTrackerService {
         try {
           // Check if settlement has been distributed for this asset
           const settlement = await this.settlementModel.findOne({
-            assetId: item.assetId
+            assetId: item.assetId,
+            network,
           }).sort({ createdAt: -1 });
 
           if (settlement && settlement.usdcAmount) {
             // Get asset details for total supply
-            const asset = await this.assetModel.findOne({ assetId: item.assetId });
+            const asset = await this.assetModel.findOne({ assetId: item.assetId, network });
 
             if (asset && (asset.listing?.sold || asset.tokenParams?.totalSupply)) {
               const userTokenBalanceRaw = fromCanonical(item.totalAmount, 18);
@@ -524,6 +544,7 @@ export class PurchaseTrackerService {
                 const yieldClaim = await this.yieldClaimModel.findOne({
                   assetId: item.assetId,
                   investorWallet: investorWallet.toLowerCase(),
+                  network,
                 });
                 if (yieldClaim) {
                   yieldInfo.yieldClaimTxHash = yieldClaim.txHash;
@@ -759,8 +780,9 @@ export class PurchaseTrackerService {
    * Get purchase history for investor
    */
   async getPurchaseHistory(investorWallet: string, limit = 50) {
+    const network = this.networkContextService.getNetwork();
     const purchases = await this.purchaseModel
-      .find({ investorWallet: investorWallet.toLowerCase() })
+      .find({ investorWallet: investorWallet.toLowerCase(), network })
       .sort({ createdAt: -1 })
       .limit(limit);
 

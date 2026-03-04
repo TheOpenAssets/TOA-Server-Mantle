@@ -17,6 +17,7 @@ import { NotificationType } from '../../notifications/enums/notification-type.en
 import { NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 import { NetworkType } from '@openassets/types';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 
 @Injectable()
 export class KycService {
@@ -30,6 +31,7 @@ export class KycService {
     private notificationService: NotificationService,
     private userPortfolioService: UserPortfolioService,
     private configService: ConfigService,
+    private networkContextService: NetworkContextService,
   ) {}
 
   async uploadDocument(user: UserDocument, file: Express.Multer.File) {
@@ -66,6 +68,7 @@ export class KycService {
       walletAddress: user.walletAddress,
       fileUrl,
       documentId,
+      network: this.networkContextService.getNetwork(),
     });
 
     return {
@@ -160,10 +163,10 @@ export class KycService {
     // Register investor identity on blockchain (skip for Stellar wallets)
     const isStellar = isStellarWallet(fullUser.walletAddress);
     const walletNetwork = detectWalletNetwork(fullUser.walletAddress);
-    const deploymentNetwork = (this.configService.get<string>('network.networkType') || NetworkType.MANTLE) as NetworkType;
+    const deploymentNetwork = this.networkContextService.getNetwork();
     let txHash: string | undefined;
 
-    this.logger.log(`🔍 Detected wallet network: ${walletNetwork}, Deployment network: ${deploymentNetwork}`);
+    this.logger.log(`🔍 Detected wallet network: ${walletNetwork}, Active context network: ${deploymentNetwork}`);
 
     try {
       // Stellar wallets use trustlines for compliance - skip on-chain identity registration
@@ -177,8 +180,8 @@ export class KycService {
 
       // Initialize portfolio for the newly verified investor (all networks)
       try {
-        // Use wallet's network for portfolio, not deployment network
-        const portfolioNetwork = (isStellar ? NetworkType.STELLAR : deploymentNetwork) as NetworkType;
+        // Use active network context for portfolio initialization
+        const portfolioNetwork = deploymentNetwork;
         await this.userPortfolioService.initializePortfolio(fullUser.walletAddress, portfolioNetwork);
         this.logger.log(`✅ Portfolio initialized for ${fullUser.walletAddress} on ${portfolioNetwork}`);
       } catch (portfolioError) {

@@ -26,6 +26,13 @@ export interface BidSettlementResult {
   cost: PreciseNumeric; // Canonical 4-decimal (USDC)
 }
 
+export interface YieldClaimVerificationResult {
+  tokensBurned: PreciseNumeric; // Canonical 4-decimal
+  usdcReceived: PreciseNumeric; // Canonical 4-decimal (USDC)
+  blockNumber: number;
+  timestamp: number;
+}
+
 export interface TokenBurnResult {
   txId: string; // Transaction hash/ID (network-specific format)
   blockNumber: number; // Block number (EVM) or ledger sequence (Stellar)
@@ -131,6 +138,27 @@ export interface BlockchainAdapter {
     recipientAddress: string,
     usdcAmount: string,
   ): Promise<{ txId: string }>;
+
+  /**
+   * Verify a yield claim transaction on-chain
+   */
+  verifyYieldClaimTransaction(
+    txHash: string,
+    tokenAddress: string,
+    expectedInvestor: string,
+  ): Promise<YieldClaimVerificationResult | null>;
+
+  /**
+   * Get the amount of USDC claimable by a user from YieldVault
+   * 
+   * @param userAddress - Investor wallet address
+   * @param tokenAddress - Optional: scope to a specific token
+   * @returns Canonical string amount (e.g. "12.5000")
+   */
+  getClaimableYield?(
+    userAddress: string,
+    tokenAddress?: string,
+  ): Promise<string>;
   
   // Stellar specific (gracefully ignored on EVM)
   approveTrustline?(walletAddress: WalletAddress, assetIdentifier: string): Promise<{ txId: string; skipped?: boolean }>;
