@@ -14,6 +14,7 @@ import { NotifyPurchaseDto } from '../dto/notify-purchase.dto';
 import { NotifyBidDto } from '../dto/notify-bid.dto';
 import { NotifySettlementDto } from '../dto/notify-settlement.dto';
 import { NotifyYieldClaimDto } from '../dto/notify-yield-claim.dto';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
 @Controller('marketplace')
@@ -26,6 +27,7 @@ export class MarketplaceController {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private purchaseTracker: PurchaseTrackerService,
     private bidTracker: BidTrackerService,
+    private networkContextService: NetworkContextService,
   ) { }
 
   @Get('listings')
@@ -34,10 +36,12 @@ export class MarketplaceController {
     @Query('status') status?: string,
     @Query('industry') industry?: string,
   ) {
+    const network = this.networkContextService.getNetwork();
     const query: any = {
       status: { $in: [AssetStatus.LISTED, AssetStatus.TOKENIZED, ] },
       'listing.active': true,
       'token.address': { $exists: true }, // Must have token deployed
+      network,
     };
 
     if (industry) {
@@ -98,7 +102,8 @@ export class MarketplaceController {
   @Get('listings/:assetId')
   @UseGuards(JwtAuthGuard)
   async getListingDetail(@Param('assetId') assetId: string) {
-    const asset = await this.assetModel.findOne({ assetId });
+    const network = this.networkContextService.getNetwork();
+    const asset = await this.assetModel.findOne({ assetId, network });
 
     if (!asset) {
       return {
@@ -140,9 +145,11 @@ export class MarketplaceController {
   @Get('stats')
   @UseGuards(JwtAuthGuard)
   async getMarketplaceStats() {
+    const network = this.networkContextService.getNetwork();
     const totalListed = await this.assetModel.countDocuments({
       'listing.active': true,
       'token.address': { $exists: true },
+      network,
     });
 
     const byIndustry = await this.assetModel.aggregate([
@@ -150,6 +157,7 @@ export class MarketplaceController {
         $match: {
           'listing.active': true,
           'token.address': { $exists: true },
+          network,
         },
       },
       {
@@ -173,6 +181,7 @@ export class MarketplaceController {
   @Get('info')
   @UseGuards(JwtAuthGuard)
   async getMarketplaceInfo() {
+    const network = this.networkContextService.getNetwork();
     // Include all assets that have been tokenized and listed (regardless of current lifecycle stage)
     // This includes: TOKENIZED, SCHEDULED, LISTED, PAYOUT_COMPLETE, YIELD_SETTLED, ENDED
     const includedStatuses = [
@@ -188,16 +197,17 @@ export class MarketplaceController {
     const totalAssets = await this.assetModel.countDocuments({
       'token.address': { $exists: true },
       status: { $in: includedStatuses },
+      network,
     });
 
     // 2. Active users (users who have made purchases or bids)
-    const purchaseInvestors = await this.purchaseModel.distinct('investorWallet');
-    const bidInvestors = await this.bidModel.distinct('investor');
+    const purchaseInvestors = await this.purchaseModel.distinct('investorWallet', { network });
+    const bidInvestors = await this.bidModel.distinct('investor', { network });
     const uniqueInvestors = new Set([...purchaseInvestors, ...bidInvestors]);
     const activeUsers = uniqueInvestors.size;
 
     // 3. Total settlements
-    const totalSettlements = await this.settlementModel.countDocuments();
+    const totalSettlements = await this.settlementModel.countDocuments({ network });
 
     // 4. Total value tokenized (sum of face values of all tokenized assets)
     const tokenizedAssets = await this.assetModel.aggregate([
@@ -205,6 +215,7 @@ export class MarketplaceController {
         $match: {
           'token.address': { $exists: true },
           status: { $in: includedStatuses },
+          network,
         },
       },
       {
@@ -231,6 +242,7 @@ export class MarketplaceController {
   @Get('top-grossing')
   @UseGuards(JwtAuthGuard)
   async getTopGrossingAssets(@Query('limit') limit?: string) {
+    const network = this.networkContextService.getNetwork();
     const limitNum = limit ? parseInt(limit) : 5; // Default to 5
 
     // Aggregate purchases by assetId
@@ -238,6 +250,7 @@ export class MarketplaceController {
       {
         $match: {
           status: 'CONFIRMED', // Only count confirmed purchases
+          network,
         },
       },
       {
@@ -250,6 +263,9 @@ export class MarketplaceController {
 
     // Aggregate bids by assetId
     const bidCounts = await this.bidModel.aggregate([
+      {
+        $match: { network },
+      },
       {
         $group: {
           _id: '$assetId',
@@ -295,6 +311,7 @@ export class MarketplaceController {
       .find({
         assetId: { $in: assetIds },
         status: AssetStatus.LISTED,
+        network,
       })
       .select({
         assetId: 1,

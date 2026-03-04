@@ -15,6 +15,7 @@ import { NotificationType } from '../../notifications/enums/notification-type.en
 import { NotificationSeverity } from '../../notifications/enums/notification-type.enum';
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 import { isStellarWallet, isEvmWallet, detectWalletNetwork } from '../utils/wallet-detector.util';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 import * as fs from 'fs';
 import * as path from 'path';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -36,15 +37,17 @@ export class VerificationProcessor extends WorkerHost {
     private notificationService: NotificationService,
     private userPortfolioService: UserPortfolioService,
     private configService: ConfigService,
+    private networkContextService: NetworkContextService,
   ) {
     super();
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
-    const { userId, fileUrl } = job.data;
+    const { userId, fileUrl, network = NetworkType.MANTLE } = job.data;
     
-    try {
-        const filePath = this.storageService.getFullPath(fileUrl);
+    return await this.networkContextService.runWithNetwork(network, async () => {
+      try {
+          const filePath = this.storageService.getFullPath(fileUrl);
         const dataBuffer = fs.readFileSync(filePath);
         const extension = path.extname(filePath).toLowerCase();
 
@@ -255,12 +258,12 @@ export class VerificationProcessor extends WorkerHost {
                     // Detect wallet network from address format, not deployment config
                     const isStellar = isStellarWallet(user.walletAddress);
                     const walletNetwork = detectWalletNetwork(user.walletAddress);
-                    const deploymentNetwork = (this.configService.get<string>('network.networkType') || NetworkType.MANTLE) as NetworkType;
+                    const deploymentNetwork = this.networkContextService.getNetwork();
                     let txHash: string | undefined;
                     let oaidTxHash: string | undefined;
                     let hasOAID = false;
 
-                    this.logger.log(`🔍 Detected wallet network: ${walletNetwork}, Deployment network: ${deploymentNetwork}`);
+                    this.logger.log(`🔍 Detected wallet network: ${walletNetwork}, Active context network: ${deploymentNetwork}`);
 
                     // Stellar wallets use trustlines for compliance - skip on-chain identity registration
                     if (!isStellar) {
@@ -294,8 +297,8 @@ export class VerificationProcessor extends WorkerHost {
 
                     // Initialize portfolio for the newly verified investor (all networks)
                     try {
-                        // Use wallet's network for portfolio, not deployment network
-                        const portfolioNetwork = (isStellar ? NetworkType.STELLAR : deploymentNetwork) as NetworkType;
+                        // Use active context network for portfolio initialization
+                        const portfolioNetwork = deploymentNetwork;
                         await this.userPortfolioService.initializePortfolio(user.walletAddress, portfolioNetwork);
                         this.logger.log(`✅ Portfolio initialized for ${user.walletAddress} on ${portfolioNetwork}`);
                     } catch (portfolioError) {
@@ -350,5 +353,6 @@ export class VerificationProcessor extends WorkerHost {
         );
         throw e;
     }
+    });
   }
 }

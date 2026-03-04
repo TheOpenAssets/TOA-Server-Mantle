@@ -24,6 +24,7 @@ import { RegisterAssetDto } from '../../blockchain/dto/register-asset.dto';
 import { AttestationService } from '../../compliance-engine/services/attestation.service';
 import { AnnouncementService } from '../../announcements/services/announcement.service';
 import { NotificationService } from '../../notifications/services/notification.service';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 import { getConfiguredNetworkType } from '../../auth/utils/wallet.util';
 import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 import { PAYMENT_ADAPTER, BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
@@ -47,6 +48,7 @@ export class AssetLifecycleService {
     @Inject(forwardRef(() => AnnouncementService))
     private announcementService: AnnouncementService,
     private notificationService: NotificationService,
+    private networkContextService: NetworkContextService,
     @Inject(PAYMENT_ADAPTER) private paymentAdapter: PaymentAdapter,
     @Inject(BLOCKCHAIN_ADAPTER) private blockchainAdapter: BlockchainAdapter,
     @InjectConnection() connection: Connection,
@@ -384,6 +386,7 @@ export class AssetLifecycleService {
       {
         assetId,
         scheduledStartTime: auctionStartTime,
+        network: this.networkContextService.getNetwork(),
       },
       {
         delay: startDelayMinutes * 60 * 1000, // Convert minutes to milliseconds
@@ -401,6 +404,7 @@ export class AssetLifecycleService {
       {
         assetId,
         expectedEndTime: auctionEndTime,
+        network: this.networkContextService.getNetwork(),
       },
       {
         delay: totalDelayMs,
@@ -435,12 +439,13 @@ export class AssetLifecycleService {
     allBids: any[];
     priceBreakdown: any[];
   }> {
-    const asset = await this.assetModel.findOne({ assetId });
+    const network = this.networkContextService.getNetwork();
+    const asset = await this.assetModel.findOne({ assetId, network });
     if (!asset) {
       throw new Error('Asset not found');
     }
 
-    const bids = await this.bidModel.find({ assetId }).sort({ price: -1 }).exec();
+    const bids = await this.bidModel.find({ assetId, network }).sort({ price: -1 }).exec();
     // tokenParams.totalSupply is canonical 4-decimal format — parse as float
     const totalSupply = parseFloat(asset.tokenParams.totalSupply);
 
@@ -552,8 +557,9 @@ export class AssetLifecycleService {
 
   async endAuction(assetId: string, clearingPrice: string, transactionHash: string) {
     this.logger.log(`Ending auction for asset ${assetId} with clearing price ${clearingPrice}`);
+    const network = this.networkContextService.getNetwork();
 
-    const asset = await this.assetModel.findOne({ assetId });
+    const asset = await this.assetModel.findOne({ assetId, network });
     if (!asset) {
       throw new Error('Asset not found');
     }
@@ -592,7 +598,7 @@ export class AssetLifecycleService {
         this.logger.log(`Auction ${assetId} results already declared with clearing price ${clearingPriceBigInt.toString()} - skipping duplicate processing`);
 
         // Get all bids to calculate results for response
-        const bids = await this.bidModel.find({ assetId }).exec();
+        const bids = await this.bidModel.find({ assetId, network }).exec();
         let tokensSold = BigInt(0);
         let wonCount = 0;
         let lostCount = 0;
@@ -682,7 +688,7 @@ export class AssetLifecycleService {
     this.logger.log(`Auction ${assetId} ended with clearing price ${storedClearingPrice}`);
 
     // Get all bids to calculate results
-    const bids = await this.bidModel.find({ assetId }).exec();
+    const bids = await this.bidModel.find({ assetId, network }).exec();
     this.logger.log(`Found ${bids.length} bids for auction ${assetId}`);
 
     // Calculate tokens sold and update bid statuses (bids > clearing price = WON, else LOST)
@@ -940,8 +946,9 @@ export class AssetLifecycleService {
    */
   async payoutOriginator(assetId: string) {
     this.logger.log(`Processing originator payout for asset: ${assetId}`);
+    const network = this.networkContextService.getNetwork();
 
-    const asset = await this.assetModel.findOne({ assetId });
+    const asset = await this.assetModel.findOne({ assetId, network });
     if (!asset) {
       throw new Error('Asset not found');
     }
@@ -959,6 +966,7 @@ export class AssetLifecycleService {
       assetId,
       status: 'CONFIRMED',
       source: { $in: ['PRIMARY_MARKET', 'AUCTION'] },
+      network,
     });
 
     // Ask the payment adapter how many decimals it uses (6 for Mantle, 7 for Stellar)
@@ -985,6 +993,7 @@ export class AssetLifecycleService {
         const wonBids = await this.bidModel.find({
           assetId,
           status: { $in: ['WON', 'SETTLED', 'FINALIZED'] },
+          network,
         });
 
         if (wonBids.length > 0) {
@@ -1036,6 +1045,7 @@ export class AssetLifecycleService {
         assetId,
         rwaTokenAddress: { $regex: new RegExp(`^${tokenAddressLower}$`, 'i') },
         status: { $in: ['ACTIVE', 'LIQUIDATED'] }, // Include both active and liquidated positions
+        network,
       });
 
       this.logger.log(`   Query returned ${leveragePositions.length} positions`);
@@ -1294,7 +1304,8 @@ export class AssetLifecycleService {
    * Includes both regular purchases and leveraged position purchases
    */
   async getPurchaseHistory(assetId: string) {
-    const asset = await this.assetModel.findOne({ assetId });
+    const network = this.networkContextService.getNetwork();
+    const asset = await this.assetModel.findOne({ assetId, network });
     if (!asset) {
       throw new Error('Asset not found');
     }
@@ -1306,7 +1317,7 @@ export class AssetLifecycleService {
     if (asset.listing?.type === 'STATIC') {
       // Get confirmed purchases for STATIC listings
       const confirmedPurchases = await this.purchaseModel
-        .find({ assetId, status: { $in: ['CONFIRMED', 'CLAIMED'] } })
+        .find({ assetId, status: { $in: ['CONFIRMED', 'CLAIMED'] }, network })
         .sort({ createdAt: 1 }) // Sort by time ascending
         .exec();
 
@@ -1327,7 +1338,7 @@ export class AssetLifecycleService {
       }
     } else if (asset.listing?.type === 'AUCTION') {
       const settlementPurchases = await this.purchaseModel
-        .find({ assetId, status: { $in: ['CONFIRMED', 'CLAIMED'] } })
+        .find({ assetId, status: { $in: ['CONFIRMED', 'CLAIMED'] }, network })
         .sort({ createdAt: 1 })
         .exec();
 
@@ -1351,7 +1362,7 @@ export class AssetLifecycleService {
     // Get leveraged position purchases for this asset
     try {
       const leveragePositions = await this.leveragePositionModel
-        .find({ assetId, status: { $in: ['ACTIVE', 'SETTLED', 'LIQUIDATED', 'CLOSED'] } })
+        .find({ assetId, status: { $in: ['ACTIVE', 'SETTLED', 'LIQUIDATED', 'CLOSED'] }, network })
         .sort({ createdAt: 1 })
         .exec();
 
