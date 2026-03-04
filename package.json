@@ -14,7 +14,7 @@
     "build": "yarn workspaces foreach -A -pt run build",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
-    "generate:types": "yarn workspace @mantle/contracts generate:types",
+    "generate:types": "yarn workspaces foreach -A -pt --include '@contracts/*' run generate:types",
     "sync-env": "cp .env packages/backend/.env && cp .env packages/contracts/.env"
   },
   "devDependencies": {
