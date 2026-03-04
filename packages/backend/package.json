@@ -36,6 +36,8 @@
     "@nestjs/swagger": "^7.4.2",
     "@octokit/rest": "^22.0.1",
     "@openassets/types": "*",
+    "@polkadot/api": "^16.5.4",
+    "@polkadot/util-crypto": "^14.0.1",
     "@stellar/stellar-sdk": "^14.5.0",
     "@types/multer": "^2.0.0",
     "@types/pdf-parse": "^1.1.5",
