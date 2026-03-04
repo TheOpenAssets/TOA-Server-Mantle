@@ -2,13 +2,16 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ModuleRef } from '@nestjs/core';
 import { NetworkType } from '@openassets/types';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 import {
   ASSET_ORIGINATION_SERVICE,
   MANTLE_ASSET_ORIGINATION_TOKEN,
   STELLAR_ASSET_ORIGINATION_TOKEN,
+  CREDITCOIN_ASSET_ORIGINATION_TOKEN,
   ADMIN_DOMAIN_STRATEGY,
   MANTLE_ADMIN_STRATEGY_TOKEN,
   STELLAR_ADMIN_STRATEGY_TOKEN,
+  CREDITCOIN_ADMIN_STRATEGY_TOKEN,
 } from '../registry.constants';
 import { IAssetOriginationService } from '../interfaces/asset-origination.interface';
 import { IAdminDomainStrategy } from '../interfaces/admin-domain.interface';
@@ -16,53 +19,80 @@ import { IAdminDomainStrategy } from '../interfaces/admin-domain.interface';
 @Injectable()
 export class ModuleRegistryService implements OnModuleInit {
   private readonly logger = new Logger(ModuleRegistryService.name);
-  private readonly serviceMap = new Map<string, any>();
-  private networkType?: NetworkType;
+  
+  // Maps network -> (service key -> implementation)
+  private readonly implementationMap = new Map<NetworkType, Map<string, any>>();
 
   constructor(
     private configService: ConfigService,
     private moduleRef: ModuleRef,
+    private networkContextService: NetworkContextService,
   ) { }
 
   async onModuleInit() {
-    this.networkType = this.configService.get<NetworkType>('network.networkType') || NetworkType.MANTLE;
-    this.logger.log(`Initializing ModuleRegistry for network: ${this.networkType}`);
-
-    await this.resolveServices();
+    this.logger.log('Initializing ModuleRegistry for multi-network support');
+    await this.resolveAllImplementations();
   }
 
-  private async resolveServices() {
-    try {
-      // Resolve Asset Origination Service
-      const isEvm = this.networkType === NetworkType.MANTLE || this.networkType === NetworkType.ARBITRUM;
-      const assetToken = isEvm
-        ? MANTLE_ASSET_ORIGINATION_TOKEN
-        : STELLAR_ASSET_ORIGINATION_TOKEN;
+  private async resolveAllImplementations() {
+    const networks = Object.values(NetworkType).filter(n => n !== NetworkType.UNKNOWN);
+    
+    for (const network of networks) {
+      const networkMap = new Map<string, any>();
+      this.implementationMap.set(network, networkMap);
 
-      await this.resolveService(ASSET_ORIGINATION_SERVICE, assetToken);
+      // Resolve Asset Origination
+      const assetToken = this.getAssetOriginationToken(network);
+      if (assetToken) {
+        await this.resolveAndRegister(network, ASSET_ORIGINATION_SERVICE, assetToken);
+      }
 
-      // Resolve Admin Domain Strategy
-      const adminToken = isEvm
-        ? MANTLE_ADMIN_STRATEGY_TOKEN
-        : STELLAR_ADMIN_STRATEGY_TOKEN;
-
-      await this.resolveService(ADMIN_DOMAIN_STRATEGY, adminToken);
-
-      // Add other services as they are implemented...
-    } catch (error: any) {
-      this.logger.error(`Error resolving services in ModuleRegistry: ${error.message}`);
+      // Resolve Admin Strategy
+      const adminToken = this.getAdminStrategyToken(network);
+      if (adminToken) {
+        await this.resolveAndRegister(network, ADMIN_DOMAIN_STRATEGY, adminToken);
+      }
     }
   }
 
-  private async resolveService(key: string, token: string) {
+  private getAssetOriginationToken(network: NetworkType): string | null {
+    switch (network) {
+      case NetworkType.MANTLE:
+      case NetworkType.ARBITRUM:
+        return MANTLE_ASSET_ORIGINATION_TOKEN;
+      case NetworkType.STELLAR:
+        return STELLAR_ASSET_ORIGINATION_TOKEN;
+      case NetworkType.CREDITCOIN:
+        return CREDITCOIN_ASSET_ORIGINATION_TOKEN;
+      default:
+        return null;
+    }
+  }
+
+  private getAdminStrategyToken(network: NetworkType): string | null {
+    switch (network) {
+      case NetworkType.MANTLE:
+      case NetworkType.ARBITRUM:
+        return MANTLE_ADMIN_STRATEGY_TOKEN;
+      case NetworkType.STELLAR:
+        return STELLAR_ADMIN_STRATEGY_TOKEN;
+      case NetworkType.CREDITCOIN:
+        return CREDITCOIN_ADMIN_STRATEGY_TOKEN;
+      default:
+        return null;
+    }
+  }
+
+  private async resolveAndRegister(network: NetworkType, key: string, token: string) {
     try {
       const service = this.moduleRef.get(token, { strict: false });
       if (service) {
-        this.serviceMap.set(key, service);
-        this.logger.log(`Resolved ${key}: ${token}`);
+        this.implementationMap.get(network)?.set(key, service);
+        this.logger.debug(`Registered ${key} for ${network}: ${token}`);
       }
     } catch (e) {
-      this.logger.warn(`Could not resolve ${token}. This is expected if the network-specific implementation is not loaded.`);
+      // Expected if implementation is not registered in the module
+      this.logger.warn(`Could not resolve ${token} for ${network}. Implementation might not be loaded.`);
     }
   }
 
@@ -75,13 +105,18 @@ export class ModuleRegistryService implements OnModuleInit {
   }
 
   /**
-   * Generic getter for any registered service
+   * Generic getter for any registered service, resolving by current context network
    */
   getService<T>(token: string): T {
-    const service = this.serviceMap.get(token);
+    const network = this.networkContextService.getNetwork();
+    const networkMap = this.implementationMap.get(network);
+    const service = networkMap?.get(token);
+
     if (!service) {
-      throw new Error(`Service ${token} not available for network ${this.networkType}`);
+      this.logger.error(`Service ${token} not available for network ${network}`);
+      throw new Error(`Service ${token} not available for network ${network}`);
     }
+
     return service as T;
   }
 }

@@ -23,6 +23,12 @@
       "@contracts/arbitrum/*": [
         "../arbitrum-contracts/*"
       ],
+      "@contracts/creditcoin": [
+        "../creditcoin-contracts/index.ts"
+      ],
+      "@contracts/creditcoin/*": [
+        "../creditcoin-contracts/*"
+      ],
       "@contracts/stellar": [
         "../stellar-contracts/index.ts"
       ],

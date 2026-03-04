@@ -16,7 +16,12 @@ import { AnnouncementsModule } from '../announcements/announcements.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MantleAssetOriginationService } from './implementations/mantle/mantle-asset-origination.service';
 import { StellarAssetOriginationService } from './implementations/stellar/stellar-asset-origination.service';
-import { MANTLE_ASSET_ORIGINATION_TOKEN, STELLAR_ASSET_ORIGINATION_TOKEN } from '../registry/registry.constants';
+import { CreditCoinAssetOriginationService } from './implementations/creditcoin/creditcoin-asset-origination.service';
+import { 
+  MANTLE_ASSET_ORIGINATION_TOKEN, 
+  STELLAR_ASSET_ORIGINATION_TOKEN,
+  CREDITCOIN_ASSET_ORIGINATION_TOKEN,
+} from '../registry/registry.constants';
 
 @Module({
   imports: [
@@ -51,11 +56,16 @@ import { MANTLE_ASSET_ORIGINATION_TOKEN, STELLAR_ASSET_ORIGINATION_TOKEN } from 
       provide: STELLAR_ASSET_ORIGINATION_TOKEN,
       useClass: StellarAssetOriginationService,
     },
+    {
+      provide: CREDITCOIN_ASSET_ORIGINATION_TOKEN,
+      useClass: CreditCoinAssetOriginationService,
+    },
   ],
   exports: [
     AssetLifecycleService,
     MANTLE_ASSET_ORIGINATION_TOKEN,
     STELLAR_ASSET_ORIGINATION_TOKEN,
+    CREDITCOIN_ASSET_ORIGINATION_TOKEN,
   ],
 })
 export class AssetModule {}

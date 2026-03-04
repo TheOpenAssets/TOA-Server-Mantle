@@ -5,6 +5,7 @@ import { ChainManager } from '../interfaces/chain-manager.interface';
 import { MantleChainManager } from '../managers/mantle.manager';
 import { ArbitrumChainManager } from '../managers/arbitrum.manager';
 import { StellarChainManager } from '../managers/stellar.manager';
+import { CreditCoinChainManager } from '../managers/creditcoin.manager';
 
 @Injectable()
 export class ChainManagerRegistry implements OnModuleInit, OnModuleDestroy {
@@ -43,6 +44,11 @@ export class ChainManagerRegistry implements OnModuleInit, OnModuleDestroy {
     if (enabledNetworks.includes(NetworkType.STELLAR)) {
       this.managers.set(NetworkType.STELLAR, new StellarChainManager());
       this.logger.log('StellarChainManager initialized');
+    }
+
+    if (enabledNetworks.includes(NetworkType.CREDITCOIN)) {
+      this.managers.set(NetworkType.CREDITCOIN, new CreditCoinChainManager(this.configService));
+      this.logger.log('CreditCoinChainManager initialized');
     }
   }
 

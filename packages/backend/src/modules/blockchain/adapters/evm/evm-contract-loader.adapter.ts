@@ -10,8 +10,18 @@ export class EvmContractAdapter implements ContractAdapter {
   private contracts: Partial<Record<ContractName | string, string>> = {};
   private abis: Partial<Record<ContractName | string, any>> = {};
 
-  constructor(private configService: ConfigService) {
-    this.loadContracts();
+  constructor(
+    private configService: ConfigService,
+    initialContracts?: Record<string, string>,
+    initialAbis?: Record<string, any>,
+  ) {
+    if (initialContracts && initialAbis) {
+      this.contracts = { ...initialContracts };
+      this.abis = { ...initialAbis };
+      this.addStandardAliases();
+    } else {
+      this.loadContracts();
+    }
   }
 
   private loadContracts() {
@@ -36,6 +46,12 @@ export class EvmContractAdapter implements ContractAdapter {
 
     const envContracts = this.configService.get('blockchain.contracts') || {};
     this.contracts = { ...this.contracts, ...envContracts };
+  }
+
+  private addStandardAliases() {
+    this.addAlias('PrimaryMarketplace', 'PrimaryMarket');
+    this.addAlias('USDC', 'MockUSDC');
+    // LeverageVault alias is added context-specifically if needed
   }
 
   private addAlias(alias: string, canonical: string) {
