@@ -81,78 +81,6 @@ export class BlockchainModule implements NestModule {
         ChainManagerRegistry,
         NetworkContextService,
         
-        // Adapters (Determined at runtime via factory)
-        {
-          provide: CONTRACT_ADAPTER,
-          useFactory: (configService: ConfigService) => {
-            const networkType = configService.get('network.networkType');
-            if (networkType === 'stellar') {
-              return new StellarContractAdapter();
-            }
-            return new EvmContractAdapter(configService);
-          },
-          inject: [ConfigService],
-        },
-        {
-          provide: WALLET_ADAPTER,
-          useFactory: (configService: ConfigService) => {
-            const networkType = configService.get('network.networkType');
-            if (networkType === 'stellar') {
-              return new StellarWalletAdapter(configService);
-            }
-            return new EvmWalletAdapter(configService);
-          },
-          inject: [ConfigService],
-        },
-        {
-          provide: BLOCKCHAIN_ADAPTER,
-          useFactory: (configService: ConfigService, wallet: any, contract: any, assetModel: Model<AssetDocument>) => {
-            const networkType = configService.get('network.networkType');
-            if (networkType === 'stellar') {
-              return new StellarBlockchainAdapter(configService, wallet, contract, assetModel);
-            }
-            return new EvmBlockchainAdapter(configService, wallet, contract, assetModel);
-          },
-          inject: [ConfigService, WALLET_ADAPTER, CONTRACT_ADAPTER, getModelToken(Asset.name)],
-        },
-        {
-          provide: EVENT_ADAPTER,
-          useFactory: (configService: ConfigService, contract: any, queue: Queue) => {
-            const networkType = configService.get('network.networkType');
-            if (networkType === 'stellar') {
-              // TODO: Implement StellarEventAdapter
-              return {
-                startListening: async () => {},
-                stopListening: async () => {},
-              };
-            }
-            return new EvmEventAdapter(configService, contract, queue);
-          },
-          inject: [ConfigService, CONTRACT_ADAPTER, 'BullQueue_event-processing'],
-        },
-        {
-          provide: AUTH_VERIFICATION_ADAPTER,
-          useFactory: (configService: ConfigService) => {
-            const networkType = configService.get('network.networkType');
-            if (networkType === 'stellar') {
-              return new StellarAuthVerificationAdapter();
-            }
-            return new EvmAuthVerificationAdapter();
-          },
-          inject: [ConfigService],
-        },
-        {
-          provide: PAYMENT_ADAPTER,
-          useFactory: (configService: ConfigService) => {
-            const networkType = configService.get('network.networkType');
-            if (networkType === 'stellar') {
-              return new StellarPaymentAdapter(configService);
-            }
-            return new EvmPaymentAdapter(configService);
-          },
-          inject: [ConfigService],
-        },
-
         // Legacy Services (Wrappers)
         BlockchainService,
         WalletService,
@@ -163,12 +91,6 @@ export class BlockchainModule implements NestModule {
         EventProcessor,
       ],
       exports: [
-        BLOCKCHAIN_ADAPTER,
-        WALLET_ADAPTER,
-        EVENT_ADAPTER,
-        CONTRACT_ADAPTER,
-        AUTH_VERIFICATION_ADAPTER,
-        PAYMENT_ADAPTER,
         NetworkRegistryService,
         ChainManagerRegistry,
         NetworkContextService,

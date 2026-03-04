@@ -1,57 +1,44 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ModuleRef } from '@nestjs/core';
-import { ListingType, WalletAddress } from '@openassets/types';
-import { 
-  BLOCKCHAIN_ADAPTER, 
-  WALLET_ADAPTER, 
-  CONTRACT_ADAPTER 
-} from '../blockchain.constants';
+import { ListingType, WalletAddress, NetworkType } from '@openassets/types';
 import { BlockchainAdapter } from '../adapters/blockchain-adapter.interface';
+import { ChainManagerRegistry } from './chain-manager-registry.service';
+import { NetworkContextService } from './network-context.service';
 
 @Injectable()
-export class NetworkRegistryService implements OnModuleInit {
+export class NetworkRegistryService {
   private readonly logger = new Logger(NetworkRegistryService.name);
   private features: Record<string, boolean>;
-  private networkType: string;
-  private blockchainAdapter?: BlockchainAdapter;
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly moduleRef: ModuleRef,
+    private readonly chainManagerRegistry: ChainManagerRegistry,
+    private readonly networkContextService: NetworkContextService,
   ) {
     this.features = this.configService.get<Record<string, boolean>>('network.features') || {};
-    this.networkType = this.configService.get<string>('network.networkType') || 'mantle';
   }
 
-  async onModuleInit() {
-    try {
-      this.blockchainAdapter = this.moduleRef.get<BlockchainAdapter>(BLOCKCHAIN_ADAPTER, { strict: false });
-    } catch (e: any) {
-      this.logger.warn(`Blockchain adapter not yet available during onModuleInit: ${e.message}`);
-    }
-  }
-
-  private async getBlockchainAdapter(): Promise<BlockchainAdapter> {
-    if (!this.blockchainAdapter) {
-      this.blockchainAdapter = await this.moduleRef.resolve<BlockchainAdapter>(BLOCKCHAIN_ADAPTER);
-    }
-    return this.blockchainAdapter;
+  private getBlockchainAdapter(): BlockchainAdapter {
+    const network = this.networkContextService.getNetwork();
+    const manager = this.chainManagerRegistry.getManager(network);
+    return manager.getBlockchainAdapter();
   }
 
   isAvailable(feature: string): boolean {
+    // In multi-network mode, features could also be per-network
+    // For now, keep the global check or expand it
     return !!this.features[feature];
   }
 
-  getNetworkType(): string {
-    return this.networkType;
+  getNetworkType(): NetworkType {
+    return this.networkContextService.getNetwork();
   }
 
   async registerIdentityOnChain(walletAddress: WalletAddress) {
     if (!this.isAvailable('kyc')) {
       return { completed: false, skipped: true, reason: 'KYC_FEATURE_DISABLED' };
     }
-    const adapter = await this.getBlockchainAdapter();
+    const adapter = this.getBlockchainAdapter();
     return await adapter.registerIdentity(walletAddress);
   }
 
@@ -68,7 +55,7 @@ export class NetworkRegistryService implements OnModuleInit {
     if (!this.isAvailable('assets')) {
       return { completed: false, skipped: true, reason: 'ASSETS_FEATURE_DISABLED' };
     }
-    const adapter = await this.getBlockchainAdapter();
+    const adapter = this.getBlockchainAdapter();
     return await adapter.deployToken(assetId, totalSupply, params);
   }
 
@@ -76,7 +63,7 @@ export class NetworkRegistryService implements OnModuleInit {
     if (!this.isAvailable('assets')) {
       return { completed: false, skipped: true, reason: 'ASSETS_FEATURE_DISABLED' };
     }
-    const adapter = await this.getBlockchainAdapter();
+    const adapter = this.getBlockchainAdapter();
     return await adapter.registerAsset(dto);
   }
 
@@ -84,7 +71,7 @@ export class NetworkRegistryService implements OnModuleInit {
     if (!this.isAvailable('assets')) {
       return { completed: false, skipped: true, reason: 'ASSETS_FEATURE_DISABLED' };
     }
-    const adapter = await this.getBlockchainAdapter();
+    const adapter = this.getBlockchainAdapter();
     return await adapter.revokeAsset(assetId);
   }
 
@@ -100,7 +87,7 @@ export class NetworkRegistryService implements OnModuleInit {
     if (!this.isAvailable('marketplace')) {
       return { completed: false, skipped: true, reason: 'MARKETPLACE_FEATURE_DISABLED' };
     }
-    const adapter = await this.getBlockchainAdapter();
+    const adapter = this.getBlockchainAdapter();
     return await adapter.listOnMarketplace(
       tokenIdentifier,
       listingType,
@@ -116,15 +103,16 @@ export class NetworkRegistryService implements OnModuleInit {
     if (!this.isAvailable('marketplace')) {
       return { completed: false, skipped: true, reason: 'MARKETPLACE_FEATURE_DISABLED' };
     }
-    const adapter = await this.getBlockchainAdapter();
+    const adapter = this.getBlockchainAdapter();
     return await adapter.endAuction(tokenIdentifier, clearingPrice);
   }
 
   async approveTrustlineForUser(userAddress: WalletAddress, assetIdentifier: string) {
-    if (this.networkType !== 'stellar') {
+    const network = this.getNetworkType();
+    if (network !== NetworkType.STELLAR) {
       return { completed: false, skipped: true, reason: 'NOT_APPLICABLE_ON_NETWORK' };
     }
-    const adapter = await this.getBlockchainAdapter();
+    const adapter = this.getBlockchainAdapter();
     if (adapter && adapter.approveTrustline) {
       return await adapter.approveTrustline(userAddress, assetIdentifier);
     }
@@ -136,10 +124,10 @@ export class NetworkRegistryService implements OnModuleInit {
     usdcAmount: string,
   ): Promise<{ txId: string; skipped?: boolean }> {
     if (!this.isAvailable('yield')) {
-      this.logger.warn(`Yield feature disabled on ${this.networkType}, skipping vault deposit`);
+      this.logger.warn(`Yield feature disabled on ${this.getNetworkType()}, skipping vault deposit`);
       return { txId: '', skipped: true };
     }
-    const adapter = await this.getBlockchainAdapter();
+    const adapter = this.getBlockchainAdapter();
     return await adapter.depositYieldToVault(tokenIdentifier, usdcAmount);
   }
 
@@ -148,10 +136,10 @@ export class NetworkRegistryService implements OnModuleInit {
     usdcAmount: string,
   ): Promise<{ txId: string; skipped?: boolean }> {
     if (!this.isAvailable('yield')) {
-      this.logger.warn(`Yield feature disabled on ${this.networkType}, skipping fee transfer`);
+      this.logger.warn(`Yield feature disabled on ${this.getNetworkType()}, skipping fee transfer`);
       return { txId: '', skipped: true };
     }
-    const adapter = await this.getBlockchainAdapter();
+    const adapter = this.getBlockchainAdapter();
     return await adapter.transferUSDC(recipientAddress, usdcAmount);
   }
 }

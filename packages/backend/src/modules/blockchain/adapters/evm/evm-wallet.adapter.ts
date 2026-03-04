@@ -10,16 +10,26 @@ export class EvmWalletAdapter implements WalletAdapter {
   private chain: any;
   private rpcUrl: string;
 
-  constructor(private configService: ConfigService) {
-    const adminPk = this.configService.get<string>('blockchain.adminPrivateKey');
-    const platformPk = this.configService.get<string>('blockchain.platformPrivateKey');
-    this.rpcUrl = this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
-    const chainId = this.configService.get<number>('blockchain.chainId') || 5003;
-    const networkName = this.configService.get<string>('network.networkName') || 'Mantle Sepolia';
-    const nativeSymbol = this.configService.get<string>('blockchain.evmNativeSymbol') || 'MNT';
+  constructor(
+    private configService: ConfigService,
+    configOverride?: {
+      rpcUrl?: string;
+      chainId?: number;
+      networkName?: string;
+      nativeSymbol?: string;
+      adminPk?: string;
+      platformPk?: string;
+    }
+  ) {
+    const adminPk = configOverride?.adminPk || this.configService.get<string>('blockchain.adminPrivateKey');
+    const platformPk = configOverride?.platformPk || this.configService.get<string>('blockchain.platformPrivateKey');
+    this.rpcUrl = configOverride?.rpcUrl || this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
+    const chainId = configOverride?.chainId || this.configService.get<number>('blockchain.chainId') || 5003;
+    const networkName = configOverride?.networkName || this.configService.get<string>('network.networkName') || 'Mantle Sepolia';
+    const nativeSymbol = configOverride?.nativeSymbol || this.configService.get<string>('blockchain.evmNativeSymbol') || 'MNT';
 
-    if (!adminPk) throw new Error('ADMIN_PRIVATE_KEY not configured');
-    if (!platformPk) throw new Error('PLATFORM_PRIVATE_KEY not configured');
+    if (!adminPk) throw new Error('Admin private key not configured');
+    if (!platformPk) throw new Error('Platform private key not configured');
 
     this.adminAccount = privateKeyToAccount(adminPk as `0x${string}`);
     this.platformAccount = privateKeyToAccount(platformPk as `0x${string}`);

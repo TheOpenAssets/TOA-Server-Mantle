@@ -32,11 +32,17 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     private readonly walletAdapter: EvmWalletAdapter,
     private readonly contractAdapter: EvmContractAdapter,
     private readonly assetModel: Model<AssetDocument>,
+    configOverride?: {
+      rpcUrl?: string;
+      chainId?: number;
+      networkName?: string;
+      nativeSymbol?: string;
+    }
   ) {
-    const rpcUrl = this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
-    const chainId = this.configService.get<number>('blockchain.chainId') || 5003;
-    const networkName = this.configService.get<string>('network.networkName') || 'Mantle Sepolia';
-    const nativeSymbol = this.configService.get<string>('blockchain.evmNativeSymbol') || 'MNT';
+    const rpcUrl = configOverride?.rpcUrl || this.configService.get<string>('blockchain.rpcUrl') || 'http://localhost:8545';
+    const chainId = configOverride?.chainId || this.configService.get<number>('blockchain.chainId') || 5003;
+    const networkName = configOverride?.networkName || this.configService.get<string>('network.networkName') || 'Mantle Sepolia';
+    const nativeSymbol = configOverride?.nativeSymbol || this.configService.get<string>('blockchain.evmNativeSymbol') || 'MNT';
 
     const chain = defineChain({
       id: chainId,
