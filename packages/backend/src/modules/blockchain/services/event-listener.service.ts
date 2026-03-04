@@ -5,7 +5,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Queue } from 'bullmq';
 import { createPublicClient, http, Address, parseAbiItem, decodeEventLog, Log } from 'viem';
-import { mantleSepolia } from '../../../config/mantle-chain';
+import { getActiveChain } from '@/src/config/active-chain';
 import { ContractLoaderService } from './contract-loader.service';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 
@@ -26,7 +26,7 @@ export class EventListenerService implements OnModuleInit {
     // Use HTTP transport (polling) to avoid WebSocket subscription limits on public RPCs
     const rpcUrl = this.configService.get('blockchain.rpcUrl');
     this.publicClient = createPublicClient({
-      chain: mantleSepolia,
+      chain: getActiveChain(),
       transport: http(rpcUrl),
     });
   }

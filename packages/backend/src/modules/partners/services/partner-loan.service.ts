@@ -23,7 +23,7 @@ import { PartnerBorrowDto, PartnerRepayDto, PartnerRepayWithTransferDto } from '
 import { WalletService } from '../../blockchain/services/wallet.service';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { Address, createPublicClient, http, PublicClient } from 'viem';
-import { mantleSepolia } from '../../../config/mantle-chain';
+import { getActiveChain } from '@/src/config/active-chain';
 import { PartnerLoanStatus, RepaymentSource, WalletAddress } from '@openassets/types';
 
 @Injectable()
@@ -43,7 +43,7 @@ export class PartnerLoanService {
     private contractLoader: ContractLoaderService,
   ) {
     this.publicClient = createPublicClient({
-      chain: mantleSepolia,
+      chain: getActiveChain(),
       transport: http(this.configService.get('blockchain.rpcUrl')),
     });
   }

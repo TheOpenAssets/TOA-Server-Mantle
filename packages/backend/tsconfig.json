@@ -5,6 +5,9 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "paths": {
+      "@/*": [
+        "./*"
+      ],
       "@openassets/types": [
         "../types/src/index.ts"
       ],

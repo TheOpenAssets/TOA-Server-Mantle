@@ -7,23 +7,33 @@ export default registerAs('network', () => {
   const isMantle = networkType === NetworkType.MANTLE;
   const isStellar = networkType === NetworkType.STELLAR;
   const isArbitrum = networkType === NetworkType.ARBITRUM;
+  const isCreditcoin = networkType === NetworkType.CREDITCOIN;
+
+  const isEvmLike = isMantle || isArbitrum || isCreditcoin;
+
+  const networkNameMap: Record<string, string> = {
+    [NetworkType.MANTLE]: 'Mantle Sepolia',
+    [NetworkType.ARBITRUM]: 'Arbitrum Sepolia',
+    [NetworkType.CREDITCOIN]: 'Creditcoin Testnet',
+    [NetworkType.STELLAR]: 'Stellar Testnet',
+  };
 
   return {
     networkType,
-    networkName: isMantle ? 'Mantle Sepolia' : isArbitrum ? 'Arbitrum Sepolia' : 'Stellar Testnet',
+    networkName: networkNameMap[networkType] ?? 'Unknown Network',
     isTestnet: true, // For now all are testnets
 
     // Feature Availability Map
     features: {
       leverage: isMantle || isArbitrum,
-      faucet: isMantle || isArbitrum,
-      solvency: isMantle || isArbitrum,
-      secondaryMarket: isMantle || isArbitrum, // Initially false for Stellar , will be true for all later
-      oaid: isMantle || isArbitrum, // will be true for all later
-      collateralPrice: isMantle || isArbitrum, // Replaces methPrice - works for both mETH and stARB
-      collateralDex: isMantle || isArbitrum, // Replaces fluxionDex - works for both DEXs
+      faucet: isEvmLike,
+      solvency: isEvmLike,
+      secondaryMarket: isEvmLike, // Initially false for Stellar, will be true for all later
+      oaid: isEvmLike, // will be true for all later
+      collateralPrice: isEvmLike, // Replaces methPrice - works for both mETH and stARB and CTC
+      collateralDex: isEvmLike, // Replaces fluxionDex - works for both DEXs
       marketplace: true, // All support marketplace
-      partners: isMantle || isArbitrum,
+      partners: isEvmLike,
       yield: true, // All support yield distribution
       kyc: true,
       assets: true,

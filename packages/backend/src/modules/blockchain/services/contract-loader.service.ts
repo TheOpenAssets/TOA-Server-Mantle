@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { MantleContracts, MantleAbis } from '@contracts/mantle';
 import { ArbitrumContracts, ArbitrumAbis } from '@contracts/arbitrum';
 import { StellarContracts } from '@contracts/stellar';
+import { CreditCoinContracts, CreditCoinAbis } from '@contracts/creditcoin';
 import { ContractName } from '@openassets/types';
 
 @Injectable()
@@ -29,6 +30,11 @@ export class ContractLoaderService implements OnModuleInit {
     } else if (networkType === 'stellar') {
       this.contracts = { ...StellarContracts };
       this.abis = {};
+    } else if (networkType === 'creditcoin') {
+      this.contracts = { ...CreditCoinContracts };
+      this.abis = { ...CreditCoinAbis };
+      this.addAlias('PrimaryMarketplace', 'PrimaryMarket');
+      this.addAlias('USDC', 'MockUSDC');
     } else {
       this.contracts = { ...MantleContracts };
       this.abis = { ...MantleAbis };

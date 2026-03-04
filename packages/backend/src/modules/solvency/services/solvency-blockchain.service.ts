@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Address, createPublicClient, http, PublicClient } from 'viem';
-import { mantleSepolia } from '../../../config/mantle-chain';
+import { getActiveChain } from '@/src/config/active-chain';
 import { WalletService } from '../../blockchain/services/wallet.service';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 
@@ -16,7 +16,7 @@ export class SolvencyBlockchainService {
     private configService: ConfigService,
   ) {
     this.publicClient = createPublicClient({
-      chain: mantleSepolia,
+      chain: getActiveChain(),
       transport: http(this.configService.get('blockchain.rpcUrl')),
     });
   }

@@ -5,6 +5,16 @@ This folder contains all the configuration logic for the application, using Nest
 
 ## Key Files
 
+### `creditcoin-chain.ts`
+- **Purpose**: Defines the viem `Chain` object for the Creditcoin Testnet (CC3) using `defineChain`.
+- **Key Fields**: chain ID 102031, native currency CTC (18 decimals), RPC at `rpc.cc3-testnet.creditcoin.network`, Blockscout explorer.
+- **Exports**: `creditcoinTestnet`
+
+### `active-chain.ts`
+- **Purpose**: Single resolution point for the active viem `Chain` object. All services that create a `PublicClient` or `WalletClient` should import `getActiveChain()` from here instead of hardcoding a specific chain.
+- **Behavior**: Reads `process.env.NETWORK_TYPE` and returns `creditcoinTestnet` for `'creditcoin'`, `arbitrumSepolia` (from viem/chains) for `'arbitrum'`, or `mantleSepolia` (default) for anything else.
+- **Exports**: `getActiveChain(): Chain`
+
 ### `blockchain.config.ts`
 - **Purpose**: Defines the connection parameters for the Mantle (EVM) network.
 - **Key Fields**: RPC URLs, Chain ID, Admin/Platform private keys, and EVM contract addresses.
