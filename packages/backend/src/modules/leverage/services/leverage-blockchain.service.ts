@@ -146,6 +146,7 @@ export class LeverageBlockchainService {
           assetIdBytes, // Pass bytes32 assetId
           mETHPriceUSD18,
         ],
+        account: wallet.account!,
       }), 'createPosition write');
 
       // Wait for transaction and parse event to get positionId
@@ -215,6 +216,7 @@ export class LeverageBlockchainService {
         abi,
         functionName: 'harvestYield',
         args: [BigInt(positionId), collateralPriceUSD],
+        account: wallet.account!,
       }), 'harvestYield write');
 
       const receipt = await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
@@ -309,6 +311,7 @@ export class LeverageBlockchainService {
         abi,
         functionName: 'liquidatePosition',
         args: [BigInt(positionId), methPriceUSD],
+        account: wallet.account!,
       }), 'liquidatePosition write');
 
       this.logger.log(`⏳ Waiting for confirmation... TX: ${hash}`);
@@ -448,7 +451,7 @@ export class LeverageBlockchainService {
 
       const hash = await this.executeWithRetry(async () => {
         const nonce = await this.publicClient.getTransactionCount({
-          address: wallet.account.address,
+          address: wallet.account!.address,
         });
         return wallet.writeContract({
           address: leverageVaultAddress as Address,
@@ -456,6 +459,7 @@ export class LeverageBlockchainService {
           functionName: 'claimYieldFromBurn',
           args: [BigInt(positionId), yieldVaultAddress, rwaToken, tokenAmount],
           nonce,
+          account: wallet.account!,
         });
       }, 'claimYieldFromBurn write');
 
@@ -543,7 +547,7 @@ export class LeverageBlockchainService {
 
       const hash = await this.executeWithRetry(async () => {
         const nonce = await this.publicClient.getTransactionCount({
-          address: wallet.account.address,
+          address: wallet.account!.address,
         });
         return wallet.writeContract({
           address: address as Address,
@@ -551,6 +555,7 @@ export class LeverageBlockchainService {
           functionName: 'processSettlement',
           args: [BigInt(positionId), settlementUSDC],
           nonce,
+          account: wallet.account!,
         });
       }, 'processSettlement write');
 
@@ -638,7 +643,7 @@ export class LeverageBlockchainService {
     try {
       const hash = await this.executeWithRetry(async () => {
         const nonce = await this.publicClient.getTransactionCount({
-          address: wallet.account.address,
+          address: wallet.account!.address,
         });
         return wallet.writeContract({
           address: address as Address,
@@ -646,6 +651,7 @@ export class LeverageBlockchainService {
           functionName: 'settleLiquidation',
           args: [BigInt(positionId)],
           nonce,
+          account: wallet.account!,
         });
       }, 'settleLiquidation write');
 
@@ -836,6 +842,7 @@ export class LeverageBlockchainService {
         abi,
         functionName: 'addCollateral',
         args: [BigInt(positionId), mETHAmount],
+        account: wallet.account!,
       }), 'addCollateral write');
 
       await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({

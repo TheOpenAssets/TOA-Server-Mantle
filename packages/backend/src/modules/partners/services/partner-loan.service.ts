@@ -124,6 +124,7 @@ export class PartnerLoanService {
       abi: usdcAbi,
       functionName: 'transfer',
       args: [partner.settlementAddress as Address, netAmount],
+      account: platformWallet.account!,
     });
 
     await this.publicClient.waitForTransactionReceipt({ hash: transferHash });
@@ -427,12 +428,12 @@ export class PartnerLoanService {
     const matchingTransfer = transferLogs.find(
       (log) =>
         log.args.from?.toLowerCase() === fromAddress.toLowerCase() &&
-        log.args.to?.toLowerCase() === platformWallet.account.address.toLowerCase()
+        log.args.to?.toLowerCase() === platformWallet.account!.address.toLowerCase()
     );
 
     if (!matchingTransfer) {
       throw new BadRequestException(
-        `No USDC transfer found from ${fromAddress} to platform wallet ${platformWallet.account.address} in transaction ${txHash}`
+        `No USDC transfer found from ${fromAddress} to platform wallet ${platformWallet.account!.address} in transaction ${txHash}`
       );
     }
 

@@ -28,7 +28,7 @@ export class WalletService {
 
     const account = privateKeyToAccount(pk as `0x${string}`);
     return createWalletClient({
-      account,
+      account: account as any,
       chain: this.getChain(),
       transport: http(this.configService.get('blockchain.rpcUrl'))
     });
@@ -40,7 +40,7 @@ export class WalletService {
 
     const account = privateKeyToAccount(pk as `0x${string}`);
     return createWalletClient({
-      account,
+      account: account as any,
       chain: this.getChain(),
       transport: http(this.configService.get('blockchain.rpcUrl'))
     });

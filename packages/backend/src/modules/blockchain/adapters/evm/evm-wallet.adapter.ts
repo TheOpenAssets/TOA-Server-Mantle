@@ -45,7 +45,7 @@ export class EvmWalletAdapter implements WalletAdapter {
 
   getAdminWallet(): WalletClient {
     return createWalletClient({
-      account: this.adminAccount,
+      account: this.adminAccount as any,
       chain: this.chain,
       transport: http(this.rpcUrl),
     });
@@ -53,7 +53,7 @@ export class EvmWalletAdapter implements WalletAdapter {
 
   getPlatformWallet(): WalletClient {
     return createWalletClient({
-      account: this.platformAccount,
+      account: this.platformAccount as any,
       chain: this.chain,
       transport: http(this.rpcUrl),
     });

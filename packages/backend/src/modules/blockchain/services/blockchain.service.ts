@@ -77,6 +77,7 @@ export class BlockchainService {
       abi,
       functionName: 'registerAsset',
       args: [assetId, attestationHash, blobId, payload, signature],
+      account: wallet.account!,
     }), 'registerAsset write');
 
     // Don't wait for receipt - return immediately
@@ -99,6 +100,7 @@ export class BlockchainService {
       abi,
       functionName: 'registerIdentity',
       args: [walletAddress],
+      account: wallet.account!,
     }), 'registerIdentity write');
 
     this.logger.log(`Transaction submitted: ${hash}, waiting for confirmation...`);
@@ -156,16 +158,16 @@ export class BlockchainService {
       totalSupplyWei = fromCanonical(asset.tokenParams.totalSupply, 18);
       this.logger.log(`Using asset's totalSupply: ${asset.tokenParams.totalSupply} → ${totalSupplyWei} wei`);
     }
-    const issuer = dto.issuer || wallet.account.address; // Default to admin wallet
+    const issuer = dto.issuer || wallet.account!.address; // Default to admin wallet
 
     this.logger.log(`Token params: supply=${Number(totalSupplyWei) / 1e18} tokens (${totalSupplyWei} wei), name=${dto.name}, symbol=${dto.symbol}, issuer=${issuer}`);
 
     // Check wallet balance before submitting transaction
-    const balance = await this.publicClient.getBalance({ address: wallet.account.address as Address });
-    this.logger.log(`Admin wallet ${wallet.account.address} balance: ${Number(balance) / 1e18} MNT`);
+    const balance = await this.publicClient.getBalance({ address: wallet.account!.address as Address });
+    this.logger.log(`Admin wallet ${wallet.account!.address} balance: ${Number(balance) / 1e18} MNT`);
 
     if (balance === BigInt(0)) {
-      throw new Error(`Admin wallet has no MNT for gas. Please fund ${wallet.account.address}`);
+      throw new Error(`Admin wallet has no MNT for gas. Please fund ${wallet.account!.address}`);
     }
 
     this.logger.log(`Submitting transaction to TokenFactory at ${address}...`);
@@ -177,6 +179,7 @@ export class BlockchainService {
         abi,
         functionName: 'deployTokenSuite',
         args: [assetIdBytes32, totalSupplyWei, dto.name, dto.symbol, issuer],
+        account: wallet.account!,
       }), 'deployTokenSuite write');
 
       this.logger.log(`Transaction submitted successfully: ${hash}`);
@@ -250,6 +253,7 @@ export class BlockchainService {
       abi: usdcAbi,
       functionName: 'approve',
       args: [yieldVaultAddress, BigInt(amount)],
+      account: wallet.account!,
     }), 'approve USDC write');
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
@@ -267,6 +271,7 @@ export class BlockchainService {
       abi: yieldVaultAbi,
       functionName: 'depositYield',
       args: [tokenAddress, BigInt(amount)],
+      account: wallet.account!,
     }), 'depositYield write');
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
@@ -290,6 +295,7 @@ export class BlockchainService {
       abi,
       functionName: 'distributeYieldBatch',
       args: [tokenAddress, holders, amountBigInts],
+      account: wallet.account!,
     }), 'distributeYieldBatch write');
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
@@ -316,7 +322,7 @@ export class BlockchainService {
       this.logger.log(`========== Starting listOnMarketplace ==========`);
       this.logger.log(`Input params: tokenAddress=${tokenAddress}, type=${type}, price=${price}, minInvestment=${minInvestment}, duration=${duration}, minPrice=${minPrice}`);
       this.logger.log(`Marketplace contract: ${address}`);
-      this.logger.log(`Admin wallet: ${wallet.account.address}`);
+      this.logger.log(`Admin wallet: ${wallet.account!.address}`);
 
       // Get asset info from database to extract assetId and totalSupply
       this.logger.log(`Querying database for asset with token.address: ${tokenAddress}`);
@@ -372,6 +378,7 @@ export class BlockchainService {
           totalSupplyWei,                        // totalSupply in token wei (18 decimals)
           fromCanonical(minInvestment, 6),       // minInvestment in USDC wei (6 decimals)
         ],
+        account: wallet.account!,
       }), 'createListing write');
       
       this.logger.log(`✓ Transaction submitted: ${hash}`);
@@ -442,7 +449,7 @@ export class BlockchainService {
       address: tokenAddress as Address,
       abi: tokenAbi,
       functionName: 'allowance',
-      args: [wallet.account.address, marketplaceAddress as Address],
+      args: [wallet.account!.address, marketplaceAddress as Address],
     }), 'allowance check') as bigint;
 
     if (currentAllowance > 0n) {
@@ -458,6 +465,7 @@ export class BlockchainService {
       abi: tokenAbi,
       functionName: 'approve',
       args: [marketplaceAddress as Address, maxApproval],
+      account: wallet.account!,
     }), 'approve marketplace write');
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
@@ -484,6 +492,7 @@ export class BlockchainService {
       abi,
       functionName: 'endAuction',
       args: [assetIdBytes32, BigInt(clearingPrice)],
+      account: wallet.account!,
     }), 'endAuction write');
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
@@ -505,6 +514,7 @@ export class BlockchainService {
       abi,
       functionName: 'revokeAsset',
       args: [assetId, reason],
+      account: wallet.account!,
     }), 'revokeAsset write');
 
     await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({ hash }), 'revokeAsset receipt');
@@ -560,7 +570,7 @@ export class BlockchainService {
     this.logger.log(`🔥 Burning ${Number(unsoldBalance) / 1e18} unsold tokens from custody wallet...`);
 
     let hash: Hash;
-    if (wallet.account.address.toLowerCase() === custodyWalletAddress.toLowerCase()) {
+    if (wallet.account!.address.toLowerCase() === custodyWalletAddress.toLowerCase()) {
       // If platform wallet IS custody wallet, use burn() directly
       // This avoids allowance requirement for self-burn
       hash = await this.executeWithRetry(() => wallet.writeContract({
@@ -568,6 +578,7 @@ export class BlockchainService {
         abi: tokenAbi,
         functionName: 'burn',
         args: [unsoldBalance],
+        account: wallet.account!,
       }), 'burn write');
     } else {
       // If different, use burnFrom (requires allowance)
@@ -576,6 +587,7 @@ export class BlockchainService {
         abi: tokenAbi,
         functionName: 'burnFrom',
         args: [custodyWalletAddress as Address, unsoldBalance],
+        account: wallet.account!,
       }), 'burnFrom write');
     }
 

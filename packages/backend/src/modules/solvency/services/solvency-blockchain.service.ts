@@ -87,7 +87,7 @@ export class SolvencyBlockchainService {
       abi: tokenAbi,
       functionName: 'approve',
       args: [vaultAddress, BigInt(collateralAmount)],
-      account: wallet.account,
+      account: wallet.account!,
     }));
 
     await this.publicClient.waitForTransactionReceipt({ hash: approveHash });
@@ -106,7 +106,7 @@ export class SolvencyBlockchainService {
         tokenTypeEnum,
         issueOAID,
       ],
-      account: wallet.account,
+      account: wallet.account!,
     }));
 
     this.logger.log(`Deposit transaction submitted: ${hash}`);
@@ -228,7 +228,7 @@ export class SolvencyBlockchainService {
         BigInt(loanDuration),
         BigInt(numberOfInstallments),
       ],
-      account: wallet.account,
+      account: wallet.account!,
     }));
 
     this.logger.log(`Borrow transaction submitted: ${hash}`);
@@ -274,7 +274,7 @@ export class SolvencyBlockchainService {
       abi: usdcAbi,
       functionName: 'approve',
       args: [vaultAddress, BigInt(amount)],
-      account: wallet.account,
+      account: wallet.account!,
     }));
 
     await this.publicClient.waitForTransactionReceipt({ hash: approveHash });
@@ -286,7 +286,7 @@ export class SolvencyBlockchainService {
       abi: vaultAbi,
       functionName: 'repayLoan',
       args: [BigInt(positionId), BigInt(amount)],
-      account: wallet.account,
+      account: wallet.account!,
     }));
 
     this.logger.log(`Repay transaction submitted: ${hash}`);
@@ -349,7 +349,7 @@ export class SolvencyBlockchainService {
       abi: vaultAbi,
       functionName: 'withdrawCollateral',
       args: [BigInt(positionId), BigInt(amount)],
-      account: wallet.account,
+      account: wallet.account!,
     }));
 
     this.logger.log(`Withdraw transaction submitted: ${hash}`);
@@ -389,7 +389,7 @@ export class SolvencyBlockchainService {
       abi: vaultAbi,
       functionName: 'liquidatePosition',
       args: [BigInt(positionId)],
-      account: wallet.account,
+      account: wallet.account!,
     }));
 
     this.logger.log(`Liquidation transaction submitted: ${hash}`);
@@ -447,7 +447,7 @@ export class SolvencyBlockchainService {
       abi: vaultAbi,
       functionName: 'settleLiquidation',
       args: [BigInt(positionId)],
-      account: wallet.account,
+      account: wallet.account!,
     }));
 
     const receipt = await this.publicClient.waitForTransactionReceipt({
@@ -688,7 +688,7 @@ export class SolvencyBlockchainService {
       abi: oaidAbi,
       functionName: 'registerUser',
       args: [userAddress as Address],
-      account: wallet.account,
+      account: wallet.account!,
     }));
 
     this.logger.log(`OAID registration transaction submitted: ${hash}`);
@@ -830,7 +830,7 @@ export class SolvencyBlockchainService {
       abi: usdcAbi,
       functionName: 'approve',
       args: [vaultAddress, BigInt(purchaseAmountUSDC)],
-      account: wallet.account,
+      account: wallet.account!,
     }));
 
     await this.publicClient.waitForTransactionReceipt({ hash: approveHash });
@@ -841,7 +841,9 @@ export class SolvencyBlockchainService {
       address: vaultAddress as Address,
       abi: vaultAbi,
       functionName: 'purchaseAndSettleLiquidation',
-      args: [BigInt(positionId), BigInt(purchaseAmountUSDC)],      account: wallet.account,    }));
+      args: [BigInt(positionId), BigInt(purchaseAmountUSDC)],
+      account: wallet.account!,
+    }));
 
     this.logger.log(`Purchase and settlement transaction submitted: ${hash}`);
 
@@ -906,7 +908,7 @@ export class SolvencyBlockchainService {
       abi: vaultAbi,
       functionName: 'markMissedPayment',
       args: [BigInt(positionId)],
-      account: wallet.account,
+      account: wallet.account!,
     }));
 
     await this.publicClient.waitForTransactionReceipt({ hash });
@@ -928,7 +930,9 @@ export class SolvencyBlockchainService {
       address: vaultAddress as Address,
       abi: vaultAbi,
       functionName: 'markDefaulted',
-      args: [BigInt(positionId)],      account: wallet.account,    }));
+      args: [BigInt(positionId)],
+      account: wallet.account!,
+    }));
 
     await this.publicClient.waitForTransactionReceipt({ hash });
     this.logger.log(`Position defaulted: ${hash}`);
