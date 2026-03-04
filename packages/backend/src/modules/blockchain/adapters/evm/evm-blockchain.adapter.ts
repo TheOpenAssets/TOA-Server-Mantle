@@ -15,7 +15,8 @@ import {
   DeployedTokenResult,
   PurchaseVerificationResult,
   BidVerificationResult,
-  BidSettlementResult
+  BidSettlementResult,
+  YieldClaimVerificationResult
 } from '../blockchain-adapter.interface';
 import { EvmWalletAdapter } from './evm-wallet.adapter';
 import { EvmContractAdapter } from './evm-contract-loader.adapter';
@@ -685,6 +686,98 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     this.logger.log(`[EVM] USDC transferred in tx: ${hash}`);
     
     return { txId: hash };
+  }
+
+  async verifyYieldClaimTransaction(
+    txHash: string,
+    tokenAddress: string,
+    expectedInvestor: string,
+  ): Promise<YieldClaimVerificationResult | null> {
+    try {
+      const receipt = await this.executeWithRetry(() => this.publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` }), 'getTransactionReceipt');
+
+      if (!receipt || receipt.status !== 'success') {
+        this.logger.error(`Transaction not found or failed: ${txHash}`);
+        return null;
+      }
+
+      const block = await this.publicClient.getBlock({ blockNumber: receipt.blockNumber });
+      const yieldVaultAddress = this.contractAdapter.getContractAddress('YieldVault');
+      const abi = this.contractAdapter.getContractInterface('YieldVault');
+
+      for (const log of receipt.logs) {
+        if (log.address.toLowerCase() !== yieldVaultAddress.toLowerCase()) {
+          continue;
+        }
+
+        try {
+          const decoded = decodeEventLog({
+            abi,
+            data: log.data,
+            topics: log.topics,
+          }) as unknown as { eventName: string; args: any };
+
+          if (decoded.eventName === 'YieldClaimed') {
+            const { user, tokenAddress: eventTokenAddress, tokensBurned, usdcReceived } = decoded.args;
+
+            if (
+              user.toLowerCase() === expectedInvestor.toLowerCase() &&
+              eventTokenAddress.toLowerCase() === tokenAddress.toLowerCase()
+            ) {
+              return {
+                tokensBurned: toCanonical(tokensBurned, 18),
+                usdcReceived: toCanonical(usdcReceived, 6),
+                blockNumber: Number(receipt.blockNumber),
+                timestamp: Number(block.timestamp),
+              };
+            }
+          }
+        } catch { continue; }
+      }
+
+      this.logger.error(`YieldClaimed event not found in transaction ${txHash}`);
+      return null;
+    } catch (error: any) {
+      this.logger.error(`Error validating yield claim ${txHash}:`, error.message);
+      return null;
+    }
+  }
+
+  async getClaimableYield(
+    userAddress: string,
+    tokenAddress?: string,
+  ): Promise<string> {
+    const yieldVaultAddress = this.contractAdapter.getContractAddress('YieldVault');
+    const abi = this.contractAdapter.getContractInterface('YieldVault');
+
+    let claimableRaw: bigint;
+
+    if (tokenAddress) {
+      // Get user's RWA token balance first
+      const rwaTokenAbi = this.contractAdapter.getContractInterface('RWAToken');
+      const balance = await this.executeWithRetry(() => this.publicClient.readContract({
+        address: tokenAddress as Address,
+        abi: rwaTokenAbi,
+        functionName: 'balanceOf',
+        args: [userAddress],
+      }), 'balanceOf read') as bigint;
+
+      claimableRaw = await this.executeWithRetry(() => this.publicClient.readContract({
+        address: yieldVaultAddress as Address,
+        abi,
+        functionName: 'getClaimableForTokens',
+        args: [tokenAddress, balance],
+      }), 'getClaimableForTokens read') as bigint;
+    } else {
+      claimableRaw = await this.executeWithRetry(() => this.publicClient.readContract({
+        address: yieldVaultAddress as Address,
+        abi,
+        functionName: 'getUserClaimable',
+        args: [userAddress],
+      }), 'getUserClaimable read') as bigint;
+    }
+
+    return toCanonical(claimableRaw, 6).value;
   }
 }
 

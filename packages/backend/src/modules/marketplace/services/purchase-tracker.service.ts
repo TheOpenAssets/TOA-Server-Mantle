@@ -258,8 +258,21 @@ export class PurchaseTrackerService {
     // Get settlement info for metadata
     const settlement = await this.settlementModel.findOne({ assetId: dto.assetId, network }).sort({ createdAt: -1 });
 
-    const tokensBurnedCanonical = toCanonical(dto.tokensBurned, 18);
-    const usdcReceivedCanonical = toCanonical(dto.usdcReceived, 6);
+    this.logger.log('Validating yield claim transaction on-chain...');
+    // Validate transaction on-chain
+    const adapter = this.chainManagerRegistry.getManager(network).getBlockchainAdapter();
+    const claimData = await adapter.verifyYieldClaimTransaction(
+      dto.txHash,
+      asset.token?.address || '',
+      investorWallet,
+    );
+
+    if (!claimData) {
+      throw new BadRequestException('Invalid yield claim transaction');
+    }
+
+    const tokensBurnedCanonical = claimData.tokensBurned;
+    const usdcReceivedCanonical = claimData.usdcReceived;
 
     // Save yield claim record
     const yieldClaim = await this.yieldClaimModel.create({
@@ -270,10 +283,10 @@ export class PurchaseTrackerService {
       tokensBurned: tokensBurnedCanonical.value,
       usdcReceived: usdcReceivedCanonical.value,
       // Companion fields for precision
-      rawPrecise: (tokensBurnedCanonical as any).rawPrecise || (usdcReceivedCanonical as any).rawPrecise,
+      rawPrecise: tokensBurnedCanonical.rawPrecise || usdcReceivedCanonical.rawPrecise,
       rawTokensBurned: tokensBurnedCanonical.rawPrice,
       rawUsdcReceived: usdcReceivedCanonical.rawPrice,
-      blockNumber: dto.blockNumber ? parseInt(dto.blockNumber) : undefined,
+      blockNumber: claimData.blockNumber,
       status: 'CONFIRMED',
       network,
       metadata: {

@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Param, UseGuards, Query, Body, Request } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiHeader, ApiBody } from '@nestjs/swagger';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
@@ -17,6 +18,8 @@ import { NotifyYieldClaimDto } from '../dto/notify-yield-claim.dto';
 import { NetworkContextService } from '../../blockchain/services/network-context.service';
 import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
+@ApiTags('Marketplace')
+@ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'stellar', 'arbitrum', 'creditcoin'] })
 @Controller('marketplace')
 export class MarketplaceController {
   constructor(
@@ -30,6 +33,8 @@ export class MarketplaceController {
     private networkContextService: NetworkContextService,
   ) { }
 
+  @ApiOperation({ summary: 'Get marketplace listings', description: 'Returns active RWA token listings for the current network.' })
+  @ApiResponse({ status: 200, description: 'List of assets' })
   @Get('listings')
   @UseGuards(JwtAuthGuard) // Investors must be authenticated
   async getListings(
@@ -371,6 +376,9 @@ export class MarketplaceController {
     };
   }
 
+  @ApiOperation({ summary: 'Notify purchase', description: 'Records a primary market purchase after it has been executed on-chain.' })
+  @ApiBody({ type: NotifyPurchaseDto })
+  @ApiResponse({ status: 201, description: 'Purchase recorded' })
   @Post('purchases/notify')
   @UseGuards(JwtAuthGuard)
   async notifyPurchase(@Request() req: any, @Body() dto: NotifyPurchaseDto) {
@@ -378,6 +386,8 @@ export class MarketplaceController {
     return this.purchaseTracker.notifyPurchase(dto, investorWallet, dto.type);
   }
 
+  @ApiOperation({ summary: 'Get investor portfolio', description: 'Returns the aggregated portfolio for the authenticated investor.' })
+  @ApiResponse({ status: 200, description: 'Portfolio data' })
   @Get('portfolio')
   @UseGuards(JwtAuthGuard)
   async getPortfolio(@Request() req: any) {
@@ -385,6 +395,8 @@ export class MarketplaceController {
     return this.purchaseTracker.getInvestorPortfolio(investorWallet);
   }
 
+  @ApiOperation({ summary: 'Get purchase history', description: 'Returns history of confirmed purchases for the authenticated investor.' })
+  @ApiResponse({ status: 200, description: 'Purchase history' })
   @Get('purchases/history')
   @UseGuards(JwtAuthGuard)
   async getPurchaseHistory(@Request() req: any, @Query('limit') limit?: string) {
@@ -393,6 +405,9 @@ export class MarketplaceController {
     return this.purchaseTracker.getPurchaseHistory(investorWallet, limitNum);
   }
 
+  @ApiOperation({ summary: 'Notify bid', description: 'Records an auction bid after it has been executed on-chain.' })
+  @ApiBody({ type: NotifyBidDto })
+  @ApiResponse({ status: 201, description: 'Bid recorded' })
   @Post('bids/notify')
   @UseGuards(JwtAuthGuard)
   async notifyBid(@Request() req: any, @Body() dto: NotifyBidDto) {
@@ -400,6 +415,8 @@ export class MarketplaceController {
     return this.bidTracker.notifyBid(dto, investorWallet);
   }
 
+  @ApiOperation({ summary: 'Get my bids', description: 'Returns all auction bids for the authenticated investor.' })
+  @ApiResponse({ status: 200, description: 'Bids history' })
   @Get('bids/my-bids')
   @UseGuards(JwtAuthGuard)
   async getMyBids(@Request() req: any, @Query('assetId') assetId?: string) {
@@ -407,12 +424,17 @@ export class MarketplaceController {
     return this.bidTracker.getInvestorBids(investorWallet, assetId);
   }
 
+  @ApiOperation({ summary: 'Get auction bids', description: 'Returns all bids for a specific auction (admin/public view).' })
+  @ApiResponse({ status: 200, description: 'Auction bids' })
   @Get('auctions/:assetId/bids')
   @UseGuards(JwtAuthGuard)
   async getAuctionBids(@Param('assetId') assetId: string) {
     return this.bidTracker.getAuctionBids(assetId);
   }
 
+  @ApiOperation({ summary: 'Notify settlement', description: 'Records an auction settlement after it has been executed on-chain.' })
+  @ApiBody({ type: NotifySettlementDto })
+  @ApiResponse({ status: 201, description: 'Settlement recorded' })
   @Post('bids/settle-notify')
   @UseGuards(JwtAuthGuard)
   async notifySettlement(@Request() req: any, @Body() dto: NotifySettlementDto) {
@@ -420,6 +442,9 @@ export class MarketplaceController {
     return this.bidTracker.notifySettlement(dto, investorWallet);
   }
 
+  @ApiOperation({ summary: 'Notify yield claim', description: 'Records a yield claim transaction after it has been executed on-chain.' })
+  @ApiBody({ type: NotifyYieldClaimDto })
+  @ApiResponse({ status: 201, description: 'Claim recorded' })
   @Post('yield-claim/notify')
   @UseGuards(JwtAuthGuard)
   async notifyYieldClaim(@Request() req: any, @Body() dto: NotifyYieldClaimDto) {

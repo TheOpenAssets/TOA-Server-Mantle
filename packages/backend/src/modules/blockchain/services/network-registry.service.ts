@@ -158,4 +158,15 @@ export class NetworkRegistryService {
     const adapter = this.getBlockchainAdapter();
     return await adapter.transferUSDC(recipientAddress, usdcAmount);
   }
+
+  async getInvestorClaimableYield(userAddress: string, tokenAddress?: string): Promise<string> {
+    if (!this.isAvailable('yield')) {
+      return '0.0000';
+    }
+    const adapter = this.getBlockchainAdapter();
+    if (adapter.getClaimableYield) {
+      return await adapter.getClaimableYield(userAddress, tokenAddress);
+    }
+    return '0.0000';
+  }
 }
