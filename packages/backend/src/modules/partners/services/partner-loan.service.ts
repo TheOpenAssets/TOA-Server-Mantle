@@ -498,6 +498,78 @@ export class PartnerLoanService {
     return this.partnerLoanModel.find(query).sort({ createdAt: -1 }).exec();
   }
 
+  async repayLoanAsUser(
+    userWallet: string,
+    internalLoanId: string,
+    repaymentAmount: string,
+    transferTxHash: string,
+  ) {
+    const loan = await this.partnerLoanModel.findOne({ internalLoanId });
+
+    if (!loan) throw new NotFoundException('Loan not found');
+    if (loan.userWallet.toLowerCase() !== userWallet.toLowerCase()) {
+      throw new BadRequestException('Not authorised to repay this loan');
+    }
+    if (loan.status === PartnerLoanStatus.REPAID) {
+      throw new BadRequestException('Loan already fully repaid');
+    }
+
+    const repayAmount = BigInt(repaymentAmount);
+    const remainingDebt = BigInt(loan.remainingDebt);
+    if (repayAmount > remainingDebt) {
+      throw new BadRequestException(`Repayment exceeds remaining debt of ${remainingDebt.toString()}`);
+    }
+
+    await this.verifyUSDCTransfer(transferTxHash, userWallet, repaymentAmount);
+
+    const repayResult = await this.solvencyBlockchainService.repayLoan(
+      loan.solvencyPositionId,
+      repaymentAmount,
+    );
+
+    const newRemainingDebt = remainingDebt - repayAmount;
+    const newStatus = newRemainingDebt === 0n ? PartnerLoanStatus.REPAID : PartnerLoanStatus.ACTIVE;
+
+    loan.remainingDebt = newRemainingDebt.toString();
+    loan.totalRepaid = (BigInt(loan.totalRepaid) + repayAmount).toString();
+    loan.lastRepaymentAt = new Date();
+    loan.status = newStatus;
+    loan.repayTxHash = repayResult.txHash;
+    loan.repaymentHistory.push({
+      amount: repaymentAmount,
+      timestamp: new Date(),
+      txHash: transferTxHash,
+      repaidBy: RepaymentSource.PARTNER,
+    });
+    await loan.save();
+
+    await this.solvencyPositionService.recordRepayment(
+      loan.solvencyPositionId,
+      repaymentAmount,
+      repayResult.principal,
+    );
+
+    if (newStatus === PartnerLoanStatus.REPAID) {
+      await this.solvencyPositionService.markPartnerLoanRepaid(
+        loan.solvencyPositionId,
+        loan.internalLoanId,
+      );
+    }
+
+    this.logger.log(`User ${userWallet} repaid partner loan ${internalLoanId} — txHash: ${repayResult.txHash}`);
+
+    return {
+      success: true,
+      internalLoanId: loan.internalLoanId,
+      partnerName: loan.partnerName,
+      repaymentAmount,
+      remainingDebt: newRemainingDebt.toString(),
+      status: newStatus,
+      repayTxHash: repayResult.txHash,
+      transferTxHash,
+    };
+  }
+
   async getAllUserLoans(userWallet: string, status?: PartnerLoanStatus) {
     const query: any = {
       userWallet: userWallet.toLowerCase(),

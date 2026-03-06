@@ -41,25 +41,30 @@ import { PaymentAdapter, PaymentTransferResult } from '../payment-adapter.interf
 export class StellarPaymentAdapter implements PaymentAdapter {
   private readonly logger = new Logger(StellarPaymentAdapter.name);
   private readonly USDC_DECIMALS = 7; // USDC on Stellar (SAC) has 7 decimals
-  private readonly rpcServer: rpc.Server;
-  private readonly networkPassphrase: string;
+  private _rpcServer: rpc.Server | null = null;
+  private _networkPassphrase: string | null = null;
 
   constructor(
     private readonly configService: ConfigService,
   ) {
+    // Defer validation to first use so the server can start without Stellar config.
     const rpcUrl = this.configService.get<string>('network.stellar.rpcUrl');
     const passphrase = this.configService.get<string>('network.stellar.networkPassphrase');
 
-    if (!rpcUrl) {
-      throw new Error('Stellar RPC URL not configured (network.stellar.rpcUrl)');
+    if (rpcUrl && passphrase) {
+      this._rpcServer = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.includes('localhost') });
+      this._networkPassphrase = passphrase;
     }
+  }
 
-    if (!passphrase) {
-      throw new Error('Stellar network passphrase not configured (network.stellar.networkPassphrase)');
-    }
+  private get rpcServer(): rpc.Server {
+    if (!this._rpcServer) throw new Error('Stellar RPC URL not configured (network.stellar.rpcUrl)');
+    return this._rpcServer;
+  }
 
-    this.rpcServer = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.includes('localhost') });
-    this.networkPassphrase = passphrase;
+  private get networkPassphrase(): string {
+    if (!this._networkPassphrase) throw new Error('Stellar network passphrase not configured (network.stellar.networkPassphrase)');
+    return this._networkPassphrase;
   }
 
   private getPlatformKeypair(): Keypair {

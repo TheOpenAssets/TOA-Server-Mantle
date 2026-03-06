@@ -60,7 +60,11 @@ export class AuthService {
       throw new ForbiddenException('Wallet address not authorized for admin role');
     }
     const nonce = uuidv4();
-    const networkType = network === NetworkType.MANTLE ? 'Mantle' : network === NetworkType.ARBITRUM ? 'Arbitrum' : 'Stellar';
+    const networkType =
+      network === NetworkType.MANTLE ? 'Mantle' :
+      network === NetworkType.ARBITRUM ? 'Arbitrum' :
+      network === NetworkType.CREDITCOIN ? 'Creditcoin' :
+      'Stellar';
     const appName = this.configService.get<string>('APP_NAME', 'Open Assets Platform');
     const message = `Sign this message to authenticate with ${appName} on ${networkType}.\nNonce: ${nonce}\nTimestamp: ${Date.now()}`;
 

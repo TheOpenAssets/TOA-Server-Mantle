@@ -74,6 +74,19 @@ export class MantleAdminStrategy implements IAdminDomainStrategy {
   }
 
   async deployToken(dto: DeployTokenDto): Promise<any> {
+    // totalSupply is optional in the DTO — if not supplied by the caller, load it from the asset record.
+    // Without this, blockchain.service passes 0 and the token is minted with 0 supply.
+    if (!dto.totalSupply) {
+      const asset = await this.assetModel.findOne({ assetId: dto.assetId });
+      if (!asset?.tokenParams?.totalSupply) {
+        throw new HttpException(
+          'totalSupply not provided and not found in asset tokenParams — cannot deploy with 0 supply',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      dto.totalSupply = asset.tokenParams.totalSupply;
+    }
+
     const result = await this.blockchainService.deployToken(dto);
 
     await this.assetModel.updateOne(

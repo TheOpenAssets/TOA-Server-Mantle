@@ -18,5 +18,6 @@ export const CreditCoinContracts: Partial<Record<ContractName, string>> = {
   OAID: '0x89C70bB202341c28e7a8dF333b4981BfB49b3c21',
   SolvencyVault: '0x77bB1944E2a2FC0e5D0F587699041ee09900ADA8',
   SecondaryMarket: '0xb9BfaEDe01f0f2b2162072b73e2b2038Fb42b5cD',
-  USCCreditVerifier: '0x0000000000000000000000000000000000000000',
+  USCCreditVerifier: '0x4898723528Fe25756c2e1968605a62ce6c48F576',
+  MockPartnerProtocol: '0x01374eD3fF1800D2e1A941D2Fef6ebda590820E1',
 } as const;

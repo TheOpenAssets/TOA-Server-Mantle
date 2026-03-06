@@ -3,20 +3,23 @@ import { Request, Response, NextFunction } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { NetworkType } from '@openassets/types';
 import { NetworkContextService } from '../services/network-context.service';
-import { ChainManagerRegistry } from '../services/chain-manager-registry.service';
 
 @Injectable()
 export class NetworkContextMiddleware implements NestMiddleware {
-  private enabledNetworks: NetworkType[] = [];
+  private enabledNetworks: NetworkType[];
 
   constructor(
     private readonly networkContextService: NetworkContextService,
     private readonly configService: ConfigService,
   ) {
-    const enabledStr = this.configService.get<string>('ENABLED_NETWORKS') || 
-                      this.configService.get<string>('network.networkType') || 
-                      'mantle';
-    this.enabledNetworks = enabledStr.split(',').map(n => n.trim() as NetworkType);
+    const enabledStr =
+      this.configService.get<string>('ENABLED_NETWORKS') ||
+      process.env.ENABLED_NETWORKS ||
+      'mantle';
+    this.enabledNetworks = enabledStr
+      .split(',')
+      .map(n => n.trim().toLowerCase() as NetworkType)
+      .filter(n => Object.values(NetworkType).includes(n));
   }
 
   use(req: Request, res: Response, next: NextFunction) {
@@ -25,21 +28,17 @@ export class NetworkContextMiddleware implements NestMiddleware {
     let network: NetworkType = NetworkType.MANTLE;
 
     if (networkHeader) {
-      const validNetworks = Object.values(NetworkType).filter(n => n !== NetworkType.UNKNOWN);
-      if (!validNetworks.includes(networkHeader as NetworkType)) {
-        throw new BadRequestException(`Invalid network '${networkHeader}'. Valid networks: ${validNetworks.join(', ')}`);
+      if (!Object.values(NetworkType).includes(networkHeader as NetworkType) || networkHeader === NetworkType.UNKNOWN) {
+        throw new BadRequestException(
+          `Invalid network '${networkHeader}'. Valid options: ${Object.values(NetworkType).filter(n => n !== NetworkType.UNKNOWN).join(', ')}`,
+        );
       }
-
-      const enabledNetworks = this.chainManagerRegistry.getEnabledNetworks();
-      if (!enabledNetworks.includes(networkHeader as NetworkType)) {
-        throw new ForbiddenException(`Network '${networkHeader}' is not enabled in this deployment`);
+      if (!this.enabledNetworks.includes(networkHeader as NetworkType)) {
+        throw new ForbiddenException(
+          `Network '${networkHeader}' is not enabled on this deployment. Enabled: ${this.enabledNetworks.join(', ')}`,
+        );
       }
-
       network = networkHeader as NetworkType;
-    }
-
-    if (!this.enabledNetworks.includes(network)) {
-      throw new ForbiddenException(`Network ${network} is not enabled on this deployment`);
     }
 
     this.networkContextService.runWithNetwork(network, () => {

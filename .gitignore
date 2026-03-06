@@ -13,6 +13,7 @@
 /dist
 .DS_Store
 
+/e2e
 # misc
 .env
 .env.local

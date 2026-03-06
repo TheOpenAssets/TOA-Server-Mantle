@@ -5,6 +5,7 @@ import {
   Body,
   Param,
   UseGuards,
+  HttpCode,
 } from '@nestjs/common';
 import {
   ApiOperation,
@@ -29,6 +30,7 @@ export class UscController {
   ) {}
 
   @Post('submit-proof')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Submit a cross-chain credit event proof for on-chain verification via USC precompile' })
   @ApiBody({ type: SubmitProofDto })
   @ApiResponse({ status: 200, description: 'Proof submitted. Returns txHash and verification status.' })

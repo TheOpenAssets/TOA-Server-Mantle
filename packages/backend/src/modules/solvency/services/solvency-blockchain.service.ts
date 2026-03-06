@@ -199,6 +199,74 @@ export class SolvencyBlockchainService {
   }
 
   /**
+   * Parse a PositionCreated event from a deposit tx submitted directly by the user's wallet.
+   * Used by POST /solvency/record-deposit so the frontend can register an on-chain deposit in the DB.
+   *
+   * Strategy: read positionId from topics[1] (same as depositCollateral already does), then
+   * use getPositionFromChain() for all other fields — avoids fragile log.args decoding.
+   */
+  async readDepositTx(txHash: string): Promise<{
+    positionId: number;
+    user: string;
+    collateralToken: string;
+    collateralAmount: string;
+    tokenValueUSD: string;
+    tokenType: number;
+    blockNumber: number;
+  }> {
+    const vaultAddress = this.contractLoader.getContractAddress('SolvencyVault');
+
+    // Retry getTransactionReceipt directly — more reliable than waitForTransactionReceipt on
+    // RPCs that don't support filter-based polling (e.g. Creditcoin testnet).
+    // Polls every 2s for up to 40s (20 attempts), well within the frontend 60s timeout.
+    const MAX_ATTEMPTS = 20;
+    const POLL_INTERVAL = 2_000;
+    let receipt: Awaited<ReturnType<typeof this.publicClient.getTransactionReceipt>> | null = null;
+
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      try {
+        receipt = await this.publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
+        if (receipt) break;
+      } catch (_e) {
+        // TransactionReceiptNotFoundError — not yet mined, keep polling
+      }
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+    }
+
+    if (!receipt) {
+      throw new Error(`Transaction ${txHash} not found after ${MAX_ATTEMPTS * POLL_INTERVAL / 1000}s. Verify the txHash is correct and from Creditcoin testnet.`);
+    }
+
+    // Scan receipt logs for the PositionCreated event from SolvencyVault.
+    // topics[0] = event signature hash, topics[1] = positionId (indexed uint256), topics[2] = user (indexed address).
+    // Matching by address + at least 3 topics is sufficient — SolvencyVault emits only one event per deposit.
+    const rawLog = receipt.logs.find(
+      (l) => l.address.toLowerCase() === vaultAddress.toLowerCase() && l.topics.length >= 3,
+    );
+
+    if (!rawLog) {
+      throw new Error(`No PositionCreated event from SolvencyVault found in tx ${txHash}`);
+    }
+
+    // topics[1] is positionId as a 32-byte padded hex (indexed uint256)
+    const positionId = Number(BigInt(rawLog.topics[1] as string));
+    const blockNumber = Number(receipt.blockNumber);
+
+    // Use existing getPositionFromChain for all other fields — already proven to work
+    const onChainPosition = await this.getPositionFromChain(positionId);
+
+    return {
+      positionId,
+      user: onChainPosition.user,
+      collateralToken: onChainPosition.collateralToken,
+      collateralAmount: onChainPosition.collateralAmount.toString(),
+      tokenValueUSD: onChainPosition.tokenValueUSD.toString(),
+      tokenType: onChainPosition.tokenType,
+      blockNumber,
+    };
+  }
+
+  /**
    * Borrow USDC against collateral
    */
   async borrowUSDC(
@@ -560,15 +628,18 @@ export class SolvencyBlockchainService {
       args: [BigInt(positionId)],
     }) as any;
 
+    // getPosition returns a named struct tuple — viem decodes it as an object with named keys,
+    // not a numeric array. Accessing position[2] on a named struct returns undefined.
+    // Also the index mapping was wrong: active=8, tokenType=9 (not 6 and 7).
     return {
-      user: position[0],
-      collateralToken: position[1],
-      collateralAmount: position[2].toString(),
-      usdcBorrowed: position[3].toString(),
-      tokenValueUSD: position[4].toString(),
-      createdAt: Number(position[5]),
-      active: position[6],
-      tokenType: Number(position[7]),
+      user: position.user ?? position[0],
+      collateralToken: position.collateralToken ?? position[1],
+      collateralAmount: (position.collateralAmount ?? position[2]).toString(),
+      usdcBorrowed: (position.usdcBorrowed ?? position[3]).toString(),
+      tokenValueUSD: (position.tokenValueUSD ?? position[4]).toString(),
+      createdAt: Number(position.createdAt ?? position[5]),
+      active: position.active ?? position[8],
+      tokenType: Number(position.tokenType ?? position[9]),
     };
   }
 

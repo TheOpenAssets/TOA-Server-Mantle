@@ -3,8 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { createPublicClient, http } from 'viem';
-import { getActiveChain } from '@/src/config/active-chain';
-import { ContractLoaderService } from '@/src/modules/blockchain/services/contract-loader.service';
+import { creditcoinTestnet } from '@/src/config/creditcoin-chain';
+import { CreditCoinContracts, CreditCoinAbis } from '@contracts/creditcoin';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -18,13 +18,12 @@ export class UscEventListenerService implements OnModuleInit {
   private contractAbi: any = null;
 
   constructor(
-    private readonly contractLoader: ContractLoaderService,
     private readonly configService: ConfigService,
     @InjectQueue('usc-events') private readonly uscQueue: Queue,
   ) {}
 
   async onModuleInit() {
-    const address = this.contractLoader.getContractAddress('USCCreditVerifier');
+    const address = CreditCoinContracts.USCCreditVerifier as string;
 
     if (!address || address === ZERO_ADDRESS) {
       this.logger.warn(
@@ -34,11 +33,17 @@ export class UscEventListenerService implements OnModuleInit {
     }
 
     this.contractAddress = address;
-    this.contractAbi = this.contractLoader.getContractAbi('USCCreditVerifier');
+    this.contractAbi = CreditCoinAbis.USCCreditVerifier;
+
+    const rpcUrl = this.configService.get<string>('blockchain.creditcoin.rpcUrl');
+    if (!rpcUrl) {
+      this.logger.warn('CREDITCOIN_RPC_URL is not configured. USC event listener will not start.');
+      return;
+    }
 
     this.publicClient = createPublicClient({
-      chain: getActiveChain(),
-      transport: http(this.configService.get('blockchain.rpcUrl')),
+      chain: creditcoinTestnet,
+      transport: http(rpcUrl),
     });
 
     try {

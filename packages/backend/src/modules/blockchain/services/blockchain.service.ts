@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Hash, ListingType } from 'viem';
+import { Hash } from 'viem';
+import { ListingType } from '@openassets/types';
 import { NetworkRegistryService } from './network-registry.service';
 import { RegisterAssetDto } from '../dto/register-asset.dto';
 import { DeployTokenDto } from '../dto/deploy-token.dto';
@@ -15,12 +15,14 @@ export class BlockchainService {
 
   async registerAsset(dto: RegisterAssetDto): Promise<Hash> {
     const result = await this.networkRegistry.registerAssetOnChain(dto);
-    return result.txId as Hash;
+    if ('txId' in result) return result.txId as Hash;
+    throw new Error(`registerAsset skipped: ${(result as any).reason}`);
   }
 
   async registerIdentity(walletAddress: string): Promise<Hash> {
     const result = await this.networkRegistry.registerIdentityOnChain(walletAddress);
-    return result.txId as Hash;
+    if ('txId' in result) return result.txId as Hash;
+    throw new Error(`registerIdentity skipped: ${(result as any).reason}`);
   }
 
   async deployToken(dto: DeployTokenDto): Promise<{ hash: string; tokenAddress?: string; complianceAddress?: string }> {
@@ -28,11 +30,14 @@ export class BlockchainService {
       name: dto.name,
       symbol: dto.symbol,
     });
-    return {
-      hash: result.txId,
-      tokenAddress: result.primaryIdentifier,
-      complianceAddress: result.auxiliaryIdentifier,
-    };
+    if ('txId' in result) {
+      return {
+        hash: result.txId,
+        tokenAddress: result.primaryIdentifier,
+        complianceAddress: result.auxiliaryIdentifier,
+      };
+    }
+    throw new Error(`deployToken skipped: ${(result as any).reason}`);
   }
 
   async depositYield(tokenAddress: string, amount: string): Promise<Hash> {
@@ -59,9 +64,7 @@ export class BlockchainService {
     minPrice?: string,
   ): Promise<Hash> {
     const listingType = type === 'STATIC' ? ListingType.STATIC : ListingType.AUCTION;
-    
-    // Total supply is needed for the adapter, but BlockchainService didn't take it as arg.
-    // The adapter will look it up from the DB if it's EVM.
+
     const result = await this.networkRegistry.listAssetOnMarketplace(
       tokenAddress,
       listingType as any,
@@ -71,7 +74,8 @@ export class BlockchainService {
       '0', // placeholder, adapter will look up if needed
       minPrice
     );
-    return result.txId as Hash;
+    if ('txId' in result) return result.txId as Hash;
+    throw new Error(`listOnMarketplace skipped: ${(result as any).reason}`);
   }
 
   async approveMarketplace(tokenAddress: string): Promise<Hash> {
@@ -93,12 +97,14 @@ export class BlockchainService {
     }
 
     const result = await this.networkRegistry.endAuctionOnMarketplace(asset.token.address, clearingPrice);
-    return result.txId as Hash;
+    if ('txId' in result) return result.txId as Hash;
+    throw new Error(`endAuction skipped: ${(result as any).reason}`);
   }
 
   async revokeAsset(assetId: string, reason: string): Promise<Hash> {
     const result = await this.networkRegistry.revokeAssetOnChain(assetId);
-    return result.txId as Hash;
+    if ('txId' in result) return result.txId as Hash;
+    throw new Error(`revokeAsset skipped: ${(result as any).reason}`);
   }
 
   async isVerified(walletAddress: string): Promise<boolean> {
@@ -106,3 +112,4 @@ export class BlockchainService {
     return await adapter.isVerified(walletAddress);
   }
 }
+

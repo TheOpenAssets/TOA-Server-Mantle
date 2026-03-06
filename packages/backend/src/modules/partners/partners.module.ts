@@ -2,8 +2,10 @@ import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PartnerController } from './controllers/partner.controller';
 import { PartnerAdminController } from './controllers/partner-admin.controller';
+import { PartnerGatewayController } from './controllers/partner-gateway.controller';
 import { PartnerService } from './services/partner.service';
 import { PartnerLoanService } from './services/partner-loan.service';
+import { PartnerGatewayService } from './services/partner-gateway.service';
 import { Partner, PartnerSchema } from '../../database/schemas/partner.schema';
 import { PartnerLoan, PartnerLoanSchema } from '../../database/schemas/partner-loan.schema';
 import { PartnerApiLog, PartnerApiLogSchema } from '../../database/schemas/partner-api-log.schema';
@@ -22,8 +24,8 @@ import { CreditScoreModule } from '@/src/modules/credit-score/credit-score.modul
     forwardRef(() => BlockchainModule), // Circular dependency via BlockchainModule
     CreditScoreModule,
   ],
-  controllers: [PartnerController, PartnerAdminController],
-  providers: [PartnerService, PartnerLoanService],
-  exports: [PartnerService, PartnerLoanService],
+  controllers: [PartnerController, PartnerAdminController, PartnerGatewayController],
+  providers: [PartnerService, PartnerLoanService, PartnerGatewayService],
+  exports: [PartnerService, PartnerLoanService, PartnerGatewayService],
 })
 export class PartnersModule {}

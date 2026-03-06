@@ -144,7 +144,9 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
 
     // Convert UUID to bytes32
     const assetIdBytes32 = '0x' + assetId.replace(/-/g, '').padEnd(64, '0');
-    const totalSupplyBigInt = BigInt(totalSupply);
+    // totalSupply is in canonical 4-decimal format (e.g. "1000.0000").
+    // Convert to 18-decimal on-chain units. BigInt() cannot handle decimal strings.
+    const totalSupplyBigInt = fromCanonical(totalSupply.toString(), 18);
     const issuer = wallet.account?.address;
     const { name, symbol } = params;
 
@@ -183,6 +185,21 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
 
     if (!tokenAddress) throw new Error('TokenSuiteDeployed event not found');
 
+    // The admin wallet (platformCustody) holds all minted tokens and appears as `from`
+    // in every buyTokens transferFrom. ComplianceModule.canTransfer checks both from AND to,
+    // so the admin wallet must be registered in IdentityRegistry or all purchases will revert.
+    const adminAddress = wallet.account?.address as WalletAddress;
+    try {
+      const isAdminVerified = await this.isVerified(adminAddress);
+      if (!isAdminVerified) {
+        this.logger.log(`[Compliance] Admin wallet not in IdentityRegistry — registering ${adminAddress}...`);
+        await this.registerIdentity(adminAddress);
+        this.logger.log(`[Compliance] Admin wallet registered in IdentityRegistry`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`[Compliance] Could not register admin wallet in IdentityRegistry: ${err.message}`);
+    }
+
     return {
       primaryIdentifier: tokenAddress,
       auxiliaryIdentifier: complianceAddress,
@@ -212,7 +229,14 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     }
     const assetIdBytes32 = ('0x' + asset.assetId.replace(/-/g, '').padEnd(64, '0')) as `0x${string}`;
 
-    this.logger.log(`Creating listing for asset ${asset.assetId} (token ${tokenIdentifier})...`);
+    // Always derive totalSupply from the DB record — the caller passes '0' as a placeholder.
+    // RWA tokens use 18 decimals on EVM; canonical format uses 4 decimal places.
+    const onChainTotalSupply = fromCanonical(asset.tokenParams.totalSupply, 18);
+    if (onChainTotalSupply === 0n) {
+      throw new Error(`Asset ${asset.assetId} has totalSupply=0 in DB — cannot create a listing with no supply`);
+    }
+
+    this.logger.log(`Creating listing for asset ${asset.assetId} (token ${tokenIdentifier}), supply=${onChainTotalSupply}...`);
 
     const txId = await this.executeWithRetry(() => (wallet as any).writeContract({
       address: address as Address,
@@ -225,7 +249,7 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
         fromCanonical(price.toString(), 6), // USDC Price (6 decimals)
         fromCanonical(minPrice || '0', 6), // Min Price (6 decimals)
         BigInt(duration),
-        fromCanonical(totalSupply.toString(), 18), // Token Amount (18 decimals)
+        onChainTotalSupply, // Token amount (18 decimals, from DB canonical)
         fromCanonical(minInvestment.toString(), 6), // Min Investment (6 decimals)
       ],
     }), 'createListing write') as `0x${string}`;
@@ -234,6 +258,48 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
       hash: txId,
       timeout: 180000,
     }), 'createListing receipt');
+
+    return { txId };
+  }
+
+  /**
+   * Approve PrimaryMarket to spend RWA tokens held by platformCustody.
+   * This is required before any buyTokens call succeeds.
+   * The platform wallet IS the platformCustody, so it signs the approval.
+   */
+  async approveMarketplace(tokenAddress: string): Promise<{ txId: string }> {
+    const wallet = this.walletAdapter.getAdminWallet();
+    const marketAddress = this.contractAdapter.getContractAddress('PrimaryMarketplace') as Address;
+
+    // ABI for just the approve function (standard ERC20)
+    const approveAbi = [
+      {
+        name: 'approve',
+        type: 'function',
+        inputs: [
+          { name: 'spender', type: 'address' },
+          { name: 'amount', type: 'uint256' },
+        ],
+        outputs: [{ name: '', type: 'bool' }],
+        stateMutability: 'nonpayable',
+      },
+    ] as const;
+
+    this.logger.log(`Approving PrimaryMarket (${marketAddress}) to spend token ${tokenAddress} from platformCustody...`);
+
+    const txId = await this.executeWithRetry(() => (wallet as any).writeContract({
+      address: tokenAddress as Address,
+      abi: approveAbi,
+      functionName: 'approve',
+      args: [marketAddress, BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')], // MaxUint256
+    }), 'approveMarketplace write') as `0x${string}`;
+
+    await this.executeWithRetry(() => this.publicClient.waitForTransactionReceipt({
+      hash: txId,
+      timeout: 180000,
+    }), 'approveMarketplace receipt');
+
+    this.logger.log(`PrimaryMarket approved in tx: ${txId}`);
 
     return { txId };
   }

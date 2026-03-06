@@ -43,6 +43,9 @@ export const ContractNameRegistry = {
 
   // Creditcoin USC
   USCCreditVerifier: 'USCCreditVerifier',
+
+  // Creditcoin Partner Gateway
+  MockPartnerProtocol: 'MockPartnerProtocol',
 } as const;
 
 export type ContractName = keyof typeof ContractNameRegistry;

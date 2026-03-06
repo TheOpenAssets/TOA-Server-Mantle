@@ -70,6 +70,10 @@ export class ChainManagerRegistry implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  hasManager(type: NetworkType): boolean {
+    return this.managers.has(type);
+  }
+
   getManager(type: NetworkType): ChainManager {
     const manager = this.managers.get(type);
     if (!manager) {

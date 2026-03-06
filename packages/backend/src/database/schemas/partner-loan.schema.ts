@@ -23,8 +23,8 @@ export class PartnerLoan {
   @Prop({ required: true, index: true, type: String })
   userWallet!: WalletAddress;                // Borrower's wallet
 
-  @Prop({ required: true, index: true })
-  oaidTokenId!: number;               // OAID used for credit line
+  @Prop({ index: true, default: 0 })
+  oaidTokenId!: number;               // OAID used for credit line (0 = not issued)
 
   @Prop({ required: true, index: true })
   solvencyPositionId!: number;        // Position backing this loan
@@ -81,6 +81,10 @@ export class PartnerLoan {
     partnerUserId?: string;           // Partner's internal user ID
     loanPurpose?: string;
     customFields?: any;
+    onChainLoanId?: string;           // keccak256 loan ID stored in MockPartnerProtocol
+    transferTxHash?: string;          // USDC transfer to partner contract
+    recordTxHash?: string;            // MockPartnerProtocol.recordLoan tx
+    partnerRepayTxHash?: string;      // MockPartnerProtocol.repay tx
   };
 
   // Timestamps

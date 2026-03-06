@@ -19,6 +19,7 @@ import RWAToken from '../../artifacts/contracts/core/RWAToken.sol/RWAToken.json'
 import PrivateAssetToken from '../../artifacts/contracts/core/PrivateAssetToken.sol/PrivateAssetToken.json';
 import ComplianceModule from '../../artifacts/contracts/core/ComplianceModule.sol/ComplianceModule.json';
 import USCCreditVerifier from '../../artifacts/contracts/integrations/USCCreditVerifier.sol/USCCreditVerifier.json';
+import MockPartnerProtocol from '../../artifacts/contracts/integrations/MockPartnerProtocol.sol/MockPartnerProtocol.json';
 
 import { ContractName } from '@openassets/types';
 
@@ -44,4 +45,5 @@ export const CreditCoinAbis: Partial<Record<ContractName, any>> = {
   PrivateAssetToken: PrivateAssetToken.abi,
   ComplianceModule: ComplianceModule.abi,
   USCCreditVerifier: USCCreditVerifier.abi,
+  MockPartnerProtocol: MockPartnerProtocol.abi,
 };

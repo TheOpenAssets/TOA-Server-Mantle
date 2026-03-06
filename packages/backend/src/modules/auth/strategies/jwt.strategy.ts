@@ -23,7 +23,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(payload: any) {
     // Check Redis for access token existence
-    const key = `access:${payload.wallet}:${payload.jti}`;
+    // Key format must match generateTokens(): access:${network}:${wallet}:${jti}
+    const key = `access:${payload.network}:${payload.wallet}:${payload.jti}`;
     const tokenData = await this.redisService.get(key);
 
     if (!tokenData) {

@@ -10,6 +10,8 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
+import { ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, Matches } from 'class-validator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { SolvencyBlockchainService } from '../services/solvency-blockchain.service';
 import { SolvencyPositionService } from '../services/solvency-position.service';
@@ -23,6 +25,29 @@ import { NotifyLoanBorrowDto } from '../dto/notify-loan-borrow.dto';
 import { NotifyLoanRepaymentDto } from '../dto/notify-loan-repayment.dto';
 import { PartnerLoanService } from '../../partners/services/partner-loan.service';
 import { CreditScoreService } from '@/src/modules/credit-score/credit-score.service';
+import { NetworkType } from '@openassets/types';
+
+export class RecordDepositDto {
+  @IsString()
+  @IsNotEmpty()
+  txHash!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  positionId!: string;                // on-chain position ID (numeric string)
+
+  @IsString()
+  @IsNotEmpty()
+  collateralTokenAddress!: string;    // RWA token address deposited
+
+  @IsString()
+  @IsNotEmpty()
+  collateralAmount!: string;          // token amount in 18-decimal units
+
+  @IsString()
+  @IsNotEmpty()
+  tokenValueUSD!: string;             // USD value in same units as sent to contract
+}
 
 @Controller('solvency')
 @UseGuards(JwtAuthGuard)
@@ -84,6 +109,54 @@ export class SolvencyController {
       positionId: result.positionId,
       txHash: result.txHash,
       blockNumber: result.blockNumber,
+      position,
+    };
+  }
+
+  /**
+   * Record a deposit that was submitted directly from the user's wallet.
+   *
+   * When the frontend calls SolvencyVault.depositCollateral from MetaMask, the on-chain
+   * position is created but the backend DB has no record. Send the deposit data directly
+   * (positionId, collateralTokenAddress, collateralAmount, tokenValueUSD, txHash) and the
+   * backend will persist the position without any on-chain lookup.
+   *
+   * Body:
+   *   txHash                 — the depositCollateral tx hash (for audit trail)
+   *   positionId             — on-chain position ID returned by the contract
+   *   collateralTokenAddress — RWA token address deposited
+   *   collateralAmount       — token amount (18-decimal units, as string)
+   *   tokenValueUSD          — USD value sent to the contract (as string)
+   */
+  @Post('record-deposit')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Notify backend of a deposit made directly from user wallet (no chain lookup)' })
+  @ApiBody({ type: RecordDepositDto })
+  @ApiResponse({ status: 201, description: 'Position recorded in DB' })
+  async recordDeposit(@Request() req: any, @Body() dto: RecordDepositDto) {
+    const userAddress = req.user.walletAddress;
+
+    // Auto-detect token type from the collateral address (RWA vs PRIVATE_ASSET)
+    const tokenType = await this.positionService.determineTokenType(dto.collateralTokenAddress);
+
+    // Upsert — safe to call if position already exists
+    const position = await this.positionService.syncPosition(
+      parseInt(dto.positionId),
+      userAddress,
+      dto.collateralTokenAddress,
+      tokenType,
+      dto.collateralAmount,
+      dto.tokenValueUSD,
+      dto.txHash,
+      0,            // blockNumber unknown — not required for DB record
+      false,        // OAID issuance tracked separately
+      NetworkType.CREDITCOIN,
+    );
+
+    return {
+      success: true,
+      positionId: parseInt(dto.positionId),
+      txHash: dto.txHash,
       position,
     };
   }
@@ -344,6 +417,29 @@ export class SolvencyController {
   }
 
   /**
+   * Get raw on-chain position data directly from the contract.
+   * Use this to diagnose DB↔chain mismatches without needing a DB record.
+   */
+  @Get('position/:id/onchain')
+  @ApiOperation({ summary: 'Read raw on-chain position data from SolvencyVault contract' })
+  @ApiResponse({ status: 200, description: 'On-chain position data' })
+  async getOnChainPosition(@Param('id') id: string) {
+    const positionId = parseInt(id);
+    const [position, healthFactor] = await Promise.allSettled([
+      this.blockchainService.getPosition(positionId),
+      this.blockchainService.getHealthFactor(positionId),
+    ]);
+
+    return {
+      success: true,
+      positionId,
+      onChain: position.status === 'fulfilled' ? position.value : null,
+      onChainError: position.status === 'rejected' ? position.reason?.message : null,
+      healthFactor: healthFactor.status === 'fulfilled' ? healthFactor.value : null,
+    };
+  }
+
+  /**
    * Get repayment schedule for position
    */
   @Get('position/:id/schedule')
@@ -372,7 +468,14 @@ export class SolvencyController {
   }
 
   /**
-   * Get my OAID credit line details
+   * Get my OAID credit line details.
+   *
+   * Primary source: on-chain OAID contract (getUserCreditLines).
+   * Fallback: DB positions — used when the OAID contract has no registered credit lines
+   * for this user (e.g. the SolvencyVault's issueOAID call didn't propagate on-chain,
+   * which happens on the CreditCoin testnet when OAID integration is not yet wired).
+   * The DB always reflects deposited collateral via /solvency/record-deposit, so it is
+   * a reliable source of truth for credit capacity even when OAID on-chain is empty.
    */
   @Get('oaid/my-credit')
   async getMyOAIDCredit(@Request() req: any) {
@@ -380,18 +483,70 @@ export class SolvencyController {
 
     const creditData = await this.blockchainService.getOAIDCreditLines(userAddress);
 
+    // OAID on-chain has credit lines — return them as-is
+    if (creditData.creditLines.length > 0) {
+      return {
+        success: true,
+        userAddress,
+        totalCreditLimit: creditData.totalCreditLimit,
+        totalCreditUsed: creditData.totalCreditUsed,
+        totalAvailableCredit: creditData.totalAvailableCredit,
+        creditLines: creditData.creditLines,
+        summary: {
+          activeCreditLines: creditData.creditLines.filter(line => line.active).length,
+          totalCreditLines: creditData.creditLines.length,
+          utilizationRate: creditData.totalCreditLimit !== '0'
+            ? ((Number(creditData.totalCreditUsed) / Number(creditData.totalCreditLimit)) * 100).toFixed(2) + '%'
+            : '0%',
+        },
+      };
+    }
+
+    // Fallback: OAID on-chain is empty — compute credit from active DB positions.
+    // tokenValueUSD and usdcBorrowed are stored as 6-decimal integer strings (e.g. "76500000000").
+    const positions = await this.positionService.getUserActivePositions(userAddress);
+
+    const toInt = (s: string): bigint => {
+      const n = parseFloat(s ?? '0');
+      return isNaN(n) ? 0n : BigInt(Math.round(n));
+    };
+
+    const creditLines = positions.map((p, idx) => {
+      const tokenValueUSD = toInt(p.tokenValueUSD);
+      const ltv = BigInt(p.initialLTV ?? 7000); // basis points
+      const creditLimit = (tokenValueUSD * ltv) / 10000n;
+      const creditUsed = toInt(p.usdcBorrowed);
+      const available = creditLimit > creditUsed ? creditLimit - creditUsed : 0n;
+
+      return {
+        creditLineId: p.oaidCreditLineId ?? idx + 1,
+        collateralToken: p.collateralTokenAddress,
+        collateralAmount: p.collateralAmount,
+        creditLimit: creditLimit.toString(),
+        creditUsed: creditUsed.toString(),
+        availableCredit: available.toString(),
+        solvencyPositionId: p.positionId,
+        issuedAt: p.createdAt ? Math.floor(new Date(p.createdAt).getTime() / 1000) : 0,
+        active: true,
+      };
+    });
+
+    const totalCreditLimit = creditLines.reduce((sum, l) => sum + BigInt(l.creditLimit), 0n);
+    const totalCreditUsed = creditLines.reduce((sum, l) => sum + BigInt(l.creditUsed), 0n);
+    const totalAvailableCredit = totalCreditLimit > totalCreditUsed ? totalCreditLimit - totalCreditUsed : 0n;
+
     return {
       success: true,
       userAddress,
-      totalCreditLimit: creditData.totalCreditLimit,
-      totalCreditUsed: creditData.totalCreditUsed,
-      totalAvailableCredit: creditData.totalAvailableCredit,
-      creditLines: creditData.creditLines,
+      totalCreditLimit: totalCreditLimit.toString(),
+      totalCreditUsed: totalCreditUsed.toString(),
+      totalAvailableCredit: totalAvailableCredit.toString(),
+      creditLines,
       summary: {
-        activeCreditLines: creditData.creditLines.filter(line => line.active).length,
-        totalCreditLines: creditData.creditLines.length,
-        utilizationRate: creditData.totalCreditLimit !== '0'
-          ? ((Number(creditData.totalCreditUsed) / Number(creditData.totalCreditLimit)) * 100).toFixed(2) + '%'
+        activeCreditLines: creditLines.length,
+        totalCreditLines: creditLines.length,
+        utilizationRate: totalCreditLimit > 0n
+          ? ((Number(totalCreditUsed) / Number(totalCreditLimit)) * 100).toFixed(2) + '%'
           : '0%',
       },
     };
@@ -510,26 +665,18 @@ export class SolvencyController {
   @HttpCode(HttpStatus.OK)
   async repayPartnerLoan(
     @Request() req: any,
-    @Body() dto: { internalLoanId: string; amount: string; approvalTxHash: string }
+    @Body() dto: { internalLoanId: string; repaymentAmount: string; transferTxHash: string }
   ) {
-    if (!dto.internalLoanId || !dto.amount || !dto.approvalTxHash) {
-      throw new BadRequestException('Missing required fields: internalLoanId, amount, approvalTxHash');
+    if (!dto.internalLoanId || !dto.repaymentAmount || !dto.transferTxHash) {
+      throw new BadRequestException('Missing required fields: internalLoanId, repaymentAmount, transferTxHash');
     }
 
-    // This endpoint allows users to repay loans originated by partners directly from our platform
-    // User must have approved our platform wallet to spend their USDC
-    // We verify the approval and then execute the repayment
-
-    // Note: This is a simplified version. In production, you might want to:
-    // 1. Verify the approval transaction
-    // 2. Execute transfer from user to platform wallet
-    // 3. Then call the partner loan repay logic
-
-    return {
-      success: false,
-      message: 'Direct portfolio repayment coming soon. For now, please repay through the partner platform or contact support.',
-      userAddress: req.user.walletAddress,
-    };
+    return this.partnerLoanService.repayLoanAsUser(
+      req.user.walletAddress,
+      dto.internalLoanId,
+      dto.repaymentAmount,
+      dto.transferTxHash,
+    );
   }
 
   /**

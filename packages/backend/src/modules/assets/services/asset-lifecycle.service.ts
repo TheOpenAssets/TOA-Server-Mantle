@@ -25,8 +25,10 @@ import { AttestationService } from '../../compliance-engine/services/attestation
 import { AnnouncementService } from '../../announcements/services/announcement.service';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { NetworkContextService } from '../../blockchain/services/network-context.service';
-import { getConfiguredNetworkType } from '../../auth/utils/wallet.util';
 import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
+import { PAYMENT_ADAPTER, BLOCKCHAIN_ADAPTER } from '../../blockchain/blockchain.constants';
+import { PaymentAdapter } from '../../blockchain/adapters/payment-adapter.interface';
+import { BlockchainAdapter } from '../../blockchain/adapters/blockchain-adapter.interface';
 import { NetworkRegistryService } from '../../blockchain/services/network-registry.service';
 
 @Injectable()

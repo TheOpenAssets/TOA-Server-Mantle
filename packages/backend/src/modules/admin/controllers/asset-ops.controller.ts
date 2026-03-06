@@ -1,6 +1,9 @@
 import { Controller, Post, Get, Body, UseGuards, Param, Query, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger';
+import { IsString, IsNotEmpty } from 'class-validator';
 import { ModuleRegistryService } from '../../registry/services/module-registry.service';
 import { AssetLifecycleService } from '../../assets/services/asset-lifecycle.service';
+import { BlockchainService } from '../../blockchain/services/blockchain.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 import { DeployTokenDto } from '../../blockchain/dto/deploy-token.dto';
@@ -14,6 +17,12 @@ import { AssetStatus } from '@openassets/types';
 
 import { AuctionService } from '../../marketplace/services/auction.service';
 
+export class RegisterIdentityDto {
+  @IsString()
+  @IsNotEmpty()
+  walletAddress!: string;
+}
+
 @Controller('admin/assets')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
 export class AssetOpsController {
@@ -22,6 +31,7 @@ export class AssetOpsController {
   constructor(
     private readonly moduleRegistryService: ModuleRegistryService,
     private readonly assetLifecycleService: AssetLifecycleService,
+    private readonly blockchainService: BlockchainService,
     private readonly auctionService: AuctionService,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) { }
@@ -123,6 +133,26 @@ export class AssetOpsController {
   @Post('auctions/end')
   async endAuction(@Body() dto: EndAuctionDto) {
     return this.auctionService.calculateAndEndAuction(dto.assetId);
+  }
+
+  @Post('register-identity')
+  @ApiOperation({ summary: 'Register a wallet in the on-chain IdentityRegistry (compliance whitelist). Required for both sellers (platformCustody) and buyers before token transfers succeed.' })
+  @ApiBody({ type: RegisterIdentityDto })
+  @ApiResponse({ status: 200, description: 'Wallet registered successfully' })
+  async registerIdentity(@Body() dto: RegisterIdentityDto) {
+    try {
+      const txHash = await this.blockchainService.registerIdentity(dto.walletAddress);
+      return {
+        success: true,
+        message: `Wallet ${dto.walletAddress} registered in IdentityRegistry`,
+        transactionHash: txHash,
+      };
+    } catch (error: any) {
+      throw new HttpException(
+        { success: false, error: 'Identity Registration Failed', message: error.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   private handleError(error: any, assetId: string, defaultTitle: string) {

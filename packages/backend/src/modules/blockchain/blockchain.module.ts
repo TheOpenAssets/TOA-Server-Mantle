@@ -29,11 +29,11 @@ import { SecondaryMarketModule } from '../secondary-market/secondary-market.modu
 import { SolvencyModule } from '../solvency/solvency.module';
 import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
 import { forwardRef } from '@nestjs/common';
-import { 
-  BLOCKCHAIN_ADAPTER, 
-  WALLET_ADAPTER, 
-  EVENT_ADAPTER, 
-  CONTRACT_ADAPTER, 
+import {
+  BLOCKCHAIN_ADAPTER,
+  WALLET_ADAPTER,
+  EVENT_ADAPTER,
+  CONTRACT_ADAPTER,
   AUTH_VERIFICATION_ADAPTER,
   PAYMENT_ADAPTER,
 } from './blockchain.constants';
@@ -81,7 +81,7 @@ export class BlockchainModule implements NestModule {
         NetworkRegistryService,
         ChainManagerRegistry,
         NetworkContextService,
-        
+
         // Legacy Services (Wrappers)
         BlockchainService,
         WalletService,
@@ -91,6 +91,46 @@ export class BlockchainModule implements NestModule {
         StArbPriceService,
         EventProcessor,
         CreditcoinSubstrateService,
+
+        // Adapter proxy providers — resolve the correct adapter for the current network context
+        {
+          provide: BLOCKCHAIN_ADAPTER,
+          useFactory: (chainManagerRegistry: ChainManagerRegistry, networkContextService: NetworkContextService) => {
+            return new Proxy({} as any, {
+              get: (_target, prop) => {
+                // NestJS probes injected values (e.g. checks `.then`) during DI, before
+                // onModuleInit has run. Guard against symbols and uninitialized managers.
+                if (typeof prop === 'symbol') return undefined;
+                const network = networkContextService.getNetwork();
+                if (!chainManagerRegistry.hasManager(network)) return undefined;
+                const manager = chainManagerRegistry.getManager(network);
+                const adapter = manager.getBlockchainAdapter();
+                const value = (adapter as any)[prop];
+                if (typeof value === 'function') return value.bind(adapter);
+                return value;
+              },
+            });
+          },
+          inject: [ChainManagerRegistry, NetworkContextService],
+        },
+        {
+          provide: PAYMENT_ADAPTER,
+          useFactory: (chainManagerRegistry: ChainManagerRegistry, networkContextService: NetworkContextService) => {
+            return new Proxy({} as any, {
+              get: (_target, prop) => {
+                if (typeof prop === 'symbol') return undefined;
+                const network = networkContextService.getNetwork();
+                if (!chainManagerRegistry.hasManager(network)) return undefined;
+                const manager = chainManagerRegistry.getManager(network);
+                const adapter = manager.getPaymentAdapter();
+                const value = (adapter as any)[prop];
+                if (typeof value === 'function') return value.bind(adapter);
+                return value;
+              },
+            });
+          },
+          inject: [ChainManagerRegistry, NetworkContextService],
+        },
       ],
       exports: [
         NetworkRegistryService,
@@ -104,6 +144,8 @@ export class BlockchainModule implements NestModule {
         StArbPriceService,
         MongooseModule,
         CreditcoinSubstrateService,
+        BLOCKCHAIN_ADAPTER,
+        PAYMENT_ADAPTER,
       ],
     };
   }
