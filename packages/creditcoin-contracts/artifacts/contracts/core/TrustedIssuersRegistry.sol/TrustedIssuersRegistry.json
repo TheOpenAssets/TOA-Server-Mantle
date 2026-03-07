@@ -1,0 +1,131 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "TrustedIssuersRegistry",
+  "sourceName": "contracts/core/TrustedIssuersRegistry.sol",
+  "abi": [
+    {
+      "inputs": [],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "issuer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "TrustedIssuerAdded",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "issuer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "TrustedIssuerRemoved",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "issuer",
+          "type": "address"
+        }
+      ],
+      "name": "addTrustedIssuer",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "issuer",
+          "type": "address"
+        }
+      ],
+      "name": "isTrustedIssuer",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "issuer",
+          "type": "address"
+        }
+      ],
+      "name": "removeTrustedIssuer",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "trustedIssuers",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x6080806040523461002857600180546001600160a01b03191633179055610263908161002e8239f35b600080fdfe60806040818152600436101561001457600080fd5b600091823560e01c9081638da5cb5b146101cf5750806392c54daf14610190578063b93d28eb1461011b578063c4566bdd1461009f5763ef2ed1a41461005957600080fd5b3461009b57602036600319011261009b576004356001600160a01b0381169081900361009757818360ff926020955280855220541690519015158152f35b8280fd5b5080fd5b503461009b57602036600319011261009b576004356001600160a01b038181169291839003610117577f919fe28f0bdcdb27d713e21288fe5577f73989f352066965475683883aa78b3f916100fb6020926001541633146101f4565b838552848252808520805460ff1916600117905551428152a280f35b8380fd5b503461009b57602036600319011261009b576004356001600160a01b038181169291839003610117577f85f5a2e8e62d79d3b4686aa77b196e569f8df940416cca3ba3b1e3553b3138ee916101776020926001541633146101f4565b838552848252808520805460ff1916905551428152a280f35b503461009b57602036600319011261009b576004356001600160a01b0381169081900361009757818360ff926020955280855220541690519015158152f35b83903461009b578160031936011261009b576001546001600160a01b03168152602090f35b156101fb57565b60405162461bcd60e51b815260206004820152600a60248201526927b7363c9037bbb732b960b11b6044820152606490fdfea264697066735822122044e27bcacb600fc9707ced13daf3bd36c68fd3e019e719737f66151f45068ee164736f6c63430008140033",
+  "deployedBytecode": "0x60806040818152600436101561001457600080fd5b600091823560e01c9081638da5cb5b146101cf5750806392c54daf14610190578063b93d28eb1461011b578063c4566bdd1461009f5763ef2ed1a41461005957600080fd5b3461009b57602036600319011261009b576004356001600160a01b0381169081900361009757818360ff926020955280855220541690519015158152f35b8280fd5b5080fd5b503461009b57602036600319011261009b576004356001600160a01b038181169291839003610117577f919fe28f0bdcdb27d713e21288fe5577f73989f352066965475683883aa78b3f916100fb6020926001541633146101f4565b838552848252808520805460ff1916600117905551428152a280f35b8380fd5b503461009b57602036600319011261009b576004356001600160a01b038181169291839003610117577f85f5a2e8e62d79d3b4686aa77b196e569f8df940416cca3ba3b1e3553b3138ee916101776020926001541633146101f4565b838552848252808520805460ff1916905551428152a280f35b503461009b57602036600319011261009b576004356001600160a01b0381169081900361009757818360ff926020955280855220541690519015158152f35b83903461009b578160031936011261009b576001546001600160a01b03168152602090f35b156101fb57565b60405162461bcd60e51b815260206004820152600a60248201526927b7363c9037bbb732b960b11b6044820152606490fdfea264697066735822122044e27bcacb600fc9707ced13daf3bd36c68fd3e019e719737f66151f45068ee164736f6c63430008140033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}
