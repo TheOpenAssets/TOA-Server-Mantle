@@ -1,19 +1,16 @@
 node_modules
 .env
-artifacts
 cache
-typechain-types
 coverage
 coverage.json
 dist
 
 # Hardhat files
 cache
-artifacts
+
 
 # TypeChain
-typechain
-typechain-types
+
 
 # solidity-coverage
 coverage
