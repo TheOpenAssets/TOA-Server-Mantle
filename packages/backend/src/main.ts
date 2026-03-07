@@ -18,6 +18,7 @@ async function bootstrap() {
       'http://localhost:3000',
       'https://dev.toa-client-mantle.pages.dev',
       'https://www.openassets.xyz',
+      "https://www.openassets.xyz/creditcoin",
       'https://openassets.xyz',
       'http://10.155.192.113:5173',
     ],
