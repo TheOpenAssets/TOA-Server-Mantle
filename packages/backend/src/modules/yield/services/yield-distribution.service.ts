@@ -1,4 +1,5 @@
-import { Injectable, Logger, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Inject, forwardRef, OnModuleInit } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
@@ -11,10 +12,10 @@ import { TokenHolderTrackingService } from './token-holder-tracking.service';
 import { TransferEventBackfillService } from './transfer-event-backfill.service';
 import { ModuleRegistryService } from '../../registry/services/module-registry.service';
 import { NotificationService } from '../../notifications/services/notification.service';
-import { 
-  SettlementStatus, 
-  TokenType, 
-  SolvencyPositionStatus as PositionStatus, 
+import {
+  SettlementStatus,
+  TokenType,
+  SolvencyPositionStatus as PositionStatus,
   AssetStatus,
   NotificationType,
   NotificationSeverity,
@@ -30,8 +31,13 @@ import { SecondaryMarketService } from '../../secondary-market/services/secondar
 import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
 @Injectable()
-export class YieldDistributionService {
+export class YieldDistributionService implements OnModuleInit {
   private readonly logger = new Logger(YieldDistributionService.name);
+
+  // Resolved lazily in onModuleInit to avoid circular dependency:
+  // YieldModule → LeverageModule → BlockchainModule → YieldModule
+  private leveragePositionService: LeveragePositionService | undefined;
+  private leverageBlockchainService: LeverageBlockchainService | undefined;
 
   constructor(
     @InjectModel(Settlement.name) private settlementModel: Model<SettlementDocument>,
@@ -42,10 +48,7 @@ export class YieldDistributionService {
     private moduleRegistryService: ModuleRegistryService,
     private notificationService: NotificationService,
     private configService: ConfigService,
-    @Inject(forwardRef(() => LeveragePositionService))
-    private leveragePositionService: LeveragePositionService,
-    @Inject(forwardRef(() => LeverageBlockchainService))
-    private leverageBlockchainService: LeverageBlockchainService,
+    private moduleRef: ModuleRef,
     @Inject(forwardRef(() => SolvencyPositionService))
     private solvencyPositionService: SolvencyPositionService,
     @Inject(forwardRef(() => SolvencyBlockchainService))
@@ -53,6 +56,15 @@ export class YieldDistributionService {
     @Inject(forwardRef(() => SecondaryMarketService))
     private secondaryMarketService: SecondaryMarketService,
   ) { }
+
+  onModuleInit() {
+    try {
+      this.leveragePositionService = this.moduleRef.get(LeveragePositionService, { strict: false });
+      this.leverageBlockchainService = this.moduleRef.get(LeverageBlockchainService, { strict: false });
+    } catch {
+      this.logger.warn('LeverageModule not available - leverage position settlement will be skipped');
+    }
+  }
 
   private async executeWithRetry<T>(
     operation: () => Promise<T>,
