@@ -270,8 +270,13 @@ export class YieldDistributionService implements OnModuleInit {
     let leveragePositionsSettled = 0;
 
     try {
+      const leveragePositionSvc = this.leveragePositionService;
+      const leverageBlockchainSvc = this.leverageBlockchainService;
+      if (!leveragePositionSvc || !leverageBlockchainSvc) {
+        this.logger.log(`⚠️ LeverageModule not available - skipping leverage position settlement`);
+      } else {
       // Find all leverage positions needing settlement (ACTIVE and LIQUIDATED)
-      const leveragePositions = await this.leveragePositionService.getSettlementPendingPositions();
+      const leveragePositions = await leveragePositionSvc.getSettlementPendingPositions();
       const relevantPositions = leveragePositions.filter(
         pos => pos.rwaTokenAddress.toLowerCase() === tokenAddress.toLowerCase()
       );
@@ -303,7 +308,7 @@ export class YieldDistributionService implements OnModuleInit {
               this.logger.log(`   (User already received base mETH back during liquidation)`);
 
               this.logger.log(`\n🔥 Settling liquidation by burning RWA tokens...`);
-              const liquidationResult = await this.leverageBlockchainService.settleLiquidation(
+              const liquidationResult = await leverageBlockchainSvc.settleLiquidation(
                 position.positionId,
               );
 
@@ -315,7 +320,7 @@ export class YieldDistributionService implements OnModuleInit {
               this.logger.log(`   TX: ${liquidationResult.hash}`);
 
               // Record liquidation settlement
-              await this.leveragePositionService.updateLiquidationSettlement(position.positionId, {
+              await leveragePositionSvc.updateLiquidationSettlement(position.positionId, {
                 yieldReceived: liquidationResult.yieldReceived.toString(),
                 debtRepaid: liquidationResult.debtRepaid.toString(),
                 liquidationFee: liquidationResult.liquidationFee.toString(),
@@ -357,7 +362,7 @@ export class YieldDistributionService implements OnModuleInit {
               this.logger.log(`\n🔥 Step 1: Burning RWA tokens to claim USDC from YieldVault...`);
               // Convert canonical format to wei for blockchain call
               const rwaTokenAmountWei = fromCanonical(position.rwaTokenAmount, 18);
-              const claimResult = await this.leverageBlockchainService.claimYieldFromBurn(
+              const claimResult = await leverageBlockchainSvc.claimYieldFromBurn(
                 position.positionId,
                 rwaTokenAmountWei, // Burn ALL RWA tokens
               );
@@ -367,7 +372,7 @@ export class YieldDistributionService implements OnModuleInit {
               this.logger.log(`   TX: ${claimResult.hash}`);
 
               // Record yield claim
-              await this.leveragePositionService.recordYieldClaim(position.positionId, {
+              await leveragePositionSvc.recordYieldClaim(position.positionId, {
                 tokensBurned: claimResult.tokensBurned.toString(),
                 usdcReceived: claimResult.usdcReceived.toString(),
                 transactionHash: claimResult.hash,
@@ -375,7 +380,7 @@ export class YieldDistributionService implements OnModuleInit {
 
               // Step 2: Process settlement waterfall
               this.logger.log(`\n💰 Step 2: Processing settlement waterfall...`);
-              const settlementResult = await this.leverageBlockchainService.processSettlement(
+              const settlementResult = await leverageBlockchainSvc.processSettlement(
                 position.positionId,
                 claimResult.usdcReceived, // Use USDC from burn
               );
@@ -388,7 +393,7 @@ export class YieldDistributionService implements OnModuleInit {
               this.logger.log(`   TX: ${settlementResult.hash}`);
 
               // Record settlement
-              await this.leveragePositionService.recordSettlement(position.positionId, {
+              await leveragePositionSvc.recordSettlement(position.positionId, {
                 settlementUSDC: claimResult.usdcReceived.toString(),
                 seniorRepayment: settlementResult.seniorRepayment.toString(),
                 interestRepayment: settlementResult.interestRepayment.toString(),
@@ -431,6 +436,7 @@ export class YieldDistributionService implements OnModuleInit {
         this.logger.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
         this.logger.log(`✅ Leverage position settlement complete!`);
       }
+      } // end else (leveragePositionService available)
     } catch (error) {
       this.logger.error(`❌ Error processing leverage positions: ${error}`);
       this.logger.error(`   Regular investor distribution was successful`);
