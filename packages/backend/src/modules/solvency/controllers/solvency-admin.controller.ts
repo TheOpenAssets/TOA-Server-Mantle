@@ -9,7 +9,9 @@ import {
   HttpStatus,
   Query,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminRoleGuard } from '../../admin/guards/admin-role.guard';
 import { SolvencyBlockchainService } from '../services/solvency-blockchain.service';
@@ -27,17 +29,30 @@ import { ethers } from 'ethers';
 
 @Controller('admin/solvency')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
-export class SolvencyAdminController {
+export class SolvencyAdminController implements OnModuleInit {
   private readonly logger = new Logger(SolvencyAdminController.name);
+
+  // Resolved lazily to avoid circular dependency:
+  // SolvencyModule → LeverageModule → BlockchainModule → SolvencyModule
+  private leverageBlockchainService: LeverageBlockchainService | undefined;
+  private leveragePositionService: LeveragePositionService | undefined;
 
   constructor(
     private blockchainService: SolvencyBlockchainService,
     private positionService: SolvencyPositionService,
     private privateAssetService: PrivateAssetService,
-    private leverageBlockchainService: LeverageBlockchainService,
-    private leveragePositionService: LeveragePositionService,
+    private moduleRef: ModuleRef,
     private methPriceService: MethPriceService,
   ) {}
+
+  onModuleInit() {
+    try {
+      this.leverageBlockchainService = this.moduleRef.get(LeverageBlockchainService, { strict: false });
+      this.leveragePositionService = this.moduleRef.get(LeveragePositionService, { strict: false });
+    } catch {
+      this.logger.warn('LeverageModule not available - leverage liquidation endpoints will be disabled');
+    }
+  }
 
   /**
    * Mint new Private Asset Token
@@ -161,12 +176,18 @@ export class SolvencyAdminController {
 
     // If testPrice is provided, assume it is for LEVERAGE position testing
     if (testPrice) {
+      const leveragePositionSvc = this.leveragePositionService;
+      const leverageBlockchainSvc = this.leverageBlockchainService;
+      if (!leveragePositionSvc || !leverageBlockchainSvc) {
+        return { success: false, message: 'LeverageModule not available on this network' };
+      }
+
       this.logger.warn(`⚠️ Triggering LEVERAGE liquidation for position ${positionId} with test price: ${testPrice}`);
-      
+
       const mETHPrice = ethers.parseEther(testPrice);
-      
+
       // Get position details before liquidation
-      const position = await this.leveragePositionService.getPosition(positionId);
+      const position = await leveragePositionSvc.getPosition(positionId);
       if (!position) {
         throw new Error(`Position ${positionId} not found`);
       }
@@ -177,7 +198,7 @@ export class SolvencyAdminController {
       this.logger.log(`   Health Factor: ${(position.currentHealthFactor / 100).toFixed(2)}%`);
       this.logger.log(`   Status: ${position.status}`);
       
-      const txHash = await this.leverageBlockchainService.liquidatePosition(
+      const txHash = await leverageBlockchainSvc.liquidatePosition(
         positionId,
         mETHPrice,
       );
@@ -186,7 +207,7 @@ export class SolvencyAdminController {
       this.logger.log(`🔄 Updating database...`);
 
       // Mark position as liquidated in database
-      await this.leveragePositionService.markLiquidated(positionId, {
+      await leveragePositionSvc.markLiquidated(positionId, {
         mETHSold: position.mETHCollateral,
         usdcRecovered: position.usdcBorrowed, // Approximate
         shortfall: '0', // Will be calculated from events
