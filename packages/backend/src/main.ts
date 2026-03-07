@@ -18,7 +18,6 @@ async function bootstrap() {
       'http://localhost:3000',
       'https://dev.toa-client-mantle.pages.dev',
       'https://www.openassets.xyz',
-      "https://www.openassets.xyz/creditcoin",
       'https://openassets.xyz',
       'http://10.155.192.113:5173',
     ],
@@ -30,7 +29,8 @@ async function bootstrap() {
       'Cache-Control',
       'Accept',
       'X-Requested-With',
-      'x-network'
+      'x-network',
+      'X-Network',
     ],
     exposedHeaders: [
       'Content-Type',
