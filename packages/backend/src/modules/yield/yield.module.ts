@@ -13,6 +13,7 @@ import { UserYieldClaim, UserYieldClaimSchema } from '../../database/schemas/use
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { LeverageModule } from '../leverage/leverage.module';
 import { SolvencyModule } from '../solvency/solvency.module';
 import { SecondaryMarketModule } from '../secondary-market/secondary-market.module';
 import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
@@ -28,6 +29,7 @@ import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
       { name: Asset.name, schema: AssetSchema },
     ]),
     forwardRef(() => BlockchainModule),
+    forwardRef(() => LeverageModule),
     forwardRef(() => SolvencyModule),
     forwardRef(() => SecondaryMarketModule),
     NotificationsModule,
