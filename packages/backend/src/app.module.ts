@@ -107,7 +107,6 @@ export class AppModule {
       TypeformModule,
       ChangelogModule,
       AnnouncementsModule,
-      YieldModule, // Enabled on both initially
       MarketplaceModule, // Enabled on both initially
       UserPortfolioModule,
       CreditScoreModule,
@@ -115,11 +114,12 @@ export class AppModule {
     ];
 
     // Conditional Modules
-    // Leverage and SecondaryMarket are available on both Mantle and Arbitrum
+    // Leverage, SecondaryMarket, and Yield are available on both Mantle and Arbitrum
     if (isMantle || isArbitrum) {
       imports.push(
         LeverageModule.forRoot(),
         SecondaryMarketModule,
+        YieldModule,
       );
     }
 
