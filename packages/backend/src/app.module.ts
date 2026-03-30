@@ -32,7 +32,6 @@ import { ChangelogModule } from './modules/changelog/changelog.module';
 import { SecondaryMarketModule } from './modules/secondary-market/secondary-market.module';
 import { UserPortfolioModule } from './modules/user-portfolio/user-portfolio.module';
 import { CreditScoreModule } from '@/src/modules/credit-score/credit-score.module';
-import { UscModule } from '@/src/modules/usc/usc.module';
 
 @Module({})
 export class AppModule {
@@ -110,7 +109,6 @@ export class AppModule {
       MarketplaceModule, // Enabled on both initially
       UserPortfolioModule,
       CreditScoreModule,
-      UscModule,
     ];
 
     // Conditional Modules
