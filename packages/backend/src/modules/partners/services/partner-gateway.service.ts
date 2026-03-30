@@ -19,12 +19,11 @@ import { SolvencyBlockchainService } from '../../solvency/services/solvency-bloc
 import { WalletService } from '../../blockchain/services/wallet.service';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { CreditScoreService } from '@/src/modules/credit-score/credit-score.service';
-import { CreditCoinContracts, CreditCoinAbis } from '@contracts/creditcoin';
 import { PartnerLoanStatus, RepaymentSource } from '@openassets/types';
 import { GatewayBorrowDto, GatewayRepayDto } from '../dto/partner-gateway.dto';
 import { getActiveChain } from '@/src/config/active-chain';
+import { NetworkContextService } from '../../blockchain/services/network-context.service';
 
-const EXPLORER_BASE = 'https://creditcoin-testnet.blockscout.com';
 const DEFAULT_LTV = 7000;
 
 @Injectable()
@@ -39,6 +38,7 @@ export class PartnerGatewayService {
     private solvencyBlockchainService: SolvencyBlockchainService,
     private walletService: WalletService,
     private contractLoader: ContractLoaderService,
+    private networkContextService: NetworkContextService,
     private creditScoreService: CreditScoreService,
     private configService: ConfigService,
   ) {
@@ -46,6 +46,19 @@ export class PartnerGatewayService {
       chain: getActiveChain(),
       transport: http(this.configService.get('blockchain.rpcUrl')),
     });
+  }
+
+  private getExplorerBase(): string {
+    const network = this.networkContextService.getNetwork();
+    const baseByNetwork: Record<string, string> = {
+      bnb: 'https://testnet.bscscan.com',
+      mantle: 'https://explorer.testnet.mantle.xyz',
+      arbitrum: 'https://sepolia.arbiscan.io',
+      creditcoin: 'https://creditcoin-testnet.blockscout.com',
+      stellar: 'https://stellar.expert/explorer/testnet',
+    };
+
+    return baseByNetwork[network] || baseByNetwork.bnb;
   }
 
   /**
@@ -134,7 +147,8 @@ export class PartnerGatewayService {
     // to the user's wallet (msg.sender). The platform wallet holds no USDC to forward.
 
     // 2. MockPartnerProtocol.recordLoan(user, amount, loanId) — platform wallet records the loan
-    const partnerContractAddress = CreditCoinContracts.MockPartnerProtocol as Address;
+    const partnerContractAddress = this.contractLoader.getContractAddress('MockPartnerProtocol') as Address;
+    const partnerContractAbi = this.contractLoader.getContractAbi('MockPartnerProtocol');
     const platformWallet = this.walletService.getPlatformWallet();
 
     const internalLoanId = uuidv4();
@@ -144,7 +158,7 @@ export class PartnerGatewayService {
     this.logger.log(`Step 2/2: MockPartnerProtocol.recordLoan(${userWallet}, ${dto.amount}, ${onChainLoanId})`);
     const recordHash = await platformWallet.writeContract({
       address: partnerContractAddress,
-      abi: CreditCoinAbis.MockPartnerProtocol,
+      abi: partnerContractAbi,
       functionName: 'recordLoan',
       args: [userWallet as Address, BigInt(dto.amount), onChainLoanId],
       account: platformWallet.account!,
@@ -183,8 +197,8 @@ export class PartnerGatewayService {
       borrowTxHash,
       recordTxHash: recordHash,
       explorerLinks: {
-        borrow: `${EXPLORER_BASE}/tx/${borrowTxHash}`,
-        record: `${EXPLORER_BASE}/tx/${recordHash}`,
+        borrow: `${this.getExplorerBase()}/tx/${borrowTxHash}`,
+        record: `${this.getExplorerBase()}/tx/${recordHash}`,
       },
       creditBoost: {
         score: scoreInfo.score,
@@ -225,7 +239,8 @@ export class PartnerGatewayService {
       throw new BadRequestException(`Repayment exceeds remaining debt of ${remainingDebt.toString()}`);
     }
 
-    const partnerContractAddress = CreditCoinContracts.MockPartnerProtocol as Address;
+    const partnerContractAddress = this.contractLoader.getContractAddress('MockPartnerProtocol') as Address;
+    const partnerContractAbi = this.contractLoader.getContractAbi('MockPartnerProtocol');
     const platformWallet = this.walletService.getPlatformWallet();
     const onChainLoanId = loan.metadata?.onChainLoanId as `0x${string}`;
 
@@ -237,7 +252,7 @@ export class PartnerGatewayService {
     this.logger.log(`Step 1/2: MockPartnerProtocol.repay(${onChainLoanId})`);
     const partnerRepayHash = await platformWallet.writeContract({
       address: partnerContractAddress,
-      abi: CreditCoinAbis.MockPartnerProtocol,
+      abi: partnerContractAbi,
       functionName: 'repay',
       args: [onChainLoanId],
       account: platformWallet.account!,
@@ -284,8 +299,8 @@ export class PartnerGatewayService {
       partnerRepayTxHash: partnerRepayHash,
       vaultRepayTxHash: vaultRepayResult.txHash,
       explorerLinks: {
-        partnerRepay: `${EXPLORER_BASE}/tx/${partnerRepayHash}`,
-        vaultRepay: `${EXPLORER_BASE}/tx/${vaultRepayResult.txHash}`,
+        partnerRepay: `${this.getExplorerBase()}/tx/${partnerRepayHash}`,
+        vaultRepay: `${this.getExplorerBase()}/tx/${vaultRepayResult.txHash}`,
       },
     };
   }

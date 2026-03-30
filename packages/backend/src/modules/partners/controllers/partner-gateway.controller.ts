@@ -81,7 +81,7 @@ export class PartnerGatewayController {
       'Records a partner loan after the user has already called SolvencyVault.borrowUSDC() directly on-chain. ' +
       'The frontend must perform the vault borrow (user signs) and pass the resulting vaultTxHash. ' +
       'Server then calls partnerContract.recordLoan() via the platform wallet. ' +
-      'Returns two on-chain tx hashes with Creditcoin explorer links. ' +
+      'Returns two on-chain tx hashes with active-network explorer links. ' +
       'User must have an active solvency position (deposited collateral).',
   })
   @ApiBody({ type: GatewayBorrowDto })
@@ -98,8 +98,8 @@ export class PartnerGatewayController {
         borrowTxHash: '0xabc...',
         recordTxHash: '0xghi...',
         explorerLinks: {
-          borrow: 'https://creditcoin-testnet.blockscout.com/tx/0xabc...',
-          record: 'https://creditcoin-testnet.blockscout.com/tx/0xghi...',
+          borrow: 'https://testnet.bscscan.com/tx/0xabc...',
+          record: 'https://testnet.bscscan.com/tx/0xghi...',
         },
         creditBoost: {
           score: 720,
@@ -131,7 +131,7 @@ export class PartnerGatewayController {
     summary: 'Repay a partner loan',
     description:
       'Executes partnerContract.repay → SolvencyVault.repayLoan. ' +
-      'Returns two on-chain tx hashes with Creditcoin explorer links. ' +
+      'Returns two on-chain tx hashes with active-network explorer links. ' +
       'Use internalLoanId from the borrow response or from GET /solvency/partner-loans/my.',
   })
   @ApiBody({ type: GatewayRepayDto })
@@ -149,8 +149,8 @@ export class PartnerGatewayController {
         partnerRepayTxHash: '0xjkl...',
         vaultRepayTxHash: '0xmno...',
         explorerLinks: {
-          partnerRepay: 'https://creditcoin-testnet.blockscout.com/tx/0xjkl...',
-          vaultRepay: 'https://creditcoin-testnet.blockscout.com/tx/0xmno...',
+          partnerRepay: 'https://testnet.bscscan.com/tx/0xjkl...',
+          vaultRepay: 'https://testnet.bscscan.com/tx/0xmno...',
         },
       },
     },
