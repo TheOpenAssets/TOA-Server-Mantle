@@ -14,8 +14,18 @@ import { MantleAdminStrategy } from '../mantle/mantle-admin-strategy.service';
 
 @Injectable()
 export class BnbAdminStrategy extends MantleAdminStrategy {
-  private readonly mantleExplorerPrefix = 'https://sepolia.mantlescan.xyz/tx/';
   private readonly bnbExplorerPrefix = 'https://testnet.bscscan.com/tx/';
+
+  private convertToBnbExplorerUrl(value: string): string {
+    const txHashPattern = /(0x[a-fA-F0-9]{64})$/;
+    const match = value.match(txHashPattern);
+
+    if (!match) {
+      return value;
+    }
+
+    return `${this.bnbExplorerPrefix}${match[1]}`;
+  }
 
   constructor(
     @InjectModel(Asset.name) assetModel: Model<AssetDocument>,
@@ -39,7 +49,7 @@ export class BnbAdminStrategy extends MantleAdminStrategy {
 
   private rewriteExplorerUrls<T>(value: T): T {
     if (typeof value === 'string') {
-      return value.replace(this.mantleExplorerPrefix, this.bnbExplorerPrefix) as T;
+      return this.convertToBnbExplorerUrl(value) as T;
     }
 
     if (Array.isArray(value)) {
