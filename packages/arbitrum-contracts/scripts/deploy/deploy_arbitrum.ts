@@ -1,5 +1,29 @@
 import { ethers } from "hardhat";
 
+function getDeploymentMeta(chainId: bigint) {
+  if (chainId === 97n) {
+    return {
+      network: 'bnb',
+      filename: 'deployed_contracts_bnb.json',
+      nativeSymbol: 'tBNB',
+    };
+  }
+
+  if (chainId === 42161n) {
+    return {
+      network: 'arbitrum-mainnet',
+      filename: 'deployed_contracts_arbitrum.json',
+      nativeSymbol: 'ETH',
+    };
+  }
+
+  return {
+    network: 'arbitrum',
+    filename: 'deployed_contracts_arbitrum.json',
+    nativeSymbol: 'ETH',
+  };
+}
+
 /**
  * Deploy Arbitrum Leverage Stack
  * 
@@ -15,10 +39,12 @@ import { ethers } from "hardhat";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
+  const chainId = (await ethers.provider.getNetwork()).chainId;
+  const deployMeta = getDeploymentMeta(chainId);
 
-  console.log("📦 Deploying Arbitrum Leverage Stack");
+  console.log(`📦 Deploying ${deployMeta.network.toUpperCase()} Leverage Stack`);
   console.log("🔑 Deployer:", deployer.address);
-  console.log("💰 Balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "ETH\n");
+  console.log("💰 Balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), `${deployMeta.nativeSymbol}\n`);
 
   const deployedContracts: Record<string, string> = {};
 
@@ -207,18 +233,18 @@ async function main() {
   
   const fs = require("fs");
   const manifest = {
-    network: "arbitrum",
-    chainId: (await ethers.provider.getNetwork()).chainId.toString(),
+    network: deployMeta.network,
+    chainId: chainId.toString(),
     deployer: deployer.address,
     timestamp: new Date().toISOString(),
     contracts: deployedContracts
   };
 
   fs.writeFileSync(
-    "./deployed_contracts_arbitrum.json",
+    `./${deployMeta.filename}`,
     JSON.stringify(manifest, null, 2)
   );
-  console.log("   ✅ Manifest saved to deployed_contracts_arbitrum.json");
+  console.log(`   ✅ Manifest saved to ${deployMeta.filename}`);
 
   // Summary
   console.log("\n✅ Deployment complete!");
