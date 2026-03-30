@@ -5,14 +5,16 @@ export default registerAs('network', () => {
   const networkType = (process.env.NETWORK_TYPE as NetworkType) || NetworkType.MANTLE;
 
   const isMantle = networkType === NetworkType.MANTLE;
+  const isBnb = networkType === NetworkType.BNB;
   const isStellar = networkType === NetworkType.STELLAR;
   const isArbitrum = networkType === NetworkType.ARBITRUM;
   const isCreditcoin = networkType === NetworkType.CREDITCOIN;
 
-  const isEvmLike = isMantle || isArbitrum || isCreditcoin;
+  const isEvmLike = isMantle || isBnb || isArbitrum || isCreditcoin;
 
   const networkNameMap: Record<string, string> = {
     [NetworkType.MANTLE]: 'Mantle Sepolia',
+    [NetworkType.BNB]: 'BNB Testnet',
     [NetworkType.ARBITRUM]: 'Arbitrum Sepolia',
     [NetworkType.CREDITCOIN]: 'Creditcoin Testnet',
     [NetworkType.STELLAR]: 'Stellar Testnet',
@@ -25,7 +27,7 @@ export default registerAs('network', () => {
 
     // Feature Availability Map
     features: {
-      leverage: isMantle || isArbitrum,
+      leverage: isMantle || isBnb || isArbitrum,
       faucet: isEvmLike,
       solvency: isEvmLike,
       secondaryMarket: isEvmLike, // Initially false for Stellar, will be true for all later

@@ -7,6 +7,7 @@ import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
 import { ChainManager } from '../interfaces/chain-manager.interface';
 import { MantleChainManager } from '../managers/mantle.manager';
 import { ArbitrumChainManager } from '../managers/arbitrum.manager';
+import { BnbChainManager } from '../managers/bnb.manager';
 import { StellarChainManager } from '../managers/stellar.manager';
 import { CreditCoinChainManager } from '../managers/creditcoin.manager';
 
@@ -45,6 +46,11 @@ export class ChainManagerRegistry implements OnModuleInit, OnModuleDestroy {
     if (enabledNetworks.includes(NetworkType.ARBITRUM)) {
       this.managers.set(NetworkType.ARBITRUM, new ArbitrumChainManager(this.configService, this.assetModel));
       this.logger.log('ArbitrumChainManager initialized');
+    }
+
+    if (enabledNetworks.includes(NetworkType.BNB)) {
+      this.managers.set(NetworkType.BNB, new BnbChainManager(this.configService, this.assetModel));
+      this.logger.log('BnbChainManager initialized');
     }
 
     if (enabledNetworks.includes(NetworkType.STELLAR)) {

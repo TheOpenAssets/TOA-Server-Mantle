@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MantleContracts, MantleAbis } from '@contracts/mantle';
-import { ArbitrumContracts, ArbitrumAbis } from '@contracts/arbitrum';
+import { ArbitrumContracts, ArbitrumAbis, BnbContracts } from '@contracts/arbitrum';
 import { StellarContracts } from '@contracts/stellar';
 import { CreditCoinContracts, CreditCoinAbis } from '@contracts/creditcoin';
 import { ContractName } from '@openassets/types';
@@ -23,6 +23,12 @@ export class ContractLoaderService implements OnModuleInit {
     
     if (networkType === 'arbitrum') {
       this.contracts = { ...ArbitrumContracts };
+      this.abis = { ...ArbitrumAbis };
+      this.addAlias('PrimaryMarketplace', 'PrimaryMarket');
+      this.addAlias('USDC', 'MockUSDC');
+      this.addAlias('LeverageVault', 'StARBLeverageVault');
+    } else if (networkType === 'bnb') {
+      this.contracts = { ...BnbContracts };
       this.abis = { ...ArbitrumAbis };
       this.addAlias('PrimaryMarketplace', 'PrimaryMarket');
       this.addAlias('USDC', 'MockUSDC');

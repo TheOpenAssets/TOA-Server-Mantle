@@ -1,5 +1,5 @@
 import { Chain } from 'viem';
-import { arbitrumSepolia } from 'viem/chains';
+import { arbitrumSepolia, bscTestnet } from 'viem/chains';
 import { creditcoinTestnet } from '@/src/config/creditcoin-chain';
 import { mantleSepolia } from '@/src/config/mantle-chain';
 
@@ -8,6 +8,7 @@ import { mantleSepolia } from '@/src/config/mantle-chain';
  *
  * Supported values:
  *  - 'creditcoin'  → Creditcoin Testnet (CC3)
+ *  - 'bnb'         → BNB Smart Chain Testnet
  *  - 'arbitrum'    → Arbitrum Sepolia
  *  - anything else (default/mantle) → Mantle Sepolia
  */
@@ -20,6 +21,10 @@ export function getActiveChain(): Chain {
 
   if (networkType === 'arbitrum') {
     return arbitrumSepolia;
+  }
+
+  if (networkType === 'bnb') {
+    return bscTestnet;
   }
 
   return mantleSepolia;
