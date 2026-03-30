@@ -8,7 +8,8 @@
     "generate:types": "hardhat compile",
     "dev": "echo 'No dev script for contracts'",
     "deploy:sepolia": "hardhat run scripts/deploy/deploy_arbitrum.ts --network arbitrumSepolia",
-    "deploy:mainnet": "hardhat run scripts/deploy/deploy_arbitrum.ts --network arbitrum"
+    "deploy:mainnet": "hardhat run scripts/deploy/deploy_arbitrum.ts --network arbitrum",
+    "deploy:bnb:testnet": "hardhat run scripts/deploy/deploy_arbitrum.ts --network bnbTestnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "2.1.0",
