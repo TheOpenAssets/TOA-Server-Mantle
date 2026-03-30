@@ -73,6 +73,16 @@ bun hardhat run scripts/deploy/deploy_arbitrum.ts --network arbitrumSepolia
 bun hardhat run scripts/deploy/deploy_arbitrum.ts --network arbitrum
 ```
 
+### Deploy to BNB Testnet
+
+```bash
+# Either of these env vars is supported by hardhat.config.ts
+BNB_TESTNET_RPC_URL=https://data-seed-prebsc-1-s1.bnbchain.org:8545
+
+# Deploy
+bun run deploy:bnb:testnet
+```
+
 ## Network Configuration
 
 ### Arbitrum Sepolia Testnet
@@ -87,9 +97,18 @@ bun hardhat run scripts/deploy/deploy_arbitrum.ts --network arbitrum
 - **RPC URL**: https://arb1.arbitrum.io/rpc
 - **Block Explorer**: https://arbiscan.io
 
+### BNB Smart Chain Testnet
+
+- **Chain ID**: 97
+- **RPC URL**: https://data-seed-prebsc-1-s1.bnbchain.org:8545
+- **Block Explorer**: https://testnet.bscscan.com
+
 ## Contract Addresses
 
-After deployment, all contract addresses are saved to `deployed_contracts_arbitrum.json`.
+After deployment, contract addresses are saved to:
+
+- `deployed_contracts_arbitrum.json` for Arbitrum networks
+- `deployed_contracts_bnb.json` for BNB testnet
 
 ## Key Differences from Mantle
 
