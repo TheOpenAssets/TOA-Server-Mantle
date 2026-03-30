@@ -19,7 +19,7 @@ import { NetworkContextService } from '../../blockchain/services/network-context
 import { fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
 @ApiTags('Marketplace')
-@ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'stellar', 'arbitrum', 'creditcoin'] })
+@ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'bnb', 'stellar', 'arbitrum', 'creditcoin'] })
 @Controller('marketplace')
 export class MarketplaceController {
   constructor(

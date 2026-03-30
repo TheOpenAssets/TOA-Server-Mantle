@@ -29,7 +29,7 @@ export class YieldController {
    * Called by frontend after successful claimYield() transaction
    */
   @ApiOperation({ summary: 'Notify yield claim', description: 'Records a yield claim transaction after it has been executed on-chain.' })
-  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'stellar', 'arbitrum', 'creditcoin'] })
+  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'bnb', 'stellar', 'arbitrum', 'creditcoin'] })
   @ApiBody({ type: NotifyYieldClaimDto })
   @ApiResponse({ status: 201, description: 'Claim recorded' })
   @Post('claims/notify')
@@ -118,7 +118,7 @@ export class YieldController {
    * Get user's yield claim history
    */
   @ApiOperation({ summary: 'Get my claims', description: 'Returns all yield claims for the authenticated investor.' })
-  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'stellar', 'arbitrum', 'creditcoin'] })
+  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'bnb', 'stellar', 'arbitrum', 'creditcoin'] })
   @ApiResponse({ status: 200, description: 'Claims history' })
   @Get('claims/my-claims')
   @UseGuards(JwtAuthGuard)
@@ -157,7 +157,7 @@ export class YieldController {
    * Get yield claims for a specific asset (for admin/originator)
    */
   @ApiOperation({ summary: 'Get asset claims', description: 'Returns all yield claims for a specific asset.' })
-  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'stellar', 'arbitrum', 'creditcoin'] })
+  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'bnb', 'stellar', 'arbitrum', 'creditcoin'] })
   @ApiResponse({ status: 200, description: 'Asset claims history' })
   @Get('claims/asset/:assetId')
   @UseGuards(JwtAuthGuard)
@@ -200,7 +200,7 @@ export class YieldController {
    * Get recent yield claims (admin view)
    */
   @ApiOperation({ summary: 'Get recent claims', description: 'Returns recently recorded yield claims across all assets.' })
-  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'stellar', 'arbitrum', 'creditcoin'] })
+  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'bnb', 'stellar', 'arbitrum', 'creditcoin'] })
   @ApiResponse({ status: 200, description: 'Recent claims' })
   @Get('claims/recent')
   @UseGuards(JwtAuthGuard)
@@ -236,7 +236,7 @@ export class YieldController {
    * Get exact on-chain claimable yield amount
    */
   @ApiOperation({ summary: 'Get claimable yield', description: 'Queries the on-chain YieldVault for exact claimable USDC amount.' })
-  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'stellar', 'arbitrum', 'creditcoin'] })
+  @ApiHeader({ name: 'X-Network', description: 'Network context', enum: ['mantle', 'bnb', 'stellar', 'arbitrum', 'creditcoin'] })
   @ApiResponse({ status: 200, description: 'Claimable amount' })
   @Get('claimable')
   @UseGuards(JwtAuthGuard)
