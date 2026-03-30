@@ -15,10 +15,12 @@ import { ComplianceEngineModule } from '../compliance-engine/compliance-engine.m
 import { AnnouncementsModule } from '../announcements/announcements.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MantleAssetOriginationService } from './implementations/mantle/mantle-asset-origination.service';
+import { BnbAssetOriginationService } from './implementations/bnb/bnb-asset-origination.service';
 import { StellarAssetOriginationService } from './implementations/stellar/stellar-asset-origination.service';
 import { CreditCoinAssetOriginationService } from './implementations/creditcoin/creditcoin-asset-origination.service';
 import { 
   MANTLE_ASSET_ORIGINATION_TOKEN, 
+  BNB_ASSET_ORIGINATION_TOKEN,
   STELLAR_ASSET_ORIGINATION_TOKEN,
   CREDITCOIN_ASSET_ORIGINATION_TOKEN,
 } from '../registry/registry.constants';
@@ -53,6 +55,10 @@ import {
       useClass: MantleAssetOriginationService,
     },
     {
+      provide: BNB_ASSET_ORIGINATION_TOKEN,
+      useClass: BnbAssetOriginationService,
+    },
+    {
       provide: STELLAR_ASSET_ORIGINATION_TOKEN,
       useClass: StellarAssetOriginationService,
     },
@@ -64,6 +70,7 @@ import {
   exports: [
     AssetLifecycleService,
     MANTLE_ASSET_ORIGINATION_TOKEN,
+    BNB_ASSET_ORIGINATION_TOKEN,
     STELLAR_ASSET_ORIGINATION_TOKEN,
     CREDITCOIN_ASSET_ORIGINATION_TOKEN,
   ],

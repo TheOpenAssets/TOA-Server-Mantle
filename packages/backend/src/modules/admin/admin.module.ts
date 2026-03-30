@@ -21,10 +21,12 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { RegistryModule } from '../registry/registry.module';
 import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
 import { MantleAdminStrategy } from './implementations/mantle/mantle-admin-strategy.service';
+import { BnbAdminStrategy } from './implementations/bnb/bnb-admin-strategy.service';
 import { StellarAdminStrategy } from './implementations/stellar/stellar-admin-strategy.service';
 import { CreditCoinAdminStrategy } from './implementations/creditcoin/creditcoin-admin-strategy.service';
 import { 
   MANTLE_ADMIN_STRATEGY_TOKEN, 
+  BNB_ADMIN_STRATEGY_TOKEN,
   STELLAR_ADMIN_STRATEGY_TOKEN,
   CREDITCOIN_ADMIN_STRATEGY_TOKEN,
 } from '../registry/registry.constants';
@@ -62,6 +64,10 @@ import {
       useClass: MantleAdminStrategy,
     },
     {
+      provide: BNB_ADMIN_STRATEGY_TOKEN,
+      useClass: BnbAdminStrategy,
+    },
+    {
       provide: STELLAR_ADMIN_STRATEGY_TOKEN,
       useClass: StellarAdminStrategy,
     },
@@ -72,6 +78,7 @@ import {
   ],
   exports: [
     MANTLE_ADMIN_STRATEGY_TOKEN,
+    BNB_ADMIN_STRATEGY_TOKEN,
     STELLAR_ADMIN_STRATEGY_TOKEN,
     CREDITCOIN_ADMIN_STRATEGY_TOKEN,
     TrustlineApprovalService,
