@@ -1,4 +1,5 @@
 import { ContractName } from '@openassets/types';
+import { BnbContracts } from './bnb.addresses';
 
 export const ArbitrumContracts: Partial<Record<ContractName, string>> = {
   AttestationRegistry: '0xF0877f80C28613eB0a83AfE2d9D9Cd9b08fFa371',
@@ -15,3 +16,13 @@ export const ArbitrumContracts: Partial<Record<ContractName, string>> = {
   ArbitrumSwapIntegration: '0xE9d2d78eFfB816E6402b542A514197bB4448427d',
   StARBLeverageVault: '0x8DDD583FfA5b6A442c8D2bf277DffCE890e13DCc'
 } as const;
+
+export function getLeverageContractsByChainId(chainId: number | bigint): Partial<Record<ContractName, string>> {
+  const normalizedChainId = typeof chainId === 'bigint' ? Number(chainId) : chainId;
+
+  if (normalizedChainId === 97) {
+    return BnbContracts;
+  }
+
+  return ArbitrumContracts;
+}
