@@ -1,6 +1,18 @@
 import { ethers } from "hardhat";
 import * as fs from "fs";
 
+function resolveManifestFilename(chainId: bigint): string {
+  if (process.env.DEPLOYMENT_MANIFEST) {
+    return process.env.DEPLOYMENT_MANIFEST;
+  }
+
+  if (chainId === 97n) {
+    return "./deployed_contracts_bnb.json";
+  }
+
+  return "./deployed_contracts_arbitrum.json";
+}
+
 /**
  * Register StARBLeverageVault in IdentityRegistry
  *
@@ -10,12 +22,15 @@ import * as fs from "fs";
  */
 async function main() {
   const [deployer] = await ethers.getSigners();
+  const chainId = (await ethers.provider.getNetwork()).chainId;
+  const manifestFilename = resolveManifestFilename(chainId);
 
   console.log("🔑 Deployer:", deployer.address);
+  console.log("📄 Manifest:", manifestFilename);
 
   // Load deployed addresses
   const manifest = JSON.parse(
-    fs.readFileSync("./deployed_contracts_arbitrum.json", "utf-8")
+    fs.readFileSync(manifestFilename, "utf-8")
   );
 
   const identityRegistryAddress = manifest.contracts.IdentityRegistry;

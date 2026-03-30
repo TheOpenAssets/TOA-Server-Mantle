@@ -2,6 +2,18 @@ import { ethers } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
 
+function resolveManifestFilename(chainId: bigint): string {
+  if (process.env.DEPLOYMENT_MANIFEST) {
+    return process.env.DEPLOYMENT_MANIFEST;
+  }
+
+  if (chainId === 97n) {
+    return "deployed_contracts_bnb.json";
+  }
+
+  return "deployed_contracts_arbitrum.json";
+}
+
 /**
  * Post-deployment fix: Set TokenFactory as the authorized factory on YieldVault.
  *
@@ -10,17 +22,20 @@ import * as path from "path";
  */
 async function main() {
   const [deployer] = await ethers.getSigners();
+  const chainId = (await ethers.provider.getNetwork()).chainId;
+  const manifestFile = resolveManifestFilename(chainId);
   console.log("🔧 Setting TokenFactory on YieldVault");
   console.log("🔑 Caller:", deployer.address);
+  console.log("📄 Manifest:", manifestFile);
 
-  const manifestPath = path.join(__dirname, "../../deployed_contracts_arbitrum.json");
+  const manifestPath = path.join(__dirname, `../../${manifestFile}`);
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 
   const yieldVaultAddress = manifest.contracts.YieldVault;
   const tokenFactoryAddress = manifest.contracts.TokenFactory;
 
   if (!yieldVaultAddress || !tokenFactoryAddress) {
-    throw new Error("YieldVault or TokenFactory address not found in deployed_contracts_arbitrum.json");
+    throw new Error(`YieldVault or TokenFactory address not found in ${manifestFile}`);
   }
 
   console.log("📄 YieldVault:    ", yieldVaultAddress);
