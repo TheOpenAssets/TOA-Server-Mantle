@@ -76,11 +76,19 @@ bun hardhat run scripts/deploy/deploy_arbitrum.ts --network arbitrum
 ### Deploy to BNB Testnet
 
 ```bash
-# Either of these env vars is supported by hardhat.config.ts
+# Ensure deployer wallet has test BNB for gas
+ADMIN_PRIVATE_KEY=your_private_key
+
+# Optional custom RPC
 BNB_TESTNET_RPC_URL=https://data-seed-prebsc-1-s1.bnbchain.org:8545
 
-# Deploy
-bun run deploy:bnb:testnet
+bun hardhat run scripts/deploy/deploy_bnb.ts --network bnbTestnet
+```
+
+After deployment, sync exported addresses for backend/frontend consumption:
+
+```bash
+pnpm --filter @contracts/arbitrum sync:bnb:addresses
 ```
 
 ## Network Configuration

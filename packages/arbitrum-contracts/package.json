@@ -9,7 +9,8 @@
     "dev": "echo 'No dev script for contracts'",
     "deploy:sepolia": "hardhat run scripts/deploy/deploy_arbitrum.ts --network arbitrumSepolia",
     "deploy:mainnet": "hardhat run scripts/deploy/deploy_arbitrum.ts --network arbitrum",
-    "deploy:bnb:testnet": "hardhat run scripts/deploy/deploy_arbitrum.ts --network bnbTestnet"
+    "deploy:bnb:testnet": "hardhat run scripts/deploy/deploy_bnb.ts --network bnbTestnet",
+    "sync:bnb:addresses": "ts-node scripts/deploy/sync_bnb_addresses.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "2.1.0",
