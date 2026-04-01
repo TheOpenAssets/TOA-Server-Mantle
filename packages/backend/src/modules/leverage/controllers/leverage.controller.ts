@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, Logger, Inject, Query } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request, Logger, Inject, Query, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { LeveragePositionService } from '../services/leverage-position.service';
 import { LeverageBlockchainService } from '../services/leverage-blockchain.service';
@@ -199,8 +199,15 @@ export class LeverageController {
         message: 'Leveraged position created successfully',
       };
     } catch (error: any) {
-      // Gracefully handle slow finality / missing receipt while tx is actually broadcasted
-      if (typeof error?.message === 'string' && error.message.includes('TransactionReceiptNotFoundError')) {
+      // Gracefully handle slow finality / delayed receipts while tx is actually broadcasted
+      const errorMessage = typeof error?.message === 'string' ? error.message : '';
+      const isReceiptDelayError =
+        errorMessage.includes('TransactionReceiptNotFoundError') ||
+        errorMessage.includes('WaitForTransactionReceiptTimeoutError') ||
+        errorMessage.includes('timed out') ||
+        errorMessage.includes('timeout');
+
+      if (isReceiptDelayError) {
         const txMatch = error.message.match(/hash "([^"]+)"/);
         const txHash = txMatch ? txMatch[1] : undefined;
         this.logger.warn(`⚠️ Receipt not found yet. Checking DB before returning pending for tx ${txHash || 'unknown'}`);
@@ -232,7 +239,26 @@ export class LeverageController {
       this.logger.error(`❌ Leverage purchase failed: ${error}`);
       this.logger.error(`Stack trace:`, error);
       this.logger.error(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-      throw error;
+      const message = typeof error?.message === 'string' ? error.message : 'Internal server error';
+      if (
+        message.includes('0xfb8f41b2') ||
+        message.includes('ERC20InsufficientAllowance') ||
+        message.includes('Insufficient collateral allowance')
+      ) {
+        throw new BadRequestException(
+          'Insufficient collateral token allowance. Please approve your stARB/AnkrBNB collateral token to the LeverageVault contract, then retry.',
+        );
+      }
+      if (
+        message.includes('Compliance check failed') ||
+        message.includes('Insufficient collateral') ||
+        message.includes('Asset') ||
+        message.includes('Listing') ||
+        message.includes('not set')
+      ) {
+        throw new BadRequestException(message);
+      }
+      throw new InternalServerErrorException(message);
     } finally {
       this.pendingPurchases.delete(lockKey);
     }

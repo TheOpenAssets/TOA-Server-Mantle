@@ -1,11 +1,24 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createPublicClient, http, Hash, Address, decodeEventLog, defineChain } from 'viem';
+import { createPublicClient, http, Hash, Address, decodeEventLog, defineChain, maxUint256 } from 'viem';
 import { ContractLoaderService } from '../../blockchain/services/contract-loader.service';
 import { WalletService } from '../../blockchain/services/wallet.service';
 import { MethPriceService } from '../../blockchain/services/meth-price.service';
 import { StArbPriceService } from '../../blockchain/services/starb-price.service';
 import { PRICE_SERVICE } from '../leverage.constants';
+
+const erc20AllowanceAbi = [
+  {
+    type: 'function',
+    name: 'allowance',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
 
 /**
  * @title LeverageBlockchainService
@@ -77,6 +90,18 @@ export class LeverageBlockchainService {
       try {
         return await operation();
       } catch (error: any) {
+        const message = typeof error?.message === 'string' ? error.message : '';
+        const deterministicRevert =
+          message.includes('reverted with the following reason') ||
+          message.includes('ContractFunctionExecutionError') ||
+          message.includes('Execution reverted');
+
+        // Don't retry deterministic contract reverts (e.g. compliance failure).
+        if (deterministicRevert) {
+          this.logger.error(`Deterministic revert in ${description}: ${message}`);
+          throw error;
+        }
+
         retries++;
         if (retries > maxRetries) {
           this.logger.error(`Failed ${description} after ${maxRetries} retries: ${error.message}`);
@@ -114,6 +139,22 @@ export class LeverageBlockchainService {
     const wallet = this.walletService.getPlatformWallet();
     const address = this.contractLoader.getContractAddress(this.vaultContractName);
     const abi = this.contractLoader.getContractAbi(this.vaultContractName);
+
+    // Ensure required identities are verified before token transfer compliance checks.
+    await this.ensureLeverageComplianceIdentities(params.user, address);
+
+    // Preflight transfer compliance check to fail fast with actionable diagnostics.
+    await this.assertLeverageComplianceReady(params.rwaToken, address);
+
+    // Ensure PrimaryMarket has enough allowance to transfer RWA from platform custody.
+    // Without this, PrimaryMarket.buyTokens() reverts with ERC20InsufficientAllowance (0xfb8f41b2).
+    await this.ensurePrimaryMarketRwaAllowance(params.rwaToken, params.rwaTokenAmount);
+
+    // For BNB/Arbitrum leverage flow, vault pulls stARB collateral from the USER wallet.
+    // Fail early with actionable message if user allowance to vault is insufficient.
+    if (this.vaultContractName === 'BNBLeverageVault') {
+      await this.ensureUserCollateralAllowance(params.user, address, params.mETHAmount);
+    }
 
     // Convert mETH price from 6 decimals (USDC wei) to 18 decimals (contract expects 18)
     // e.g., 2856450000 (6 decimals) → 2856450000000000000000 (18 decimals)
@@ -186,6 +227,221 @@ export class LeverageBlockchainService {
       this.logger.error(`Failed to create position: ${error}`);
       throw error;
     }
+  }
+
+  private async ensureLeverageComplianceIdentities(userAddress: string, vaultAddress: string): Promise<void> {
+    const networkType = this.configService.get('network.networkType');
+    if (networkType !== 'bnb' && networkType !== 'arbitrum') return;
+
+    const identityRegistryAddress = this.contractLoader.getContractAddress('IdentityRegistry');
+    const identityRegistryAbi = this.contractLoader.getContractAbi('IdentityRegistry');
+
+    const primaryMarketAddress = this.contractLoader.getContractAddress('PrimaryMarketplace');
+    const primaryMarketAbi = this.contractLoader.getContractAbi('PrimaryMarketplace');
+
+    const platformCustody = await this.publicClient.readContract({
+      address: primaryMarketAddress as Address,
+      abi: primaryMarketAbi,
+      functionName: 'platformCustody',
+    }) as Address;
+
+    const requiredAddresses = [
+      userAddress,
+      platformCustody,
+      vaultAddress,
+    ];
+
+    const wallet = this.walletService.getPlatformWallet();
+
+    for (const targetAddress of requiredAddresses) {
+      const isVerified = await this.publicClient.readContract({
+        address: identityRegistryAddress as Address,
+        abi: identityRegistryAbi,
+        functionName: 'isVerified',
+        args: [targetAddress as Address],
+      }) as boolean;
+
+      if (isVerified) continue;
+
+      this.logger.warn(`[Leverage Compliance] ${targetAddress} not verified. Registering identity...`);
+
+      await this.executeWithRetry(
+        () => wallet.writeContract({
+          address: identityRegistryAddress as Address,
+          abi: identityRegistryAbi,
+          functionName: 'registerIdentity',
+          args: [targetAddress as Address],
+          account: wallet.account!,
+        }),
+        `registerIdentity(${targetAddress})`,
+        2,
+        1000,
+      );
+
+      this.logger.log(`[Leverage Compliance] ✅ Registered identity for ${targetAddress}`);
+    }
+  }
+
+  private async assertLeverageComplianceReady(rwaToken: string, vaultAddress: string): Promise<void> {
+    const rwaTokenAbi = this.contractLoader.getContractAbi('RWAToken');
+    const complianceAbi = this.contractLoader.getContractAbi('ComplianceModule');
+    const identityRegistryAbi = this.contractLoader.getContractAbi('IdentityRegistry');
+    const attestationRegistryAbi = this.contractLoader.getContractAbi('AttestationRegistry');
+    const primaryMarketAbi = this.contractLoader.getContractAbi('PrimaryMarketplace');
+    const primaryMarketAddress = this.contractLoader.getContractAddress('PrimaryMarketplace');
+
+    const platformCustody = await this.publicClient.readContract({
+      address: primaryMarketAddress as Address,
+      abi: primaryMarketAbi,
+      functionName: 'platformCustody',
+    }) as Address;
+
+    const complianceAddress = await this.publicClient.readContract({
+      address: rwaToken as Address,
+      abi: rwaTokenAbi,
+      functionName: 'compliance',
+    }) as Address;
+
+    const identityRegistryAddress = await this.publicClient.readContract({
+      address: complianceAddress,
+      abi: complianceAbi,
+      functionName: 'identityRegistry',
+    }) as Address;
+
+    const attestationRegistryAddress = await this.publicClient.readContract({
+      address: complianceAddress,
+      abi: complianceAbi,
+      functionName: 'attestationRegistry',
+    }) as Address;
+
+    const assetId = await this.publicClient.readContract({
+      address: complianceAddress,
+      abi: complianceAbi,
+      functionName: 'assetId',
+    }) as Hash;
+
+    const platformVerified = await this.publicClient.readContract({
+      address: identityRegistryAddress,
+      abi: identityRegistryAbi,
+      functionName: 'isVerified',
+      args: [platformCustody],
+    }) as boolean;
+
+    const vaultVerified = await this.publicClient.readContract({
+      address: identityRegistryAddress,
+      abi: identityRegistryAbi,
+      functionName: 'isVerified',
+      args: [vaultAddress as Address],
+    }) as boolean;
+
+    const assetValid = await this.publicClient.readContract({
+      address: attestationRegistryAddress,
+      abi: attestationRegistryAbi,
+      functionName: 'isAssetValid',
+      args: [assetId],
+    }) as boolean;
+
+    const canTransfer = await this.publicClient.readContract({
+      address: complianceAddress,
+      abi: complianceAbi,
+      functionName: 'canTransfer',
+      args: [platformCustody, vaultAddress as Address, 1n],
+    }) as boolean;
+
+    this.logger.log(
+      `[Leverage Compliance Check] platformVerified=${platformVerified}, ` +
+      `vaultVerified=${vaultVerified}, assetValid=${assetValid}, canTransfer=${canTransfer}`,
+    );
+
+    if (!canTransfer) {
+      throw new Error(
+        `Compliance precheck failed: platformVerified=${platformVerified}, ` +
+        `vaultVerified=${vaultVerified}, assetValid=${assetValid}`,
+      );
+    }
+  }
+
+  private async ensurePrimaryMarketRwaAllowance(rwaToken: string, requiredAmount: bigint): Promise<void> {
+    const rwaTokenAbi = this.contractLoader.getContractAbi('RWAToken');
+    const primaryMarketAbi = this.contractLoader.getContractAbi('PrimaryMarketplace');
+    const primaryMarketAddress = this.contractLoader.getContractAddress('PrimaryMarketplace');
+    const wallet = this.walletService.getPlatformWallet();
+
+    const platformCustody = await this.publicClient.readContract({
+      address: primaryMarketAddress as Address,
+      abi: primaryMarketAbi,
+      functionName: 'platformCustody',
+    }) as Address;
+
+    const currentAllowance = await this.publicClient.readContract({
+      address: rwaToken as Address,
+      abi: rwaTokenAbi,
+      functionName: 'allowance',
+      args: [platformCustody, primaryMarketAddress as Address],
+    }) as bigint;
+
+    if (currentAllowance >= requiredAmount) {
+      return;
+    }
+
+    this.logger.warn(
+      `[Leverage Allowance] Insufficient RWA allowance for PrimaryMarket. ` +
+      `current=${currentAllowance.toString()}, required=${requiredAmount.toString()}. Approving max...`,
+    );
+
+    await this.executeWithRetry(
+      () => wallet.writeContract({
+        address: rwaToken as Address,
+        abi: rwaTokenAbi,
+        functionName: 'approve',
+        args: [primaryMarketAddress as Address, maxUint256],
+        account: wallet.account!,
+      }),
+      'approve RWA allowance to PrimaryMarket',
+      2,
+      1000,
+    );
+
+    const updatedAllowance = await this.publicClient.readContract({
+      address: rwaToken as Address,
+      abi: rwaTokenAbi,
+      functionName: 'allowance',
+      args: [platformCustody, primaryMarketAddress as Address],
+    }) as bigint;
+
+    this.logger.log(`[Leverage Allowance] ✅ Updated RWA allowance to ${updatedAllowance.toString()}`);
+  }
+
+  private async ensureUserCollateralAllowance(
+    userAddress: string,
+    vaultAddress: string,
+    requiredAmount: bigint,
+  ): Promise<void> {
+    const vaultAbi = this.contractLoader.getContractAbi(this.vaultContractName);
+
+    const collateralToken = await this.publicClient.readContract({
+      address: vaultAddress as Address,
+      abi: vaultAbi,
+      functionName: 'stARB',
+    }) as Address;
+
+    const currentAllowance = await this.publicClient.readContract({
+      address: collateralToken,
+      abi: erc20AllowanceAbi,
+      functionName: 'allowance',
+      args: [userAddress as Address, vaultAddress as Address],
+    }) as bigint;
+
+    if (currentAllowance >= requiredAmount) {
+      return;
+    }
+
+    throw new Error(
+      `Insufficient collateral allowance: user=${userAddress.toLowerCase()}, ` +
+      `spender=${vaultAddress.toLowerCase()}, token=${collateralToken.toLowerCase()}, ` +
+      `allowance=${currentAllowance.toString()}, required=${requiredAmount.toString()}. ` +
+      `Approve collateral token to vault and retry.`,
+    );
   }
 
   /**
