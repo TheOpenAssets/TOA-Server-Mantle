@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ContractAdapter } from '../contract-adapter.interface';
 import { MantleContracts, MantleAbis } from '@contracts/mantle';
-import { ArbitrumContracts, ArbitrumAbis } from '@contracts/arbitrum';
+import { BnbContracts, BnbEvmContracts, BnbAbis } from '@contracts/bnb';
 import { ContractName } from '@openassets/types';
 
 export class EvmContractAdapter implements ContractAdapter {
@@ -28,13 +28,21 @@ export class EvmContractAdapter implements ContractAdapter {
     const networkType = this.configService.get('network.networkType');
     
     if (networkType === 'arbitrum') {
-      this.contracts = { ...ArbitrumContracts };
-      this.abis = { ...ArbitrumAbis };
+      this.contracts = { ...BnbEvmContracts };
+      this.abis = { ...BnbAbis };
       
-      // Aliases for Arbitrum
+      // Aliases for BNB leverage stack
       this.addAlias('PrimaryMarketplace', 'PrimaryMarket');
       this.addAlias('USDC', 'MockUSDC');
-      this.addAlias('LeverageVault', 'StARBLeverageVault');
+      this.addAlias('LeverageVault', 'BNBLeverageVault');
+    } else if (networkType === 'bnb') {
+      this.contracts = { ...BnbContracts };
+      this.abis = { ...BnbAbis };
+
+      // Aliases for BNB leverage stack
+      this.addAlias('PrimaryMarketplace', 'PrimaryMarket');
+      this.addAlias('USDC', 'MockUSDC');
+      this.addAlias('LeverageVault', 'BNBLeverageVault');
     } else {
       this.contracts = { ...MantleContracts };
       this.abis = { ...MantleAbis };

@@ -25,7 +25,13 @@ export const ContractNameRegistry = {
   PrivateAssetToken: 'PrivateAssetToken',
   ComplianceModule: 'ComplianceModule',
 
-  // Arbitrum-only
+  // BNB leverage
+  BNBLeverageVault: 'BNBLeverageVault',
+  BNBSwapIntegration: 'BNBSwapIntegration',
+  MockBNBDEX: 'MockBNBDEX',
+  AnkrBNB: 'AnkrBNB',
+
+  // Legacy aliases (kept for backward compatibility)
   StARBLeverageVault: 'StARBLeverageVault',
   ArbitrumSwapIntegration: 'ArbitrumSwapIntegration',
   MockStARB: 'MockStARB',

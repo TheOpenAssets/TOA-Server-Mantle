@@ -54,8 +54,11 @@ export class EvmPaymentAdapter implements PaymentAdapter {
     const monorepoRoot = path.join(process.cwd(), '../..');
 
     let deployedContractsPath: string;
-    if (networkType === 'arbitrum') {
-      deployedContractsPath = path.join(monorepoRoot, 'packages/arbitrum-contracts/deployed_contracts_arbitrum.json');
+    if (networkType === 'arbitrum' || networkType === 'bnb') {
+      deployedContractsPath = path.join(
+        monorepoRoot,
+        `packages/bnb-contracts/${networkType === 'bnb' ? 'deployed_contracts_bnb.json' : 'deployed_contracts_arbitrum.json'}`,
+      );
     } else {
       deployedContractsPath = path.join(monorepoRoot, 'packages/contracts/deployed_contracts.json');
     }

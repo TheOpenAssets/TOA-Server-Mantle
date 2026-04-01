@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { FillOrderDto } from '../dto/fill-order.dto';
 import { CancelOrderDto } from '../dto/cancel-order.dto';
+import { SyncOrderTxDto } from '../dto/sync-order-tx.dto';
 
 @Controller('marketplace/secondary')
 export class SecondaryMarketController {
@@ -128,5 +129,15 @@ export class SecondaryMarketController {
     });
     this.logger.debug(`[P2P] Validation result - Valid: ${validation.valid}${validation.valid ? '' : ', Reason: ' + validation.reason}`);
     return validation;
+  }
+
+  @Post('sync/order-created')
+  @UseGuards(JwtAuthGuard)
+  async syncOrderCreated(@Body() dto: SyncOrderTxDto, @Req() req: any) {
+    const walletAddress = req.user.walletAddress;
+    this.logger.log(`[P2P] Manual order sync requested by ${walletAddress} for tx ${dto.txHash}`);
+    const result = await this.secondaryMarketService.syncOrderCreatedFromTx(dto.txHash);
+    this.logger.debug(`[P2P] Manual sync result - created: ${result.createdOrders}, skipped: ${result.skippedOrders}`);
+    return result;
   }
 }

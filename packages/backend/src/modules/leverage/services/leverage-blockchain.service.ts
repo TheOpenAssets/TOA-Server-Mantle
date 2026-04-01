@@ -28,8 +28,11 @@ export class LeverageBlockchainService {
     // Determine contract names based on network type
     const networkType = this.configService.get('network.networkType');
     if (networkType === 'arbitrum') {
-      this.vaultContractName = 'StARBLeverageVault';
-      this.swapIntegrationName = 'ArbitrumSwapIntegration';
+      this.vaultContractName = 'BNBLeverageVault';
+      this.swapIntegrationName = 'BNBSwapIntegration';
+    } else if (networkType === 'bnb') {
+      this.vaultContractName = 'BNBLeverageVault';
+      this.swapIntegrationName = 'BNBSwapIntegration';
     } else {
       this.vaultContractName = 'LeverageVault';
       this.swapIntegrationName = 'FluxionIntegration';

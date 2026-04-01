@@ -20,11 +20,11 @@
       "@contracts/mantle/*": [
         "../contracts/*"
       ],
-      "@contracts/arbitrum": [
-        "../arbitrum-contracts/index.ts"
+      "@contracts/bnb": [
+        "../bnb-contracts/index.ts"
       ],
-      "@contracts/arbitrum/*": [
-        "../arbitrum-contracts/*"
+      "@contracts/bnb/*": [
+        "../bnb-contracts/*"
       ],
       "@contracts/creditcoin": [
         "../creditcoin-contracts/index.ts"

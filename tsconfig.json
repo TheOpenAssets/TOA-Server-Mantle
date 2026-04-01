@@ -16,8 +16,8 @@
       "@openassets/types/*": ["./packages/types/src/*"],
       "@contracts/mantle": ["./packages/contracts/index.ts"],
       "@contracts/mantle/*": ["./packages/contracts/*"],
-      "@contracts/arbitrum": ["./packages/arbitrum-contracts/index.ts"],
-      "@contracts/arbitrum/*": ["./packages/arbitrum-contracts/*"],
+      "@contracts/bnb": ["./packages/bnb-contracts/index.ts"],
+      "@contracts/bnb/*": ["./packages/bnb-contracts/*"],
       "@contracts/stellar": ["./packages/stellar-contracts/index.ts"],
       "@contracts/stellar/*": ["./packages/stellar-contracts/*"]
     },

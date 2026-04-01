@@ -58,7 +58,7 @@ export class PartnerGatewayService {
       stellar: 'https://stellar.expert/explorer/testnet',
     };
 
-    return baseByNetwork[network] || baseByNetwork.bnb;
+    return baseByNetwork[network] ?? baseByNetwork.bnb ?? 'https://testnet.bscscan.com';
   }
 
   /**

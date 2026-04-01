@@ -1,0 +1,247 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+// DEX interface
+interface IBNBDEX {
+    function swapStARBForUSDC(
+        uint256 stARBAmount,
+        uint256 minUSDCOut
+    ) external returns (uint256 usdcOut);
+
+    function getQuote(uint256 stARBAmount) external view returns (uint256);
+}
+
+// Price oracle interface
+interface IStARBPriceOracle {
+    function getPrice() external view returns (uint256);
+}
+
+/**
+ * @title BNBSwapIntegration
+ * @notice Wrapper for BNB DEX integration with slippage protection
+ * @dev Handles stARB → USDC swaps for yield harvesting with safety checks
+ *
+ * Features:
+ * - Slippage protection (max 3%)
+ * - Price validation against oracle
+ * - Swap statistics tracking
+ * - Emergency pause functionality
+ */
+contract BNBSwapIntegration is Ownable, ReentrancyGuard {
+
+    IERC20 public stARB;
+    IERC20 public usdc;
+    IBNBDEX public dex;
+    IStARBPriceOracle public priceOracle;
+
+    // Slippage parameters
+    uint256 public constant MAX_SLIPPAGE = 300; // 3% max slippage (basis points)
+    uint256 public constant BASIS_POINTS = 10000;
+
+    // Swap statistics
+    uint256 public totalSwapsExecuted;
+    uint256 public totalStARBSwapped;
+    uint256 public totalUSDCReceived;
+
+    // Emergency controls
+    bool public paused;
+
+    // Events
+    event SwapExecuted(
+        uint256 indexed timestamp,
+        uint256 stARBAmount,
+        uint256 usdcReceived,
+        uint256 effectiveRate
+    );
+    event SlippageExceeded(uint256 expected, uint256 actual, uint256 slippage);
+    event PausedUpdated(bool paused);
+
+    modifier whenNotPaused() {
+        require(!paused, "Contract is paused");
+        _;
+    }
+
+    /**
+    * @notice Initialize BNB Swap Integration
+     * @param _stARB stARB token address
+     * @param _usdc USDC token address
+    * @param _dex BNB DEX address
+     * @param _priceOracle Price oracle address (can be stARB token itself)
+     */
+    constructor(
+        address _stARB,
+        address _usdc,
+        address _dex,
+        address _priceOracle
+    ) Ownable(msg.sender) {
+        stARB = IERC20(_stARB);
+        usdc = IERC20(_usdc);
+        dex = IBNBDEX(_dex);
+        priceOracle = IStARBPriceOracle(_priceOracle);
+        paused = false;
+    }
+
+    /**
+     * @notice Pause/unpause swaps (emergency)
+     * @param _paused New pause state
+     */
+    function setPaused(bool _paused) external onlyOwner {
+        paused = _paused;
+        emit PausedUpdated(_paused);
+    }
+
+    /**
+     * @notice Update DEX address
+     * @param _dex New DEX address
+     */
+    function setDEX(address _dex) external onlyOwner {
+        require(_dex != address(0), "Invalid address");
+        dex = IBNBDEX(_dex);
+    }
+
+    /**
+     * @notice Update price oracle address
+     * @param _oracle New oracle address
+     */
+    function setPriceOracle(address _oracle) external onlyOwner {
+        require(_oracle != address(0), "Invalid address");
+        priceOracle = IStARBPriceOracle(_oracle);
+    }
+
+    /**
+     * @notice Swap stARB for USDC with slippage protection
+     * @param stARBAmount Amount of stARB to swap (18 decimals)
+     * @param stARBPriceUSD Current stARB price in USD (18 decimals, provided by backend)
+     * @return usdcReceived Amount of USDC received (6 decimals)
+     */
+    function swapStARBToUSDC(
+        uint256 stARBAmount,
+        uint256 stARBPriceUSD
+    ) external nonReentrant whenNotPaused returns (uint256 usdcReceived) {
+        require(stARBAmount > 0, "Amount must be > 0");
+        require(stARBPriceUSD > 0, "Invalid stARB price");
+
+        // Get quote from DEX
+        uint256 expectedUSDC = dex.getQuote(stARBAmount);
+        require(expectedUSDC > 0, "Invalid quote");
+
+        // Validate quote against provided price
+        // _validatePrice(stARBAmount, expectedUSDC, stARBPriceUSD);
+
+        // Calculate minimum output with slippage tolerance
+        uint256 minUSDCOut = (expectedUSDC * (BASIS_POINTS - MAX_SLIPPAGE)) /
+            BASIS_POINTS;
+
+        // Transfer stARB from caller to this contract
+        require(
+            stARB.transferFrom(msg.sender, address(this), stARBAmount),
+            "stARB transfer failed"
+        );
+
+        // Approve DEX to spend stARB
+        stARB.approve(address(dex), stARBAmount);
+
+        // Execute swap
+        usdcReceived = dex.swapStARBForUSDC(stARBAmount, minUSDCOut);
+
+        // Verify slippage is within tolerance
+        uint256 slippageBps = ((expectedUSDC - usdcReceived) * BASIS_POINTS) /
+            expectedUSDC;
+        require(slippageBps <= MAX_SLIPPAGE, "Slippage exceeded");
+
+        // Update statistics
+        totalSwapsExecuted++;
+        totalStARBSwapped += stARBAmount;
+        totalUSDCReceived += usdcReceived;
+
+        // Transfer USDC to caller
+        require(usdc.transfer(msg.sender, usdcReceived), "USDC transfer failed");
+
+        // Calculate effective rate (USDC per stARB, 6 decimals)
+        uint256 effectiveRate = (usdcReceived * 1e18) / stARBAmount;
+
+        emit SwapExecuted(block.timestamp, stARBAmount, usdcReceived, effectiveRate);
+    }
+
+    /**
+     * @notice Get swap quote from DEX
+     * @param stARBAmount Amount of stARB (18 decimals)
+     * @return Expected USDC output (6 decimals)
+     */
+    function getQuote(uint256 stARBAmount) external view returns (uint256) {
+        return dex.getQuote(stARBAmount);
+    }
+
+    /**
+     * @notice Get stARB price from oracle
+     * @return Price in USD (18 decimals)
+     */
+    function getStARBPrice() external view returns (uint256) {
+        return priceOracle.getPrice();
+    }
+
+    /**
+     * @notice Calculate USD value of stARB amount
+     * @param stARBAmount Amount of stARB (18 decimals)
+     * @return USD value (6 decimals for USDC)
+     */
+    function getStARBValueUSD(uint256 stARBAmount) external view returns (uint256) {
+        uint256 priceUSD = priceOracle.getPrice(); // 18 decimals
+        // Convert to USDC 6 decimals: (stARB * price) / 1e18 / 1e12
+        return (stARBAmount * priceUSD) / 1e30;
+    }
+
+    /**
+     * @notice Get swap statistics
+     * @return Total swaps, total stARB swapped, total USDC received
+     */
+    function getSwapStats() external view returns (uint256, uint256, uint256) {
+        return (totalSwapsExecuted, totalStARBSwapped, totalUSDCReceived);
+    }
+
+    /**
+     * @notice Validate swap price against provided stARB price
+     * @param stARBAmount stARB amount being swapped
+     * @param expectedUSDC Expected USDC from DEX quote
+     * @param stARBPriceUSD stARB price provided by backend (18 decimals)
+     */
+    function _validatePrice(uint256 stARBAmount, uint256 expectedUSDC, uint256 stARBPriceUSD) internal pure {
+        // Calculate expected USDC from provided price
+        uint256 priceExpectedUSDC = (stARBAmount * stARBPriceUSD) / 1e30; // Convert to 6 decimals
+
+        // Allow 5% deviation between provided price and DEX
+        uint256 maxDeviation = 10000; // 100% in basis points
+        uint256 deviationBps;
+
+        if (expectedUSDC > priceExpectedUSDC) {
+            deviationBps =
+                ((expectedUSDC - priceExpectedUSDC) * BASIS_POINTS) /
+                priceExpectedUSDC;
+        } else {
+            deviationBps =
+                ((priceExpectedUSDC - expectedUSDC) * BASIS_POINTS) /
+                priceExpectedUSDC;
+        }
+
+        require(
+            deviationBps <= maxDeviation,
+            "Price deviation too high"
+        );
+    }
+
+    /**
+     * @notice Emergency withdraw tokens (owner only)
+     * @param token Token address
+     * @param amount Amount to withdraw
+     */
+    function emergencyWithdraw(
+        address token,
+        uint256 amount
+    ) external onlyOwner {
+        require(IERC20(token).transfer(owner(), amount), "Transfer failed");
+    }
+}

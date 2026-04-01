@@ -15,7 +15,7 @@ const config: Config = {
     '^uuid$': '<rootDir>/../__mocks__/uuid.js',
     '^@openassets/types$': '<rootDir>/../../types/src/index.ts',
     '^@contracts/mantle$': '<rootDir>/../../contracts/index.ts',
-    '^@contracts/arbitrum$': '<rootDir>/../../arbitrum-contracts/index.ts',
+    '^@contracts/bnb$': '<rootDir>/../../bnb-contracts/index.ts',
     '^@contracts/stellar$': '<rootDir>/../../stellar-contracts/index.ts',
   },
 };

@@ -5,7 +5,7 @@ import { ethers } from 'ethers';
 import { readFileSync } from 'fs';
 
 const deployedContracts = JSON.parse(
-  readFileSync('./packages/arbitrum-contracts/deployed_contracts_arbitrum.json', 'utf-8')
+  readFileSync('./packages/bnb-contracts/deployed_contracts_bnb.json', 'utf-8')
 );
 
 const IDENTITY_REGISTRY_ABI = [
@@ -17,12 +17,12 @@ async function registerInvestor() {
   const investorAddress = process.argv[2] || '0x23e67597f0898f747Fa3291C8920168adF9455D0';
   const adminPrivateKey = process.argv[3] || '0x1d12932a5c3a7aa8d4f50662caa679bb2e53321e11bc5df2af9298e2ace59305';
 
-  const provider = new ethers.JsonRpcProvider('https://sepolia-rollup.arbitrum.io/rpc');
+  const provider = new ethers.JsonRpcProvider('https://data-seed-prebsc-1-s1.bnbchain.org:8545');
   const wallet = new ethers.Wallet(adminPrivateKey, provider);
 
   const contracts = deployedContracts.contracts;
 
-  console.log('🆔 Registering Investor Identity on Arbitrum Sepolia');
+  console.log('🆔 Registering Investor Identity on BNB Testnet');
   console.log('━'.repeat(50));
   console.log('Investor:          ', investorAddress);
   console.log('Admin wallet:      ', wallet.address);
@@ -47,11 +47,11 @@ async function registerInvestor() {
     console.log('⏳ Waiting for confirmation...');
     await tx.wait();
     console.log('✅ Identity registered!');
-    console.log('Explorer:', `https://sepolia.arbiscan.io/tx/${tx.hash}`);
+    console.log('Explorer:', `https://testnet.bscscan.com/tx/${tx.hash}`);
   }
 
   console.log();
-  console.log('✅ Investor registered on Arbitrum!');
+  console.log('✅ Investor registered on BNB Testnet!');
   console.log('  ✓ KYC verified in Identity Registry');
   console.log();
   console.log('🎉 Investor can now purchase RWA tokens from the marketplace');

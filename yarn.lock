@@ -457,9 +457,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@contracts/arbitrum@npm:*, @contracts/arbitrum@workspace:packages/arbitrum-contracts":
+"@contracts/bnb@npm:*, @contracts/bnb@workspace:packages/bnb-contracts":
   version: 0.0.0-use.local
-  resolution: "@contracts/arbitrum@workspace:packages/arbitrum-contracts"
+  resolution: "@contracts/bnb@workspace:packages/bnb-contracts"
   dependencies:
     "@nomicfoundation/hardhat-chai-matchers": "npm:2.1.0"
     "@nomicfoundation/hardhat-ethers": "npm:^3.0.8"
@@ -1960,7 +1960,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@mantle/backend@workspace:packages/backend"
   dependencies:
-    "@contracts/arbitrum": "npm:*"
+    "@contracts/bnb": "npm:*"
     "@contracts/creditcoin": "npm:*"
     "@contracts/stellar": "npm:*"
     "@nestjs/bullmq": "npm:^11.0.4"

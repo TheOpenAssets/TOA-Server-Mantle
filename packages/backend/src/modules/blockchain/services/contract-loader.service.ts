@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MantleContracts, MantleAbis } from '@contracts/mantle';
-import { ArbitrumContracts, ArbitrumAbis, BnbContracts } from '@contracts/arbitrum';
+import { BnbEvmContracts, BnbAbis, BnbContracts } from '@contracts/bnb';
 import { StellarContracts } from '@contracts/stellar';
 import { CreditCoinContracts, CreditCoinAbis } from '@contracts/creditcoin';
 import { ContractName } from '@openassets/types';
@@ -22,17 +22,17 @@ export class ContractLoaderService implements OnModuleInit {
     const networkType = this.configService.get('network.networkType');
     
     if (networkType === 'arbitrum') {
-      this.contracts = { ...ArbitrumContracts };
-      this.abis = { ...ArbitrumAbis };
+      this.contracts = { ...BnbEvmContracts };
+      this.abis = { ...BnbAbis };
       this.addAlias('PrimaryMarketplace', 'PrimaryMarket');
       this.addAlias('USDC', 'MockUSDC');
-      this.addAlias('LeverageVault', 'StARBLeverageVault');
+      this.addAlias('LeverageVault', 'BNBLeverageVault');
     } else if (networkType === 'bnb') {
       this.contracts = { ...BnbContracts };
-      this.abis = { ...ArbitrumAbis };
+      this.abis = { ...BnbAbis };
       this.addAlias('PrimaryMarketplace', 'PrimaryMarket');
       this.addAlias('USDC', 'MockUSDC');
-      this.addAlias('LeverageVault', 'StARBLeverageVault');
+      this.addAlias('LeverageVault', 'BNBLeverageVault');
     } else if (networkType === 'stellar') {
       this.contracts = { ...StellarContracts };
       this.abis = {};

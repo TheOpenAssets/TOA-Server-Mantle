@@ -21,7 +21,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@contracts/arbitrum": "*",
+    "@contracts/bnb": "*",
     "@contracts/creditcoin": "*",
     "@contracts/stellar": "*",
     "@nestjs/bullmq": "^11.0.4",

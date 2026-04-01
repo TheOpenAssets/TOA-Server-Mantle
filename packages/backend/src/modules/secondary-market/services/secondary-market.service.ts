@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
 import { createPublicClient, http, Hash, Address, decodeEventLog } from 'viem';
-import { mantleSepolia } from '../../../config/mantle-chain';
+import { getActiveChain } from '../../../config/active-chain';
 import { WalletService } from '../../blockchain/services/wallet.service';
 import { P2POrder, P2POrderDocument } from '../../../database/schemas/p2p-order.schema';
 import { P2PTrade, P2PTradeDocument } from '../../../database/schemas/p2p-trade.schema';
@@ -27,7 +27,7 @@ export class SecondaryMarketService {
     private walletService: WalletService,
   ) {
     this.publicClient = createPublicClient({
-      chain: mantleSepolia,
+      chain: getActiveChain(),
       transport: http(this.configService.get('blockchain.rpcUrl')),
     });
   }
@@ -442,6 +442,84 @@ export class SecondaryMarketService {
       abi: [cancelOrderAbi],
       functionName: 'cancelOrder',
       args: [orderId],
+    };
+  }
+
+  /**
+   * Manual fallback sync when polling listener misses events due to RPC limits.
+   * Reads transaction receipt and persists OrderCreated directly.
+   */
+  async syncOrderCreatedFromTx(txHash: string) {
+    const normalizedHash = txHash as Hash;
+    const secondaryMarketAddress = this.contractLoader.getContractAddress('SecondaryMarket').toLowerCase();
+    const secondaryMarketAbi = this.contractLoader.getContractAbi('SecondaryMarket');
+
+    const receipt = await this.publicClient.getTransactionReceipt({ hash: normalizedHash });
+
+    let createdOrders = 0;
+    let skippedOrders = 0;
+
+    for (const log of receipt.logs) {
+      const logAddress = (log.address || '').toLowerCase();
+      if (logAddress !== secondaryMarketAddress) continue;
+
+      try {
+        const decoded = decodeEventLog({
+          abi: secondaryMarketAbi,
+          data: log.data,
+          topics: log.topics,
+        }) as { eventName: string; args: any };
+
+        if (decoded.eventName !== 'OrderCreated') continue;
+
+        const args = decoded.args;
+        const orderId = args.orderId.toString();
+        const tokenAddress = (args.tokenAddress as string).toLowerCase();
+
+        const existing = await this.orderModel.findOne({ orderId });
+        if (existing) {
+          skippedOrders += 1;
+          continue;
+        }
+
+        const asset = await this.assetModel.findOne({
+          'token.address': new RegExp(`^${tokenAddress}$`, 'i'),
+        });
+
+        if (!asset) {
+          this.logger.warn(`[P2P Service] Manual tx sync skipped - asset not found for token ${tokenAddress}`);
+          skippedOrders += 1;
+          continue;
+        }
+
+        const eventTimestamp = args.timestamp ? Number(args.timestamp) : Number(receipt.blockNumber || 0n);
+
+        await this.orderModel.create({
+          orderId,
+          maker: (args.maker as string).toLowerCase(),
+          assetId: asset.assetId,
+          tokenAddress,
+          isBuy: Boolean(args.isBuy),
+          initialAmount: args.amount.toString(),
+          remainingAmount: args.amount.toString(),
+          pricePerToken: args.pricePerToken.toString(),
+          status: OrderStatus.OPEN,
+          txHash,
+          blockNumber: Number(receipt.blockNumber || 0n),
+          blockTimestamp: new Date(eventTimestamp * 1000),
+        });
+
+        createdOrders += 1;
+      } catch {
+        // ignore non-decodable / unrelated logs
+      }
+    }
+
+    return {
+      txHash,
+      createdOrders,
+      skippedOrders,
+      foundLogs: receipt.logs.length,
     };
   }
 

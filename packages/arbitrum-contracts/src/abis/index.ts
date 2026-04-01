@@ -6,12 +6,12 @@ import PrimaryMarket from '../../artifacts/contracts/marketplace/PrimaryMarket.s
 import SecondaryMarket from '../../artifacts/contracts/marketplace/SecondaryMarket.sol/SecondaryMarket.json';
 import TrustedIssuersRegistry from '../../artifacts/contracts/core/TrustedIssuersRegistry.sol/TrustedIssuersRegistry.json';
 import SolvencyVault from '../../artifacts/contracts/core/SolvencyVault.sol/SolvencyVault.json';
-import StARBLeverageVault from '../../artifacts/contracts/core/StARBLeverageVault.sol/StARBLeverageVault.json';
+import BNBLeverageVault from '../../artifacts/contracts/core/BNBLeverageVault.sol/BNBLeverageVault.json';
 import SeniorPool from '../../artifacts/contracts/core/SeniorPool.sol/SeniorPool.json';
 import OAID from '../../artifacts/contracts/integrations/OAID.sol/OAID.json';
 import MockUSDC from '../../artifacts/contracts/test/MockUSDC.sol/MockUSDC.json';
-import ArbitrumSwapIntegration from '../../artifacts/contracts/integrations/ArbitrumSwapIntegration.sol/ArbitrumSwapIntegration.json';
-import MockArbitrumDEX from '../../artifacts/contracts/test/MockArbitrumDEX.sol/MockArbitrumDEX.json';
+import BNBSwapIntegration from '../../artifacts/contracts/integrations/BNBSwapIntegration.sol/BNBSwapIntegration.json';
+import MockBNBDEX from '../../artifacts/contracts/test/MockBNBDEX.sol/MockBNBDEX.json';
 import MockStARB from '../../artifacts/contracts/test/MockStARB.sol/MockStARB.json';
 import RWAToken from '../../artifacts/contracts/core/RWAToken.sol/RWAToken.json';
 import PrivateAssetToken from '../../artifacts/contracts/core/PrivateAssetToken.sol/PrivateAssetToken.json';
@@ -19,7 +19,7 @@ import ComplianceModule from '../../artifacts/contracts/core/ComplianceModule.so
 
 import { ContractName } from '@openassets/types';
 
-export const ArbitrumAbis: Partial<Record<ContractName, any>> = {
+export const BnbAbis: Partial<Record<ContractName, any>> = {
   AttestationRegistry: AttestationRegistry.abi,
   IdentityRegistry: IdentityRegistry.abi,
   TokenFactory: TokenFactory.abi,
@@ -28,14 +28,20 @@ export const ArbitrumAbis: Partial<Record<ContractName, any>> = {
   SecondaryMarket: SecondaryMarket.abi,
   TrustedIssuersRegistry: TrustedIssuersRegistry.abi,
   SolvencyVault: SolvencyVault.abi,
-  StARBLeverageVault: StARBLeverageVault.abi,
+  BNBLeverageVault: BNBLeverageVault.abi,
   SeniorPool: SeniorPool.abi,
   OAID: OAID.abi,
   MockUSDC: MockUSDC.abi,
-  ArbitrumSwapIntegration: ArbitrumSwapIntegration.abi,
-  MockArbitrumDEX: MockArbitrumDEX.abi,
+  BNBSwapIntegration: BNBSwapIntegration.abi,
+  MockBNBDEX: MockBNBDEX.abi,
   MockStARB: MockStARB.abi,
   RWAToken: RWAToken.abi,
   PrivateAssetToken: PrivateAssetToken.abi,
   ComplianceModule: ComplianceModule.abi,
+  // Backward compatibility aliases
+  StARBLeverageVault: BNBLeverageVault.abi,
+  ArbitrumSwapIntegration: BNBSwapIntegration.abi,
+  MockArbitrumDEX: MockBNBDEX.abi,
 };
+
+export const ArbitrumAbis = BnbAbis;

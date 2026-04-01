@@ -27,12 +27,12 @@ export class LeverageModule {
     const networkType = process.env.NETWORK_TYPE || 'mantle';
     
     // Select DEX service based on network
-    const dexServiceProvider = networkType === 'arbitrum' 
+    const dexServiceProvider = (networkType === 'arbitrum' || networkType === 'bnb')
       ? ArbitrumDEXService 
       : FluxionDEXService;
 
     // Select price service based on network
-    const priceServiceProvider = networkType === 'arbitrum'
+    const priceServiceProvider = (networkType === 'arbitrum' || networkType === 'bnb')
       ? StArbPriceService
       : MethPriceService;
 

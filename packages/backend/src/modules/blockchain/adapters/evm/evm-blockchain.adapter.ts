@@ -164,6 +164,10 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
       timeout: 180000,
     }), 'deployTokenSuite receipt');
 
+    if (receipt.status !== 'success') {
+      throw new Error(`deployTokenSuite transaction reverted (tx: ${txId})`);
+    }
+
     let tokenAddress: string | undefined;
     let complianceAddress: string | undefined;
 
@@ -183,7 +187,37 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
       } catch { continue; }
     }
 
-    if (!tokenAddress) throw new Error('TokenSuiteDeployed event not found');
+    // Fallback: if log decoding misses (ABI mismatch / indexing differences),
+    // read the deployed token suite directly from TokenFactory storage.
+    if (!tokenAddress) {
+      try {
+        const suite = await this.publicClient.readContract({
+          address: address as Address,
+          abi,
+          functionName: 'getTokenByAssetId',
+          args: [assetIdBytes32 as `0x${string}`],
+        }) as any;
+
+        const fallbackToken = suite?.token || suite?.[0];
+        const fallbackCompliance = suite?.compliance || suite?.[1];
+
+        if (
+          typeof fallbackToken === 'string' &&
+          fallbackToken !== '0x0000000000000000000000000000000000000000'
+        ) {
+          tokenAddress = fallbackToken;
+          if (typeof fallbackCompliance === 'string') {
+            complianceAddress = fallbackCompliance;
+          }
+        }
+      } catch (fallbackError: any) {
+        this.logger.warn(`Failed fallback getTokenByAssetId lookup for ${assetId}: ${fallbackError.message}`);
+      }
+    }
+
+    if (!tokenAddress) {
+      throw new Error(`TokenSuiteDeployed event not found (tx: ${txId}, logs: ${receipt.logs.length})`);
+    }
 
     // The admin wallet (platformCustody) holds all minted tokens and appears as `from`
     // in every buyTokens transferFrom. ComplianceModule.canTransfer checks both from AND to,

@@ -4,7 +4,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Queue } from 'bullmq';
-import { createPublicClient, http, Address, parseAbiItem, decodeEventLog, Log } from 'viem';
+import { createPublicClient, http, fallback, Address, parseAbiItem, decodeEventLog, Log } from 'viem';
 import { getActiveChain } from '@/src/config/active-chain';
 import { ContractLoaderService } from './contract-loader.service';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
@@ -16,6 +16,7 @@ export class EventListenerService implements OnModuleInit {
   private lastBlockNumber: bigint = 0n;
   private isPolling = false;
   private watchedTokenAddresses: Set<string> = new Set();
+  private readonly blockTimestampCache = new Map<bigint, number>();
 
   constructor(
     private configService: ConfigService,
@@ -23,12 +24,28 @@ export class EventListenerService implements OnModuleInit {
     @InjectQueue('event-processing') private eventQueue: Queue,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) {
-    // Use HTTP transport (polling) to avoid WebSocket subscription limits on public RPCs
-    const rpcUrl = this.configService.get('blockchain.rpcUrl');
+    // Use HTTP transport (polling) with optional multi-RPC fallback.
+    // This helps on public endpoints that frequently return rate-limit errors.
+    const rpcUrl = this.configService.get<string>('blockchain.rpcUrl') || '';
+    const rpcUrlsFromEnv = (process.env.BNB_RPC_URLS || '')
+      .split(',')
+      .map((url) => url.trim())
+      .filter(Boolean);
+
+    const rpcCandidates = Array.from(new Set([rpcUrl, ...rpcUrlsFromEnv].filter(Boolean)));
+
+    const transport = rpcCandidates.length > 1
+      ? fallback(rpcCandidates.map((url) => http(url)))
+      : http(rpcCandidates[0] || rpcUrl);
+
     this.publicClient = createPublicClient({
       chain: getActiveChain(),
-      transport: http(rpcUrl),
+      transport,
     });
+
+    if (rpcCandidates.length > 1) {
+      this.logger.log(`Event listener RPC fallback enabled (${rpcCandidates.length} endpoints)`);
+    }
   }
 
   async onModuleInit() {
@@ -38,14 +55,24 @@ export class EventListenerService implements OnModuleInit {
   async initializeListener() {
     this.logger.log('Initializing blockchain event listeners (Polling Mode)...');
 
-    // Check if contracts are configured
-    const contractsConfig = this.configService.get('blockchain.contracts');
-    const hasContracts = contractsConfig && Object.values(contractsConfig).some(addr => addr && addr !== '');
+    // Contract addresses come from the network-aware contract loader
+    // (e.g. @contracts/bnb -> src/bnb.addresses.ts synced from deployed_contracts_bnb.json).
+    const requiredContracts = [
+      'SecondaryMarket',
+      'PrimaryMarketplace',
+      'TokenFactory',
+      'IdentityRegistry',
+      'AttestationRegistry',
+      'YieldVault',
+    ];
+    const availableContracts = requiredContracts.filter((name) => this.contractLoader.hasContract(name));
 
-    if (!hasContracts) {
-      this.logger.warn('⚠️  Contract addresses not configured. Skipping blockchain event listeners.');
+    if (availableContracts.length === 0) {
+      this.logger.warn('⚠️  No on-chain contract addresses resolved for active network. Skipping blockchain event listeners.');
       return;
     }
+
+    this.logger.log(`Resolved contracts for event polling: ${availableContracts.join(', ')}`);
 
     // Load existing tokens to watch
     await this.loadExistingTokens();
@@ -53,15 +80,30 @@ export class EventListenerService implements OnModuleInit {
     // Initialize last processed block to current block
     try {
       const currentBlock = await this.publicClient.getBlockNumber();
-      // Start slightly behind to ensure block availability on all RPC nodes
-      this.lastBlockNumber = currentBlock > 5n ? currentBlock - 5n : 0n;
-      this.logger.log(`Starting event polling from block ${this.lastBlockNumber}`);
+      // Start with configurable lookback so orders/trades created shortly before restart are not missed.
+      // Default is intentionally larger than the safety buffer used during polling.
+      const lookbackFromEnv = Number(process.env.EVENT_LISTENER_LOOKBACK_BLOCKS || '5000');
+      const lookbackBlocks = Number.isFinite(lookbackFromEnv) && lookbackFromEnv > 0
+        ? BigInt(Math.floor(lookbackFromEnv))
+        : 5000n;
+
+      this.lastBlockNumber = currentBlock > lookbackBlocks ? currentBlock - lookbackBlocks : 0n;
+      this.logger.log(
+        `Starting event polling from block ${this.lastBlockNumber} ` +
+        `(current=${currentBlock}, lookback=${lookbackBlocks})`
+      );
     } catch (error) {
       this.logger.error('Failed to get initial block number:', error);
     }
 
-    // Start polling loop (every 3 seconds)
-    setInterval(() => this.pollBlockchainEvents(), 3000);
+    const pollIntervalFromEnv = Number(process.env.EVENT_LISTENER_POLL_INTERVAL_MS || '8000');
+    const pollIntervalMs = Number.isFinite(pollIntervalFromEnv) && pollIntervalFromEnv >= 1000
+      ? Math.floor(pollIntervalFromEnv)
+      : 8000;
+
+    this.logger.log(`Event polling interval: ${pollIntervalMs}ms`);
+    // Start polling loop
+    setInterval(() => this.pollBlockchainEvents(), pollIntervalMs);
   }
 
   private async loadExistingTokens() {
@@ -95,8 +137,12 @@ export class EventListenerService implements OnModuleInit {
         return;
       }
 
-      // Process max 100 blocks at a time to avoid RPC limits
-      const maxRange = 100n;
+      // Process small ranges to stay under strict public RPC getLogs limits.
+      // BNB public endpoints often reject wider windows with "limit exceeded".
+      const maxRangeFromEnv = Number(process.env.EVENT_LISTENER_MAX_RANGE_BLOCKS || '20');
+      const maxRange = Number.isFinite(maxRangeFromEnv) && maxRangeFromEnv > 0
+        ? BigInt(Math.floor(maxRangeFromEnv))
+        : 20n;
       let toBlock = safeBlock;
       if (toBlock - this.lastBlockNumber > maxRange) {
         toBlock = this.lastBlockNumber + maxRange;
@@ -104,17 +150,37 @@ export class EventListenerService implements OnModuleInit {
 
       const fromBlock = this.lastBlockNumber + 1n;
 
-      // Execute checks in parallel
-      await Promise.all([
-        this.checkSecondaryMarket(fromBlock, toBlock),
-        this.checkPrimaryMarketplace(fromBlock, toBlock),
-        this.checkAttestationRegistry(fromBlock, toBlock),
-        this.checkTokenFactory(fromBlock, toBlock),
-        this.checkIdentityRegistry(fromBlock, toBlock),
-        this.checkYieldVault(fromBlock, toBlock),
-        this.checkSolvencyVault(fromBlock, toBlock),
-        this.checkTokenTransfers(fromBlock, toBlock),
-      ]);
+      // Allow lightweight mode to focus only on SecondaryMarket ingestion.
+      // Useful on strict public RPC endpoints that frequently rate-limit getLogs calls.
+      const onlySecondary = (process.env.EVENT_LISTENER_ONLY_SECONDARY || 'false').toLowerCase() === 'true';
+
+      const checks: Array<{ name: string; run: () => Promise<void> }> = [
+        { name: 'SecondaryMarket', run: () => this.checkSecondaryMarket(fromBlock, toBlock) },
+        { name: 'PrimaryMarketplace', run: () => this.checkPrimaryMarketplace(fromBlock, toBlock) },
+        { name: 'AttestationRegistry', run: () => this.checkAttestationRegistry(fromBlock, toBlock) },
+        { name: 'TokenFactory', run: () => this.checkTokenFactory(fromBlock, toBlock) },
+        { name: 'IdentityRegistry', run: () => this.checkIdentityRegistry(fromBlock, toBlock) },
+        { name: 'YieldVault', run: () => this.checkYieldVault(fromBlock, toBlock) },
+        { name: 'SolvencyVault', run: () => this.checkSolvencyVault(fromBlock, toBlock) },
+        { name: 'TokenTransfers', run: () => this.checkTokenTransfers(fromBlock, toBlock) },
+      ];
+
+      const activeChecks = onlySecondary
+        ? checks.filter((check) => check.name === 'SecondaryMarket')
+        : checks;
+
+      if (onlySecondary) {
+        this.logger.debug('EVENT_LISTENER_ONLY_SECONDARY=true -> polling SecondaryMarket only');
+      }
+
+      // Run sequentially to avoid bursty RPC calls that trigger provider rate limits.
+      for (const check of activeChecks) {
+        try {
+          await check.run();
+        } catch (error) {
+          this.logger.error(`Event check failed for ${check.name}:`, error);
+        }
+      }
 
       this.lastBlockNumber = toBlock;
     } catch (error) {
@@ -122,6 +188,27 @@ export class EventListenerService implements OnModuleInit {
     } finally {
       this.isPolling = false;
     }
+  }
+
+  private async getBlockTimestamp(blockNumber: bigint): Promise<number> {
+    const cached = this.blockTimestampCache.get(blockNumber);
+    if (cached) {
+      return cached;
+    }
+
+    const block = await this.publicClient.getBlock({ blockNumber });
+    const timestamp = Number(block.timestamp);
+
+    // Keep cache bounded to avoid unbounded memory growth in long-running processes.
+    if (this.blockTimestampCache.size > 1000) {
+      const oldest = this.blockTimestampCache.keys().next().value;
+      if (oldest !== undefined) {
+        this.blockTimestampCache.delete(oldest);
+      }
+    }
+    this.blockTimestampCache.set(blockNumber, timestamp);
+
+    return timestamp;
   }
 
   private async checkAttestationRegistry(fromBlock: bigint, toBlock: bigint) {
@@ -346,6 +433,7 @@ export class EventListenerService implements OnModuleInit {
 
           if (eventName === 'OrderCreated') {
             this.logger.log(`[P2P Event] OrderCreated detected: #${args.orderId} by ${args.maker}`);
+            const blockTimestamp = await this.getBlockTimestamp(log.blockNumber!);
             await this.eventQueue.add('process-p2p-order-created', {
               orderId: args.orderId.toString(),
               maker: args.maker,
@@ -355,10 +443,11 @@ export class EventListenerService implements OnModuleInit {
               isBuy: args.isBuy,
               txHash: log.transactionHash,
               blockNumber: Number(log.blockNumber),
-              timestamp: Math.floor(Date.now() / 1000),
+              timestamp: blockTimestamp,
             });
           } else if (eventName === 'OrderFilled') {
             this.logger.log(`[P2P Event] OrderFilled detected: #${args.orderId}, amount: ${args.amountFilled.toString()}`);
+            const blockTimestamp = await this.getBlockTimestamp(log.blockNumber!);
             await this.eventQueue.add('process-p2p-order-filled', {
               orderId: args.orderId.toString(),
               taker: args.taker,
@@ -369,15 +458,16 @@ export class EventListenerService implements OnModuleInit {
               remainingAmount: args.remainingAmount.toString(),
               txHash: log.transactionHash,
               blockNumber: Number(log.blockNumber),
-              timestamp: Math.floor(Date.now() / 1000),
+              timestamp: blockTimestamp,
             });
           } else if (eventName === 'OrderCancelled') {
             this.logger.log(`[P2P Event] OrderCancelled detected: #${args.orderId}`);
+            const blockTimestamp = await this.getBlockTimestamp(log.blockNumber!);
             await this.eventQueue.add('process-p2p-order-cancelled', {
               orderId: args.orderId.toString(),
               txHash: log.transactionHash,
               blockNumber: Number(log.blockNumber),
-              timestamp: Math.floor(Date.now() / 1000),
+              timestamp: blockTimestamp,
             });
           }
         } catch { /* ignore decode errors */ }

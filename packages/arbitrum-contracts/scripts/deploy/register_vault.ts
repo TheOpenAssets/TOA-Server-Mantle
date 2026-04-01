@@ -14,7 +14,7 @@ function resolveManifestFilename(chainId: bigint): string {
 }
 
 /**
- * Register StARBLeverageVault in IdentityRegistry
+ * Register BNBLeverageVault in IdentityRegistry
  *
  * The compliance module checks both sender and receiver of RWA token transfers.
  * When the vault calls PrimaryMarket.buyTokens, the RWAToken is transferred
@@ -34,10 +34,10 @@ async function main() {
   );
 
   const identityRegistryAddress = manifest.contracts.IdentityRegistry;
-  const leverageVaultAddress = manifest.contracts.StARBLeverageVault;
+  const leverageVaultAddress = manifest.contracts.BNBLeverageVault || manifest.contracts.StARBLeverageVault;
 
   console.log("📋 IdentityRegistry:", identityRegistryAddress);
-  console.log("📋 StARBLeverageVault:", leverageVaultAddress);
+  console.log("📋 BNBLeverageVault:", leverageVaultAddress);
 
   const identityRegistry = await ethers.getContractAt(
     "IdentityRegistry",
@@ -47,12 +47,12 @@ async function main() {
   // Check current status
   const isAlreadyVerified = await identityRegistry.isVerified(leverageVaultAddress);
   if (isAlreadyVerified) {
-    console.log("✅ StARBLeverageVault is already registered in IdentityRegistry");
+    console.log("✅ BNBLeverageVault is already registered in IdentityRegistry");
     return;
   }
 
   // Register vault
-  console.log("⏳ Registering StARBLeverageVault in IdentityRegistry...");
+  console.log("⏳ Registering BNBLeverageVault in IdentityRegistry...");
   const tx = await identityRegistry.registerIdentity(leverageVaultAddress);
   await tx.wait();
   console.log("✅ Registered! tx:", tx.hash);

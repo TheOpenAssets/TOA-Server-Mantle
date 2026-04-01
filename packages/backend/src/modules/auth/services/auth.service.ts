@@ -62,6 +62,7 @@ export class AuthService {
     const nonce = uuidv4();
     const networkType =
       network === NetworkType.MANTLE ? 'Mantle' :
+      network === NetworkType.BNB ? 'BNB' :
       network === NetworkType.ARBITRUM ? 'Arbitrum' :
       network === NetworkType.CREDITCOIN ? 'Creditcoin' :
       'Stellar';
@@ -153,7 +154,7 @@ export class AuthService {
       
       const network = user.network;
 
-      const session = await this.sessionModel.findOne({ user: user._id, network });
+      const session = await this.sessionModel.findOne({ walletAddress: user.walletAddress, network });
       if (!session) {
           throw new UnauthorizedException('Session not found');
       }
@@ -195,10 +196,10 @@ export class AuthService {
       }
       
       // Clear MongoDB Refresh Token in UserSession
-      const session = await this.sessionModel.findOne({ user: user._id, network });
+        const session = await this.sessionModel.findOne({ walletAddress: user.walletAddress, network });
       if (session) {
           await this.sessionModel.updateOne(
-              { user: user._id, network },
+            { walletAddress: user.walletAddress, network },
               { 
                   $unset: { currentRefreshToken: "" },
                   $push: {
@@ -219,12 +220,13 @@ export class AuthService {
     const refreshJti = uuidv4();
     const deviceHash = 'unknown';
     const network = user.network;
+    const normalizedWallet = normalizeAddress(user.walletAddress);
 
     const accessTokenExpiresIn = parseInt(this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRES_IN', '900'));
 
     const accessPayload = {
       sub: user._id,
-      wallet: user.walletAddress,
+      wallet: normalizedWallet,
       network: network,
       role: user.role,
       kyc: user.kyc,
@@ -233,7 +235,7 @@ export class AuthService {
 
     const refreshPayload = {
       sub: user._id,
-      wallet: user.walletAddress,
+      wallet: normalizedWallet,
       type: 'refresh',
       jti: refreshJti,
       deviceHash,
@@ -246,42 +248,68 @@ export class AuthService {
 
     // Store Access Token in Redis
     await this.redisService.set(
-      `access:${network}:${user.walletAddress}:${accessJti}`,
-      JSON.stringify({ userId: user._id, jti: accessJti, wallet: user.walletAddress, network }),
+      `access:${network}:${normalizedWallet}:${accessJti}`,
+      JSON.stringify({ userId: user._id, jti: accessJti, wallet: normalizedWallet, network }),
       accessTokenExpiresIn
     );
-    await this.redisService.set(`session:active:${network}:${user.walletAddress}`, accessJti, accessTokenExpiresIn);
+    await this.redisService.set(`session:active:${network}:${normalizedWallet}`, accessJti, accessTokenExpiresIn);
 
     // Store Refresh Token in MongoDB UserSession
     // Upsert session document
-    await this.sessionModel.updateOne(
-      { user: user._id, network },
-      {
-        $set: {
-          user: user._id,
-          walletAddress: user.walletAddress,
-          network,
-          currentRefreshToken: {
-            jti: refreshJti,
-            exp: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            deviceHash,
-            issuedAt: new Date(),
-          },
+    const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const walletLooseMatch = new RegExp(`^\\s*${escapeRegex(normalizedWallet)}\\s*$`, 'i');
+
+    const sessionUpdate = {
+      $set: {
+        user: user._id,
+        walletAddress: normalizedWallet,
+        network,
+        currentRefreshToken: {
+          jti: refreshJti,
+          exp: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          deviceHash,
+          issuedAt: new Date(),
         },
-        $push: {
-            sessionHistory: {
-                refreshTokenId: refreshJti,
-                createdAt: new Date(),
-            }
-        }
       },
-      { upsert: true }
-    );
+      $push: {
+        sessionHistory: {
+          refreshTokenId: refreshJti,
+          createdAt: new Date(),
+        }
+      }
+    };
+
+    const existingSession = await this.sessionModel.findOne({
+      network,
+      walletAddress: { $regex: walletLooseMatch },
+    }).select({ _id: 1 });
+
+    if (existingSession?._id) {
+      await this.sessionModel.updateOne({ _id: existingSession._id }, sessionUpdate);
+    } else {
+      try {
+        await this.sessionModel.updateOne(
+          { walletAddress: normalizedWallet, network },
+          sessionUpdate,
+          { upsert: true }
+        );
+      } catch (error: any) {
+        // Handle race/legacy duplicate key collisions gracefully
+        if (error?.code === 11000) {
+          await this.sessionModel.updateOne(
+            { walletAddress: normalizedWallet, network },
+            sessionUpdate,
+          );
+        } else {
+          throw error;
+        }
+      }
+    }
 
     return {
       user: {
         id: user._id,
-        walletAddress: user.walletAddress,
+        walletAddress: normalizedWallet,
         role: user.role,
         kyc: user.kyc,
         createdAt: user.createdAt,

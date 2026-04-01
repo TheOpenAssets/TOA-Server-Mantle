@@ -6,8 +6,8 @@ import { StArbPriceService } from '../../blockchain/services/starb-price.service
 
 /**
  * @title ArbitrumDEXService
- * @notice Service for interacting with Arbitrum DEX and stARB price oracle
- * @dev Provides price quotes, swap calculations, and USD value conversions for Arbitrum
+ * @notice Service for interacting with BNB DEX and stARB price oracle
+ * @dev Provides price quotes, swap calculations, and USD value conversions for BNB
  * NOTE: Pricing is managed entirely in backend via StArbPriceService (no on-chain oracle)
  */
 @Injectable()
@@ -25,9 +25,9 @@ export class ArbitrumDEXService {
     const chainId = this.configService.get<number>('blockchain.chainId') || 421614;
     const nativeSymbol = this.configService.get<string>('blockchain.evmNativeSymbol') || 'ETH';
 
-    const arbitrumChain = defineChain({
+    const configuredChain = defineChain({
       id: chainId,
-      name: 'Arbitrum',
+      name: this.configService.get<string>('network.networkName') || 'BNB',
       nativeCurrency: {
         decimals: 18,
         name: 'Ethereum',
@@ -44,11 +44,11 @@ export class ArbitrumDEXService {
     });
 
     this.publicClient = createPublicClient({
-      chain: arbitrumChain,
+      chain: configuredChain,
       transport: http(rpcUrl),
     });
 
-    this.logger.log(`ArbitrumDEXService initialized for chain ${chainId} (${nativeSymbol})`);
+    this.logger.log(`DEX service initialized for chain ${chainId} (${nativeSymbol})`);
   }
 
   private async executeWithRetry<T>(
@@ -100,8 +100,8 @@ export class ArbitrumDEXService {
    */
   async getQuote(starbAmount: bigint): Promise<bigint> {
     try {
-      const swapIntegrationAddress = this.contractLoader.getContractAddress('ArbitrumSwapIntegration');
-      const swapIntegrationABI = this.contractLoader.getContractAbi('ArbitrumSwapIntegration');
+      const swapIntegrationAddress = this.contractLoader.getContractAddress('BNBSwapIntegration');
+      const swapIntegrationABI = this.contractLoader.getContractAbi('BNBSwapIntegration');
 
       const quote = (await this.executeWithRetry(() => this.publicClient.readContract({
         address: swapIntegrationAddress as Address,
@@ -161,7 +161,7 @@ export class ArbitrumDEXService {
   }
 
   /**
-   * Get DEX statistics from ArbitrumSwapIntegration
+  * Get DEX statistics from BNBSwapIntegration
    * @returns Swap statistics
    */
   async getDEXStats(): Promise<{
@@ -170,8 +170,8 @@ export class ArbitrumDEXService {
     totalUSDCReceived: bigint;
   }> {
     try {
-      const swapIntegrationAddress = this.contractLoader.getContractAddress('ArbitrumSwapIntegration');
-      const swapIntegrationABI = this.contractLoader.getContractAbi('ArbitrumSwapIntegration');
+      const swapIntegrationAddress = this.contractLoader.getContractAddress('BNBSwapIntegration');
+      const swapIntegrationABI = this.contractLoader.getContractAbi('BNBSwapIntegration');
 
       const stats = (await this.executeWithRetry(() => this.publicClient.readContract({
         address: swapIntegrationAddress as Address,
@@ -197,8 +197,8 @@ export class ArbitrumDEXService {
    */
   async checkLiquidity(starbAmount: bigint): Promise<boolean> {
     try {
-      const dexAddress = this.contractLoader.getContractAddress('MockArbitrumDEX');
-      const dexABI = this.contractLoader.getContractAbi('MockArbitrumDEX');
+      const dexAddress = this.contractLoader.getContractAddress('MockBNBDEX');
+      const dexABI = this.contractLoader.getContractAbi('MockBNBDEX');
 
       const reserves = (await this.executeWithRetry(() => this.publicClient.readContract({
         address: dexAddress as Address,

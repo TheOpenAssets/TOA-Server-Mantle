@@ -1,7 +1,7 @@
 import { ContractName } from '@openassets/types';
 import { BnbContracts } from './bnb.addresses';
 
-export const ArbitrumContracts: Partial<Record<ContractName, string>> = {
+export const BnbEvmContracts: Partial<Record<ContractName, string>> = {
   AttestationRegistry: '0xF0877f80C28613eB0a83AfE2d9D9Cd9b08fFa371',
   TrustedIssuersRegistry: '0x74512695334F45FaF93a8a0dAbb54f9D39fe9613',
   IdentityRegistry: '0xc19a39065e453b79C48CDd115c98d54B582c0efD',
@@ -12,10 +12,16 @@ export const ArbitrumContracts: Partial<Record<ContractName, string>> = {
   MockUSDC: '0xa6887882e7430862150F7C4FF5AE192966c6e1d2',
   MockStARB: '0x3172772883A4CfD4013280CA95370017f4a863f9',
   SeniorPool: '0x2a2bfe500536BADf9657e50088f0F60F2A082664',
+  MockBNBDEX: '0xd618e5D470Df53BBA73c98d415924a3467901bd5',
+  BNBSwapIntegration: '0xE9d2d78eFfB816E6402b542A514197bB4448427d',
+  BNBLeverageVault: '0x8DDD583FfA5b6A442c8D2bf277DffCE890e13DCc',
+  // Backward compatibility aliases
   MockArbitrumDEX: '0xd618e5D470Df53BBA73c98d415924a3467901bd5',
   ArbitrumSwapIntegration: '0xE9d2d78eFfB816E6402b542A514197bB4448427d',
   StARBLeverageVault: '0x8DDD583FfA5b6A442c8D2bf277DffCE890e13DCc'
 } as const;
+
+export const ArbitrumContracts = BnbEvmContracts;
 
 export function getLeverageContractsByChainId(chainId: number | bigint): Partial<Record<ContractName, string>> {
   const normalizedChainId = typeof chainId === 'bigint' ? Number(chainId) : chainId;
@@ -24,5 +30,5 @@ export function getLeverageContractsByChainId(chainId: number | bigint): Partial
     return BnbContracts;
   }
 
-  return ArbitrumContracts;
+  return BnbEvmContracts;
 }

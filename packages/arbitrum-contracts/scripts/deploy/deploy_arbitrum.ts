@@ -1,5 +1,11 @@
 import { ethers } from "hardhat";
 
+async function waitForTx(txPromise: Promise<any>) {
+  const tx = await txPromise;
+  await tx.wait();
+  return tx;
+}
+
 function getDeploymentMeta(chainId: bigint) {
   if (chainId === 97n) {
     return {
@@ -25,15 +31,15 @@ function getDeploymentMeta(chainId: bigint) {
 }
 
 /**
- * Deploy Arbitrum Leverage Stack
+ * Deploy BNB Leverage Stack
  * 
- * This script deploys the full stARB-based leverage system for Arbitrum:
+ * This script deploys the full stARB-based leverage system for BNB:
  * - MockStARB (collateral token)
  * - MockUSDC (loan token)
  * - SeniorPool (USDC lending pool)
- * - MockArbitrumDEX (stARB/USDC swap)
- * - ArbitrumSwapIntegration (slippage-protected swaps)
- * - StARBLeverageVault (core vault)
+ * - MockBNBDEX (stARB/USDC swap)
+ * - BNBSwapIntegration (slippage-protected swaps)
+ * - BNBLeverageVault (core vault)
  * - Platform infrastructure contracts
  */
 
@@ -75,47 +81,47 @@ async function main() {
   // Fund SeniorPool with USDC
   console.log("   💵 Funding SeniorPool with 1M USDC...");
   const fundAmount = ethers.parseUnits("1000000", 6); // 1M USDC
-  await usdc.mint(deployer.address, fundAmount);
-  await usdc.approve(deployedContracts.SeniorPool, fundAmount);
-  await seniorPool.depositLiquidity(fundAmount);
+  await waitForTx(usdc.mint(deployer.address, fundAmount));
+  await waitForTx(usdc.approve(deployedContracts.SeniorPool, fundAmount));
+  await waitForTx(seniorPool.depositLiquidity(fundAmount));
   console.log("   ✅ SeniorPool funded");
 
   // Step 3: Deploy DEX infrastructure
   console.log("\n3️⃣ Deploying DEX infrastructure...");
   
   const initialExchangeRate = ethers.parseUnits("0.8", 6); // 1 stARB = 0.8 USDC
-  const MockArbitrumDEX = await ethers.getContractFactory("MockArbitrumDEX");
-  const dex = await MockArbitrumDEX.deploy(
+  const MockBNBDEX = await ethers.getContractFactory("MockBNBDEX");
+  const dex = await MockBNBDEX.deploy(
     deployedContracts.MockStARB,
     deployedContracts.MockUSDC,
     initialExchangeRate
   );
   await dex.waitForDeployment();
-  deployedContracts.MockArbitrumDEX = await dex.getAddress();
-  console.log("   ✅ MockArbitrumDEX:", deployedContracts.MockArbitrumDEX);
+  deployedContracts.MockBNBDEX = await dex.getAddress();
+  console.log("   ✅ MockBNBDEX:", deployedContracts.MockBNBDEX);
 
   // Fund DEX with USDC liquidity
   console.log("   💵 Funding DEX with 500K USDC liquidity...");
   const dexFundAmount = ethers.parseUnits("500000", 6);
-  await usdc.mint(deployer.address, dexFundAmount);
-  await usdc.approve(deployedContracts.MockArbitrumDEX, dexFundAmount);
-  await dex.addLiquidity(0, dexFundAmount);
+  await waitForTx(usdc.mint(deployer.address, dexFundAmount));
+  await waitForTx(usdc.approve(deployedContracts.MockBNBDEX, dexFundAmount));
+  await waitForTx(dex.addLiquidity(0, dexFundAmount));
   console.log("   ✅ DEX funded");
 
-  // Step 4: Deploy ArbitrumSwapIntegration
-  console.log("\n4️⃣ Deploying ArbitrumSwapIntegration...");
+  // Step 4: Deploy BNBSwapIntegration
+  console.log("\n4️⃣ Deploying BNBSwapIntegration...");
   
   const placeholderOracle = deployedContracts.MockStARB; // Using stARB as placeholder oracle
-  const ArbitrumSwapIntegration = await ethers.getContractFactory("ArbitrumSwapIntegration");
-  const swapIntegration = await ArbitrumSwapIntegration.deploy(
+  const BNBSwapIntegration = await ethers.getContractFactory("BNBSwapIntegration");
+  const swapIntegration = await BNBSwapIntegration.deploy(
     deployedContracts.MockStARB,
     deployedContracts.MockUSDC,
-    deployedContracts.MockArbitrumDEX,
+    deployedContracts.MockBNBDEX,
     placeholderOracle
   );
   await swapIntegration.waitForDeployment();
-  deployedContracts.ArbitrumSwapIntegration = await swapIntegration.getAddress();
-  console.log("   ✅ ArbitrumSwapIntegration:", deployedContracts.ArbitrumSwapIntegration);
+  deployedContracts.BNBSwapIntegration = await swapIntegration.getAddress();
+  console.log("   ✅ BNBSwapIntegration:", deployedContracts.BNBSwapIntegration);
 
   // Step 5: Deploy platform infrastructure
   console.log("\n5️⃣ Deploying platform infrastructure...");
@@ -184,48 +190,48 @@ async function main() {
   deployedContracts.SecondaryMarket = await secondaryMarket.getAddress();
   console.log("   ✅ SecondaryMarket:", deployedContracts.SecondaryMarket);
 
-  // Step 6: Deploy StARBLeverageVault
-  console.log("\n6️⃣ Deploying StARBLeverageVault...");
+  // Step 6: Deploy BNBLeverageVault
+  console.log("\n6️⃣ Deploying BNBLeverageVault...");
   
-  const StARBLeverageVault = await ethers.getContractFactory("StARBLeverageVault");
-  const leverageVault = await StARBLeverageVault.deploy(
+  const BNBLeverageVault = await ethers.getContractFactory("BNBLeverageVault");
+  const leverageVault = await BNBLeverageVault.deploy(
     deployedContracts.MockStARB,
     deployedContracts.MockUSDC,
     deployedContracts.SeniorPool,
-    deployedContracts.ArbitrumSwapIntegration
+    deployedContracts.BNBSwapIntegration
   );
   await leverageVault.waitForDeployment();
-  deployedContracts.StARBLeverageVault = await leverageVault.getAddress();
-  console.log("   ✅ StARBLeverageVault:", deployedContracts.StARBLeverageVault);
+  deployedContracts.BNBLeverageVault = await leverageVault.getAddress();
+  console.log("   ✅ BNBLeverageVault:", deployedContracts.BNBLeverageVault);
 
   // Step 7: Post-deployment configuration
   console.log("\n7️⃣ Configuring contracts...");
   
   // Set TokenFactory on YieldVault (required for YieldVault.registerAsset to work)
-  await yieldVault.setFactory(deployedContracts.TokenFactory);
+  await waitForTx(yieldVault.setFactory(deployedContracts.TokenFactory));
   console.log("   ✅ TokenFactory set as factory on YieldVault");
 
   // Set YieldVault on LeverageVault
-  await leverageVault.setYieldVault(deployedContracts.YieldVault);
-  console.log("   ✅ YieldVault address set on StARBLeverageVault");
+  await waitForTx(leverageVault.setYieldVault(deployedContracts.YieldVault));
+  console.log("   ✅ YieldVault address set on BNBLeverageVault");
 
   // Set PrimaryMarket on LeverageVault
-  await leverageVault.setPrimaryMarket(deployedContracts.PrimaryMarket);
-  console.log("   ✅ PrimaryMarket address set on StARBLeverageVault");
+  await waitForTx(leverageVault.setPrimaryMarket(deployedContracts.PrimaryMarket));
+  console.log("   ✅ PrimaryMarket address set on BNBLeverageVault");
 
   // Authorize LeverageVault to borrow from SeniorPool
-  await seniorPool.setLeverageVault(deployedContracts.StARBLeverageVault);
-  console.log("   ✅ StARBLeverageVault authorized on SeniorPool");
+  await waitForTx(seniorPool.setLeverageVault(deployedContracts.BNBLeverageVault));
+  console.log("   ✅ BNBLeverageVault authorized on SeniorPool");
 
   // Register platform custody (deployer) in IdentityRegistry
   // Required so ComplianceModule allows transfers FROM platformCustody in buyTokens
   const identityRegistryInstance = await ethers.getContractAt("IdentityRegistry", deployedContracts.IdentityRegistry);
-  await identityRegistryInstance.registerIdentity(deployer.address);
+  await waitForTx(identityRegistryInstance.registerIdentity(deployer.address));
   console.log("   ✅ Platform custody (deployer) registered in IdentityRegistry");
 
   // Mint test stARB to deployer
   const testStARBAmount = ethers.parseEther("10000"); // 10K stARB
-  await stARB.mint(deployer.address, testStARBAmount);
+  await waitForTx(stARB.mint(deployer.address, testStARBAmount));
   console.log("   ✅ Minted 10K stARB to deployer for testing");
 
   // Step 8: Save deployment manifest

@@ -1,0 +1,21 @@
+{
+  "network": "bnb",
+  "chainId": "97",
+  "deployer": "0x23e67597f0898f747Fa3291C8920168adF9455D0",
+  "timestamp": "2026-03-31T16:46:40.598Z",
+  "contracts": {
+    "MockUSDC": "0x38113dFC4958CEF3aa53d057A562635bCE022F61",
+    "AnkrBNB": "0x36c3dd4f1760f9b7aA5F41B3970C44f73ed29432",
+    "SeniorPool": "0xA61eB90A690Acd9754967cC61df06CC4f224Eb32",
+    "MockBNBDEX": "0xEAA39e3c9785aA381B7932b493b583aF6251c1a3",
+    "BNBSwapIntegration": "0xc19a39065e453b79C48CDd115c98d54B582c0efD",
+    "AttestationRegistry": "0xb82A3aDFA1913Db64084569aaB55bB4223e28189",
+    "TrustedIssuersRegistry": "0x4AB03540a90A9C701049C7F75b16b58D83e6A272",
+    "IdentityRegistry": "0x47232472137C68AAE3f52E8f81F51FE4f4B6D89D",
+    "YieldVault": "0xaaD379B3dE8dFa235813a68b24c9ab9E9B302BEB",
+    "TokenFactory": "0x8DDD583FfA5b6A442c8D2bf277DffCE890e13DCc",
+    "PrimaryMarket": "0x9df429D1358AE346F16d4238b1E436008001D890",
+    "SecondaryMarket": "0x08BaC34bb8BfDe92BC2ceF30631fF026DE08bd6e",
+    "BNBLeverageVault": "0x6438868DA5C297c3430C4ba58ccD8e48Ff4Ecb05"
+  }
+}
