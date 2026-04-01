@@ -454,7 +454,18 @@ export class SecondaryMarketService {
     const secondaryMarketAddress = this.contractLoader.getContractAddress('SecondaryMarket').toLowerCase();
     const secondaryMarketAbi = this.contractLoader.getContractAbi('SecondaryMarket');
 
-    const receipt = await this.publicClient.getTransactionReceipt({ hash: normalizedHash });
+    let receipt: any;
+    try {
+      receipt = await this.publicClient.waitForTransactionReceipt({
+        hash: normalizedHash,
+        confirmations: 1,
+        timeout: 120_000,
+        pollingInterval: 2_000,
+      });
+    } catch {
+      // Fallback for clients/providers that do not support waitForTransactionReceipt properly
+      receipt = await this.publicClient.getTransactionReceipt({ hash: normalizedHash });
+    }
 
     let createdOrders = 0;
     let skippedOrders = 0;
