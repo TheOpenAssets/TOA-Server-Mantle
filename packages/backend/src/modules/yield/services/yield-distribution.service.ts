@@ -14,6 +14,7 @@ import { ModuleRegistryService } from '../../registry/services/module-registry.s
 import { NotificationService } from '../../notifications/services/notification.service';
 import {
   SettlementStatus,
+  NetworkType,
   TokenType,
   SolvencyPositionStatus as PositionStatus,
   AssetStatus,
@@ -136,6 +137,7 @@ export class YieldDistributionService implements OnModuleInit {
     const settlement = await this.settlementModel.create({
       assetId: dto.assetId,
       tokenAddress: asset.token.address,
+      network: NetworkType.BNB,
       settlementAmount,
       amountRaised,
       platformFeeRate,

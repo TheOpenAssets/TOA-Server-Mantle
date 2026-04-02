@@ -154,6 +154,8 @@ export class SecondaryMarketService {
     this.logger.debug(`[P2P Service] Fetching active orders for user: ${walletAddress}`);
     const orders = await this.orderModel.find({
       maker: walletAddress.toLowerCase(),
+      status: OrderStatus.OPEN,
+      remainingAmount: { $ne: '0' },
     }).sort({ createdAt: -1 });
     this.logger.log(`[P2P Service] User ${walletAddress} has ${orders.length} active orders`);
     return orders;
@@ -372,6 +374,91 @@ export class SecondaryMarketService {
       }
 
       this.logger.log(`[P2P Service] ✅ Validated sell order: User ${userAddress} has sufficient balance for ${asset.assetId}`);
+
+      // Additional preflight checks to prevent silent on-chain reverts for sell flow
+      // 1) Ensure token allowance to SecondaryMarket is sufficient
+      // 2) Ensure SecondaryMarket is KYC-verified in IdentityRegistry (ComplianceModule receiver check)
+      // 3) Ensure wallet token balance is sufficient
+      const secondaryMarketAddress = this.contractLoader.getContractAddress('SecondaryMarket') as Address;
+
+      const erc20Abi = [
+        {
+          type: 'function',
+          name: 'allowance',
+          stateMutability: 'view',
+          inputs: [
+            { name: 'owner', type: 'address' },
+            { name: 'spender', type: 'address' },
+          ],
+          outputs: [{ name: '', type: 'uint256' }],
+        },
+        {
+          type: 'function',
+          name: 'balanceOf',
+          stateMutability: 'view',
+          inputs: [{ name: 'account', type: 'address' }],
+          outputs: [{ name: '', type: 'uint256' }],
+        },
+      ] as const;
+
+      const [allowance, tokenBalance] = await Promise.all([
+        this.publicClient.readContract({
+          address: params.tokenAddress as Address,
+          abi: erc20Abi,
+          functionName: 'allowance',
+          args: [userAddress as Address, secondaryMarketAddress],
+        }) as Promise<bigint>,
+        this.publicClient.readContract({
+          address: params.tokenAddress as Address,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [userAddress as Address],
+        }) as Promise<bigint>,
+      ]);
+
+      const requestedAmount = BigInt(params.amount);
+
+      if (tokenBalance < requestedAmount) {
+        throw new BadRequestException('Insufficient token wallet balance for sell order');
+      }
+
+      if (allowance < requestedAmount) {
+        throw new BadRequestException('Insufficient token allowance for SecondaryMarket contract');
+      }
+
+      const identityRegistryAddress = this.contractLoader.getContractAddress('IdentityRegistry') as Address;
+      const identityAbi = [
+        {
+          type: 'function',
+          name: 'isVerified',
+          stateMutability: 'view',
+          inputs: [{ name: 'wallet', type: 'address' }],
+          outputs: [{ name: '', type: 'bool' }],
+        },
+      ] as const;
+
+      const [isUserVerified, isSecondaryMarketVerified] = await Promise.all([
+        this.publicClient.readContract({
+          address: identityRegistryAddress,
+          abi: identityAbi,
+          functionName: 'isVerified',
+          args: [userAddress as Address],
+        }) as Promise<boolean>,
+        this.publicClient.readContract({
+          address: identityRegistryAddress,
+          abi: identityAbi,
+          functionName: 'isVerified',
+          args: [secondaryMarketAddress],
+        }) as Promise<boolean>,
+      ]);
+
+      if (!isUserVerified) {
+        throw new BadRequestException('User wallet is not KYC-verified in IdentityRegistry');
+      }
+
+      if (!isSecondaryMarketVerified) {
+        throw new BadRequestException('SecondaryMarket contract is not KYC-verified in IdentityRegistry (sell transfer compliance will revert)');
+      }
     }
     const contractAddress = this.contractLoader.getContractAddress('SecondaryMarket');
     const abi = this.contractLoader.getContractAbi('SecondaryMarket');
@@ -469,10 +556,15 @@ export class SecondaryMarketService {
 
     let createdOrders = 0;
     let skippedOrders = 0;
+    let matchedContractLogs = 0;
+    let orderCreatedLogs = 0;
+    let decodeErrors = 0;
+    let assetLookupMisses = 0;
 
     for (const log of receipt.logs) {
       const logAddress = (log.address || '').toLowerCase();
       if (logAddress !== secondaryMarketAddress) continue;
+      matchedContractLogs += 1;
 
       try {
         const decoded = decodeEventLog({
@@ -482,6 +574,7 @@ export class SecondaryMarketService {
         }) as { eventName: string; args: any };
 
         if (decoded.eventName !== 'OrderCreated') continue;
+        orderCreatedLogs += 1;
 
         const args = decoded.args;
         const orderId = args.orderId.toString();
@@ -499,6 +592,7 @@ export class SecondaryMarketService {
 
         if (!asset) {
           this.logger.warn(`[P2P Service] Manual tx sync skipped - asset not found for token ${tokenAddress}`);
+          assetLookupMisses += 1;
           skippedOrders += 1;
           continue;
         }
@@ -521,9 +615,24 @@ export class SecondaryMarketService {
         });
 
         createdOrders += 1;
-      } catch {
-        // ignore non-decodable / unrelated logs
+      } catch (error: any) {
+        decodeErrors += 1;
+        this.logger.debug(
+          `[P2P Service] Manual tx sync decode skipped for ${txHash}: ${error?.shortMessage || error?.message || 'unknown decode error'}`
+        );
       }
+    }
+
+    if (createdOrders === 0 && skippedOrders === 0) {
+      this.logger.warn(
+        `[P2P Service] Manual tx sync found no storable OrderCreated event for ${txHash} ` +
+        `(contractLogs=${matchedContractLogs}, orderCreatedLogs=${orderCreatedLogs}, decodeErrors=${decodeErrors}, receiptStatus=${receipt.status})`
+      );
+    } else {
+      this.logger.log(
+        `[P2P Service] Manual tx sync summary for ${txHash} ` +
+        `(created=${createdOrders}, skipped=${skippedOrders}, contractLogs=${matchedContractLogs}, orderCreatedLogs=${orderCreatedLogs}, assetLookupMisses=${assetLookupMisses}, decodeErrors=${decodeErrors})`
+      );
     }
 
     return {
@@ -531,6 +640,13 @@ export class SecondaryMarketService {
       createdOrders,
       skippedOrders,
       foundLogs: receipt.logs.length,
+      diagnostics: {
+        matchedContractLogs,
+        orderCreatedLogs,
+        assetLookupMisses,
+        decodeErrors,
+        receiptStatus: receipt.status,
+      },
     };
   }
 
