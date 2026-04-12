@@ -137,7 +137,7 @@ export class YieldDistributionService implements OnModuleInit {
     const settlement = await this.settlementModel.create({
       assetId: dto.assetId,
       tokenAddress: asset.token.address,
-      network: NetworkType.BNB,
+      network: NetworkType.HASHKEY,
       settlementAmount,
       amountRaised,
       platformFeeRate,

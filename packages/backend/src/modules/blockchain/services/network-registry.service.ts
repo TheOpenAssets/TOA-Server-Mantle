@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ListingType, WalletAddress, NetworkType } from '@openassets/types';
 import { BlockchainAdapter } from '../adapters/blockchain-adapter.interface';
+import { ContractAdapter } from '../adapters/contract-adapter.interface';
 import { ChainManagerRegistry } from './chain-manager-registry.service';
 import { NetworkContextService } from './network-context.service';
 
@@ -22,6 +23,18 @@ export class NetworkRegistryService {
     const network = this.networkContextService.getNetwork();
     const manager = this.chainManagerRegistry.getManager(network);
     return manager.getBlockchainAdapter();
+  }
+
+  getContractAdapter(): ContractAdapter {
+    const network = this.networkContextService.getNetwork();
+    const manager = this.chainManagerRegistry.getManager(network);
+    return manager.getContractAdapter();
+  }
+
+  getAdminWallet(): any {
+    const network = this.networkContextService.getNetwork();
+    const manager = this.chainManagerRegistry.getManager(network);
+    return manager.getAdminWallet();
   }
 
   isAvailable(feature: string): boolean {

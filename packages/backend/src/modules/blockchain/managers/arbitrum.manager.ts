@@ -52,6 +52,14 @@ export class ArbitrumChainManager implements ChainManager {
     return this.paymentAdapter;
   }
 
+  getWalletAdapter(): EvmWalletAdapter {
+    return this.walletAdapter;
+  }
+
+  getAdminWallet(): any {
+    return this.walletAdapter.getAdminWallet();
+  }
+
   async startBackgroundOperations(): Promise<void> {
     this.logger.log('Starting Arbitrum background operations...');
   }

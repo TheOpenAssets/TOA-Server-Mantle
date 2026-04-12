@@ -62,7 +62,7 @@ export class AuthService {
     const nonce = uuidv4();
     const networkType =
       network === NetworkType.MANTLE ? 'Mantle' :
-      network === NetworkType.BNB ? 'BNB' :
+      network === NetworkType.HASHKEY ? 'Hashkey' :
       network === NetworkType.ARBITRUM ? 'Arbitrum' :
       network === NetworkType.CREDITCOIN ? 'Creditcoin' :
       'Stellar';

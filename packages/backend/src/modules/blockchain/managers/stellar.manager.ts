@@ -50,6 +50,14 @@ export class StellarChainManager implements ChainManager {
     return this.paymentAdapter;
   }
 
+  getWalletAdapter(): StellarWalletAdapter {
+    return this.walletAdapter;
+  }
+
+  getAdminWallet(): any {
+    return this.walletAdapter.getAdminWallet();
+  }
+
   async startBackgroundOperations(): Promise<void> {
     this.logger.log('Starting Stellar background operations...');
   }

@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ContractAdapter } from '../contract-adapter.interface';
-import { MantleContracts, MantleAbis } from '@contracts/mantle';
+import { MantleContracts, MantleAbis, HashkeyContracts } from '@contracts/mantle';
 import { BnbContracts, BnbEvmContracts, BnbAbis } from '@contracts/bnb';
 import { ContractName } from '@openassets/types';
 
@@ -35,14 +35,12 @@ export class EvmContractAdapter implements ContractAdapter {
       this.addAlias('PrimaryMarketplace', 'PrimaryMarket');
       this.addAlias('USDC', 'MockUSDC');
       this.addAlias('LeverageVault', 'BNBLeverageVault');
-    } else if (networkType === 'bnb') {
-      this.contracts = { ...BnbContracts };
-      this.abis = { ...BnbAbis };
-
-      // Aliases for BNB leverage stack
+    } else if (networkType === 'hashkey') {
+      // HashKey Testnet — deployed contract addresses (Chain ID 133)
+      this.contracts = { ...HashkeyContracts };
+      this.abis = { ...MantleAbis };   // same ABI surface as Mantle
       this.addAlias('PrimaryMarketplace', 'PrimaryMarket');
       this.addAlias('USDC', 'MockUSDC');
-      this.addAlias('LeverageVault', 'BNBLeverageVault');
     } else {
       this.contracts = { ...MantleContracts };
       this.abis = { ...MantleAbis };

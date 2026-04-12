@@ -12,8 +12,8 @@ import { EvmPaymentAdapter } from '../adapters/evm/evm-payment.adapter';
 import { Model } from 'mongoose';
 import { AssetDocument } from '../../../database/schemas/asset.schema';
 
-export class BnbChainManager implements ChainManager {
-  private readonly logger = new Logger(BnbChainManager.name);
+export class HashkeyChainManager implements ChainManager {
+  private readonly logger = new Logger(HashkeyChainManager.name);
   private readonly contractAdapter: EvmContractAdapter;
   private readonly walletAdapter: EvmWalletAdapter;
   private readonly blockchainAdapter: EvmBlockchainAdapter;
@@ -35,7 +35,7 @@ export class BnbChainManager implements ChainManager {
   }
 
   getType(): NetworkType {
-    return NetworkType.BNB;
+    return NetworkType.HASHKEY;
   }
 
   getContractAdapter(): ContractAdapter {
@@ -50,11 +50,19 @@ export class BnbChainManager implements ChainManager {
     return this.paymentAdapter;
   }
 
+  getWalletAdapter(): EvmWalletAdapter {
+    return this.walletAdapter;
+  }
+
+  getAdminWallet(): any {
+    return this.walletAdapter.getAdminWallet();
+  }
+
   async startBackgroundOperations(): Promise<void> {
-    this.logger.log('Starting BNB background operations...');
+    this.logger.log('Starting Hashkey background operations...');
   }
 
   async stopBackgroundOperations(): Promise<void> {
-    this.logger.log('Stopping BNB background operations...');
+    this.logger.log('Stopping Hashkey background operations...');
   }
 }

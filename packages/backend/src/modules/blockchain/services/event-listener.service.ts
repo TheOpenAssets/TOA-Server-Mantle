@@ -8,6 +8,9 @@ import { createPublicClient, http, fallback, Address, parseAbiItem, decodeEventL
 import { getActiveChain } from '@/src/config/active-chain';
 import { ContractLoaderService } from './contract-loader.service';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+// IssuerVaultService is NOT imported here to avoid circular dependency.
+// IssuerVault events are dispatched to the BullMQ queue and processed by
+// IssuerVaultEventProcessor in the issuer-vault module.
 
 @Injectable()
 export class EventListenerService implements OnModuleInit {
@@ -27,7 +30,7 @@ export class EventListenerService implements OnModuleInit {
     // Use HTTP transport (polling) with optional multi-RPC fallback.
     // This helps on public endpoints that frequently return rate-limit errors.
     const rpcUrl = this.configService.get<string>('blockchain.rpcUrl') || '';
-    const rpcUrlsFromEnv = (process.env.BNB_RPC_URLS || '')
+    const rpcUrlsFromEnv = (process.env.EXTRA_RPC_URLS || process.env.BNB_RPC_URLS || '')
       .split(',')
       .map((url) => url.trim())
       .filter(Boolean);
@@ -64,6 +67,7 @@ export class EventListenerService implements OnModuleInit {
       'IdentityRegistry',
       'AttestationRegistry',
       'YieldVault',
+      'IssuerVault',
     ];
     const availableContracts = requiredContracts.filter((name) => this.contractLoader.hasContract(name));
 
@@ -161,6 +165,7 @@ export class EventListenerService implements OnModuleInit {
         { name: 'TokenFactory', run: () => this.checkTokenFactory(fromBlock, toBlock) },
         { name: 'IdentityRegistry', run: () => this.checkIdentityRegistry(fromBlock, toBlock) },
         { name: 'YieldVault', run: () => this.checkYieldVault(fromBlock, toBlock) },
+        { name: 'IssuerVault', run: () => this.checkIssuerVault(fromBlock, toBlock) },
         { name: 'SolvencyVault', run: () => this.checkSolvencyVault(fromBlock, toBlock) },
         { name: 'TokenTransfers', run: () => this.checkTokenTransfers(fromBlock, toBlock) },
       ];
@@ -409,6 +414,64 @@ export class EventListenerService implements OnModuleInit {
       }
     } catch (error) {
       this.logger.error(`Error checking YieldVault events: ${error}`);
+      throw error;
+    }
+  }
+
+  private async checkIssuerVault(fromBlock: bigint, toBlock: bigint) {
+    if (!this.contractLoader.hasContract('IssuerVault')) return;
+
+    const address = this.contractLoader.getContractAddress('IssuerVault');
+    const abi = this.contractLoader.getContractAbi('IssuerVault');
+
+    try {
+      const logs = await this.publicClient.getLogs({
+        address: address as Address,
+        fromBlock,
+        toBlock,
+      });
+
+      for (const log of logs) {
+        try {
+          const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics }) as { eventName: string; args: any };
+          const { eventName, args } = decoded;
+
+          // Convert bytes32 assetId back to UUID-style string
+          // The backend stored it as 0x<32-hex-chars-padded-to-64>, reverse the padding
+          const bytes32: string = args.assetId ?? '';
+          const hex = bytes32.replace(/^0x/, '').replace(/0+$/, '');
+          const assetId = hex.length >= 32
+            ? `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20,32)}`
+            : bytes32;
+
+          if (eventName === 'DepositReceived') {
+            await this.eventQueue.add('issuer-vault-deposit-received', {
+              assetId,
+              amount: args.amount?.toString(),
+              txHash: log.transactionHash,
+            });
+          } else if (eventName === 'LiquidityWithdrawn') {
+            await this.eventQueue.add('issuer-vault-liquidity-withdrawn', {
+              assetId,
+              amount: args.amount?.toString(),
+              txHash: log.transactionHash,
+            });
+          } else if (eventName === 'DebtRepaid') {
+            await this.eventQueue.add('issuer-vault-debt-repaid', {
+              assetId,
+              txHash: log.transactionHash,
+            });
+          } else if (eventName === 'VaultFullyRepaid') {
+            await this.eventQueue.add('issuer-vault-fully-repaid', {
+              assetId,
+              totalInterest: args.totalInterest?.toString(),
+              txHash: log.transactionHash,
+            });
+          }
+        } catch { /* ignore decode errors on unrelated logs */ }
+      }
+    } catch (error) {
+      this.logger.error(`Error checking IssuerVault events: ${error}`);
       throw error;
     }
   }

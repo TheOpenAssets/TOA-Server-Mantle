@@ -33,6 +33,10 @@ export class StellarWalletAdapter implements WalletAdapter {
     return this.adminKeypair;
   }
 
+  getAdminWallet(): any {
+    return this.getAdminKeypair();
+  }
+
   getPlatformKeypair(): Keypair {
     if (!this.platformKeypair) throw new Error('STELLAR_PLATFORM_SECRET not configured');
     return this.platformKeypair;
