@@ -62,6 +62,7 @@ export class BlockchainService {
     minInvestment: string,
     duration?: string,
     minPrice?: string,
+    issuerVaultAddress?: string,
   ): Promise<Hash> {
     const listingType = type === 'STATIC' ? ListingType.STATIC : ListingType.AUCTION;
 
@@ -72,7 +73,8 @@ export class BlockchainService {
       minInvestment,
       Number(duration || 0),
       '0', // placeholder, adapter will look up if needed
-      minPrice
+      minPrice,
+      issuerVaultAddress,
     );
     if ('txId' in result) return result.txId as Hash;
     throw new Error(`listOnMarketplace skipped: ${(result as any).reason}`);

@@ -95,7 +95,8 @@ export class NetworkRegistryService {
     minInvestment: string | number,
     duration: number,
     totalSupply: string | number,
-    minPrice?: string
+    minPrice?: string,
+    issuerVaultAddress?: string,
   ) {
     if (!this.isAvailable('marketplace')) {
       return { completed: false, skipped: true, reason: 'MARKETPLACE_FEATURE_DISABLED' };
@@ -108,7 +109,8 @@ export class NetworkRegistryService {
       minInvestment,
       duration,
       totalSupply,
-      minPrice
+      minPrice,
+      issuerVaultAddress,
     );
   }
 

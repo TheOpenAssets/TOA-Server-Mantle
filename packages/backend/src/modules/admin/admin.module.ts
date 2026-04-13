@@ -21,12 +21,13 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { RegistryModule } from '../registry/registry.module';
 import { UserPortfolioModule } from '../user-portfolio/user-portfolio.module';
 import { MantleAdminStrategy } from './implementations/mantle/mantle-admin-strategy.service';
-import { BnbAdminStrategy } from './implementations/bnb/bnb-admin-strategy.service';
+import { HashkeyAdminStrategy } from './implementations/hashkey/hashkey-admin-strategy.service';
 import { StellarAdminStrategy } from './implementations/stellar/stellar-admin-strategy.service';
 import { CreditCoinAdminStrategy } from './implementations/creditcoin/creditcoin-admin-strategy.service';
-import { 
-  MANTLE_ADMIN_STRATEGY_TOKEN, 
-  BNB_ADMIN_STRATEGY_TOKEN,
+import { IssuerVaultModule } from '../issuer-vault/issuer-vault.module';
+import {
+  MANTLE_ADMIN_STRATEGY_TOKEN,
+  HASHKEY_ADMIN_STRATEGY_TOKEN,
   STELLAR_ADMIN_STRATEGY_TOKEN,
   CREDITCOIN_ADMIN_STRATEGY_TOKEN,
 } from '../registry/registry.constants';
@@ -47,6 +48,7 @@ import {
     NotificationsModule,
     RegistryModule,
     UserPortfolioModule,
+    IssuerVaultModule,
   ],
   controllers: [
     AdminController,
@@ -64,8 +66,8 @@ import {
       useClass: MantleAdminStrategy,
     },
     {
-      provide: BNB_ADMIN_STRATEGY_TOKEN,
-      useClass: BnbAdminStrategy,
+      provide: HASHKEY_ADMIN_STRATEGY_TOKEN,
+      useClass: HashkeyAdminStrategy,
     },
     {
       provide: STELLAR_ADMIN_STRATEGY_TOKEN,
@@ -78,7 +80,7 @@ import {
   ],
   exports: [
     MANTLE_ADMIN_STRATEGY_TOKEN,
-    BNB_ADMIN_STRATEGY_TOKEN,
+    HASHKEY_ADMIN_STRATEGY_TOKEN,
     STELLAR_ADMIN_STRATEGY_TOKEN,
     CREDITCOIN_ADMIN_STRATEGY_TOKEN,
     TrustlineApprovalService,

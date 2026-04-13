@@ -103,6 +103,27 @@ export class IssuerVaultService implements OnModuleInit {
     return adapter.getContractAddress('PrimaryMarket') as Address;
   }
 
+  /** Public accessor — returns the IssuerVault contract address for this network. */
+  getIssuerVaultContractAddress(): string {
+    return this.getIssuerVaultAddress();
+  }
+
+  /**
+   * Idempotent vault creation.
+   * Creates the IssuerVaultPosition if one does not exist for this asset,
+   * or returns the existing position unchanged.
+   * Safe to call on retry — no-op when vault is already registered.
+   */
+  async ensureVaultExists(assetId: string, agreedRateBps: number): Promise<IssuerVaultPosition> {
+    const existing = await this.vaultModel.findOne({ assetId });
+    if (existing) {
+      this.logger.log(`IssuerVault already exists for asset ${assetId} — reusing (status: ${existing.status})`);
+      return existing;
+    }
+    this.logger.log(`No IssuerVault found for asset ${assetId} — auto-creating with rateBps=${agreedRateBps}`);
+    return this.createVaultForAsset({ assetId, agreedRateBps });
+  }
+
   // ─── Admin actions ────────────────────────────────────────────────────────────
 
   /**

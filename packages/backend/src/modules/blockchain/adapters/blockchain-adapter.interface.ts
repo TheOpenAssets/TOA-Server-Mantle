@@ -71,7 +71,8 @@ export interface BlockchainAdapter {
     minInvestment: string | number,
     duration: number,
     totalSupply: string | number,
-    minPrice?: string
+    minPrice?: string,
+    issuerVaultAddress?: string,  // IssuerVault contract address; undefined = legacy path (address(0))
   ): Promise<{ txId: string }>;
 
   endAuction(

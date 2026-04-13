@@ -248,7 +248,8 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
     minInvestment: string | number,
     duration: number,
     totalSupply: string | number,
-    minPrice?: string
+    minPrice?: string,
+    issuerVaultAddress?: string,
   ): Promise<{ txId: string }> {
     const wallet = this.walletAdapter.getAdminWallet();
     const address = this.contractAdapter.getContractAddress('PrimaryMarketplace');
@@ -272,12 +273,13 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
 
     this.logger.log(`Creating listing for asset ${asset.assetId} (token ${tokenIdentifier}), supply=${onChainTotalSupply}...`);
 
-    // IssuerVault routing is NOT wired at listing time.
-    // It is set up separately via POST /admin/issuer-vault/create, which calls
-    // IssuerVault.registerAsset() + PrimaryMarket.registerIssuerVault() atomically.
-    // Passing the vault address here before registerAsset() is called causes
-    // recordDeposit() to revert with "Asset not registered".
-    const issuerVaultAddress: Address = '0x0000000000000000000000000000000000000000';
+    // Use the provided IssuerVault contract address, or fall back to address(0) for
+    // legacy assets that predate the IssuerVault system.
+    const resolvedVaultAddress: Address = (issuerVaultAddress && issuerVaultAddress !== '0x0000000000000000000000000000000000000000')
+      ? issuerVaultAddress as Address
+      : '0x0000000000000000000000000000000000000000';
+
+    this.logger.log(`Listing with IssuerVault address: ${resolvedVaultAddress}`);
 
     const txId = await this.executeWithRetry(() => (wallet as any).writeContract({
       address: address as Address,
@@ -287,12 +289,12 @@ export class EvmBlockchainAdapter implements BlockchainAdapter {
         assetIdBytes32,
         tokenIdentifier as Address,
         listingTypeEnum,
-        fromCanonical(price.toString(), 6), // USDC Price (6 decimals)
-        fromCanonical(minPrice || '0', 6),  // Min Price (6 decimals)
+        fromCanonical(price.toString(), 6),          // USDC Price (6 decimals)
+        fromCanonical(minPrice || '0', 6),            // Min Price (6 decimals)
         BigInt(duration),
-        onChainTotalSupply,                  // Token amount (18 decimals, from DB canonical)
-        fromCanonical(minInvestment.toString(), 6), // Min Investment (6 decimals)
-        issuerVaultAddress,                  // IssuerVault — zero address = legacy path
+        onChainTotalSupply,                            // Token amount (18 decimals, from DB canonical)
+        fromCanonical(minInvestment.toString(), 6),   // Min Investment (6 decimals)
+        resolvedVaultAddress,                          // IssuerVault contract address (or zero for legacy)
       ],
     }), 'createListing write') as `0x${string}`;
 

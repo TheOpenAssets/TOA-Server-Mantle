@@ -10,13 +10,14 @@ import { IAdminDomainStrategy } from '../../../registry/interfaces/admin-domain.
 import { DeployTokenDto } from '../../../blockchain/dto/deploy-token.dto';
 import { ListOnMarketplaceDto } from '../../../blockchain/dto/list-on-marketplace.dto';
 import { NetworkRegistryService } from '../../../blockchain/services/network-registry.service';
+import { IssuerVaultService } from '../../../issuer-vault/services/issuer-vault.service';
 import { ConfigService } from '@nestjs/config';
 import { privateKeyToAccount } from 'viem/accounts';
-import { 
-  AssetStatus, 
-  NotificationType, 
-  NotificationSeverity, 
-  NotificationAction 
+import {
+  AssetStatus,
+  NotificationType,
+  NotificationSeverity,
+  NotificationAction
 } from '@openassets/types';
 
 @Injectable()
@@ -31,6 +32,7 @@ export class MantleAdminStrategy implements IAdminDomainStrategy {
     private readonly assetLifecycleService: AssetLifecycleService,
     private readonly notificationService: NotificationService,
     private readonly configService: ConfigService,
+    private readonly issuerVaultService: IssuerVaultService,
   ) { }
 
   async registerAsset(assetId: string): Promise<any> {
@@ -148,6 +150,27 @@ export class MantleAdminStrategy implements IAdminDomainStrategy {
       throw new HttpException('Required listing parameters missing in database', HttpStatus.BAD_REQUEST);
     }
 
+    // ── IssuerVault Gate ────────────────────────────────────────────────────────
+    // On IssuerVault-enabled networks (Mantle/Hashkey), vault creation is mandatory
+    // before listing. ensureVaultExists() is idempotent — safe to call on retry.
+    // This cannot be bypassed: if the feature is on, agreedRateBps must be provided
+    // and the vault must be registered on-chain before createListing fires.
+    let issuerVaultAddress: string | undefined;
+    if (this.networkRegistryService.isAvailable('issuerVault')) {
+      if (dto.agreedRateBps === undefined || dto.agreedRateBps === null) {
+        throw new HttpException(
+          'agreedRateBps is required when listing on an IssuerVault-enabled network (Mantle/Hashkey). ' +
+          'Provide the annual interest rate in basis points (e.g. 1000 = 10%, max 5000).',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      this.logger.log(`[IssuerVault] Ensuring vault exists for asset ${dto.assetId} before listing...`);
+      const vault = await this.issuerVaultService.ensureVaultExists(dto.assetId, dto.agreedRateBps);
+      issuerVaultAddress = vault.contractAddress;
+      this.logger.log(`[IssuerVault] Vault ready at contract ${issuerVaultAddress} for asset ${dto.assetId}`);
+    }
+    // ────────────────────────────────────────────────────────────────────────────
+
     const minPrice = listingType === 'AUCTION'
       ? (asset.listing?.priceRange?.min || price)
       : '0';
@@ -159,6 +182,7 @@ export class MantleAdminStrategy implements IAdminDomainStrategy {
       minInvestment,
       duration,
       minPrice,
+      issuerVaultAddress,
     );
 
     await this.assetModel.updateOne(

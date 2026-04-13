@@ -5,16 +5,16 @@ export default registerAs('network', () => {
   const networkType = (process.env.NETWORK_TYPE as NetworkType) || NetworkType.MANTLE;
 
   const isMantle = networkType === NetworkType.MANTLE;
-  const isBnb = networkType === NetworkType.BNB;
+  const isHashkey = networkType === NetworkType.HASHKEY;
   const isStellar = networkType === NetworkType.STELLAR;
   const isArbitrum = networkType === NetworkType.ARBITRUM;
   const isCreditcoin = networkType === NetworkType.CREDITCOIN;
 
-  const isEvmLike = isMantle || isBnb || isArbitrum || isCreditcoin;
+  const isEvmLike = isMantle || isHashkey || isArbitrum || isCreditcoin;
 
   const networkNameMap: Record<string, string> = {
     [NetworkType.MANTLE]: 'Mantle Sepolia',
-    [NetworkType.BNB]: 'BNB Testnet',
+    [NetworkType.HASHKEY]: 'Hashkey Testnet',
     [NetworkType.ARBITRUM]: 'Arbitrum Sepolia',
     [NetworkType.CREDITCOIN]: 'Creditcoin Testnet',
     [NetworkType.STELLAR]: 'Stellar Testnet',
@@ -27,7 +27,7 @@ export default registerAs('network', () => {
 
     // Feature Availability Map
     features: {
-      leverage: isMantle || isBnb || isArbitrum,
+      leverage: isMantle || isHashkey || isArbitrum,
       faucet: isEvmLike,
       solvency: isEvmLike,
       secondaryMarket: isEvmLike, // Initially false for Stellar, will be true for all later
@@ -40,6 +40,7 @@ export default registerAs('network', () => {
       kyc: true,
       assets: true,
       auth: true,
+      issuerVault: isMantle || isHashkey,
     },
 
     // Stellar specific connection params (only needed if networkType is stellar)
