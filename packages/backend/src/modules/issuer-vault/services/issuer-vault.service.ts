@@ -206,8 +206,19 @@ export class IssuerVaultService implements OnModuleInit {
     if (!position) return;
 
     const assetIdBytes32 = this.assetIdToBytes32(assetId);
-    // Use the stored contract address — avoids network-context dependency in BullMQ context
-    const issuerVaultAddress = (position.contractAddress || this.getIssuerVaultAddress()) as `0x${string}`;
+    // Always use currently configured IssuerVault address.
+    // Older DB rows can contain stale contractAddress after redeploy and return zeroed summaries.
+    const configuredVaultAddress = this.getIssuerVaultAddress() as `0x${string}`;
+    const issuerVaultAddress = configuredVaultAddress;
+
+    // Self-heal stale DB contractAddress after vault redeploy
+    if (!position.contractAddress || position.contractAddress.toLowerCase() !== configuredVaultAddress.toLowerCase()) {
+      await this.vaultModel.updateOne(
+        { assetId },
+        { $set: { contractAddress: configuredVaultAddress } },
+      );
+      this.logger.warn(`Updated stale vault contract for ${assetId} -> ${configuredVaultAddress}`);
+    }
 
     try {
       const [
@@ -268,8 +279,14 @@ export class IssuerVaultService implements OnModuleInit {
 
     // Interest is live-read from chain (not stored, to avoid stale value)
     const assetIdBytes32 = this.assetIdToBytes32(assetId);
-    // Use stored contract address to avoid network-context dependency (safe from any call context)
-    const vaultAddress = (fresh!.contractAddress || this.getIssuerVaultAddress()) as `0x${string}`;
+    // Always resolve from active network config to avoid stale DB address after redeploy
+    const vaultAddress = this.getIssuerVaultAddress() as `0x${string}`;
+
+    // Keep DB in sync with canonical vault address
+    if (!fresh!.contractAddress || fresh!.contractAddress.toLowerCase() !== vaultAddress.toLowerCase()) {
+      await this.vaultModel.updateOne({ assetId }, { $set: { contractAddress: vaultAddress } });
+    }
+
     let interestOwed = '0';
     try {
       const result = await this.publicClient.readContract({
@@ -295,7 +312,7 @@ export class IssuerVaultService implements OnModuleInit {
       withdrawalTimestamp: fresh!.withdrawalTimestamp,
       isFullyRepaid: fresh!.status === IssuerVaultStatus.REPAID,
       status: fresh!.status,
-      contractAddress: fresh!.contractAddress,
+      contractAddress: vaultAddress,
     };
   }
 

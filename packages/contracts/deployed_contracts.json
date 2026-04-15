@@ -40,11 +40,11 @@
         "SolvencyVault": "0x921a4D2D465f4Ee450d4E351663dBf3d0aD75b9D",
         "OAID": "0x721D8Ad6EC55DaC46612b7f3432Db6dc16EE056A",
         "PrimaryMarketplace": "0x5DA2DB688A19d8ca174D1555FE6796d65F820BF5",
-        "IssuerVault": "0x77f1C34Da561Dd38252277a8f1aEb8E14583b398",
+        "IssuerVault": "0xd500672D664dba51f216d4A0533e99BE03aF1c1a",
         "SecondaryMarket": "0x5D1D15626A0Ee5cF6D5417E6E336E44cAc3b6DEa"
       },
       "network": "hashkey",
-      "timestamp": "2026-04-12T16:26:06.028Z"
+      "timestamp": "2026-04-15T14:01:41.205Z"
     }
   }
 }

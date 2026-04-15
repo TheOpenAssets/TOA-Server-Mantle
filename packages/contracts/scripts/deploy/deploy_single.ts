@@ -34,6 +34,14 @@
  *    - MockMETH
  *    - MockFluxionDEX
  *
+ * 6) STACK=issuervault
+ *    - IssuerVault (only — YieldVault and PrimaryMarket are reused, not redeployed)
+ *    Post-deploy wiring:
+ *      - Revokes old IssuerVault in YieldVault and PrimaryMarket
+ *      - Authorizes new IssuerVault in YieldVault and PrimaryMarket
+ *      - Re-registers per-asset vault routing in PrimaryMarket
+ *      - Re-registers existing assets inside the new IssuerVault
+ *
  * Usage:
  * ------
  * STACK=<stackName> npx hardhat run scripts/deploy/deploy_stack.ts --network <network>
@@ -292,6 +300,83 @@ async function main() {
     await (ID as any).registerIdentity(Lev.target);
 
     console.log("LeverageVault fully wired and registered");
+  }
+
+  // ------------------------------------------------------------------
+  // ISSUERVAULT STACK
+  // Only IssuerVault is redeployed. YieldVault and PrimaryMarket are
+  // existing contracts — only their authorization mappings are updated.
+  // ------------------------------------------------------------------
+  if (STACK === "issuervault") {
+    console.log("[ISSUERVAULT STACK] Redeploying IssuerVault only");
+
+    const usdc        = contracts.USDC;
+    const primaryMkt  = contracts.PrimaryMarketplace;
+    const yieldVlt    = contracts.YieldVault;
+    const oldVault    = contracts.IssuerVault;
+
+    if (!usdc)       throw new Error("USDC not deployed — run STACK=mocks first");
+    if (!primaryMkt) throw new Error("PrimaryMarketplace not deployed — run STACK=issuance first");
+    if (!yieldVlt)   throw new Error("YieldVault not deployed — run STACK=issuance first");
+
+    // 1. Deploy new IssuerVault
+    const IV = await (await ethers.getContractFactory("IssuerVault")).deploy(
+      usdc, primaryMkt, yieldVlt
+    );
+    await IV.waitForDeployment();
+    const newVaultAddr = IV.target as string;
+    set("IssuerVault", newVaultAddr);
+    console.log("IssuerVault (new):", newVaultAddr);
+
+    // 2. Revoke old IssuerVault from YieldVault and PrimaryMarket
+    if (oldVault && oldVault !== newVaultAddr) {
+      console.log(`Revoking old IssuerVault (${oldVault}) from YieldVault and PrimaryMarket...`);
+      const yv = await ethers.getContractAt("YieldVault", yieldVlt);
+      await (yv as any).authorizeVault(oldVault, false);
+      console.log("  ✔ Revoked from YieldVault");
+
+      const pm = await ethers.getContractAt("PrimaryMarket", primaryMkt);
+      await (pm as any).authorizeVault(oldVault, false);
+      console.log("  ✔ Revoked from PrimaryMarket");
+    }
+
+    // 3. Authorize new IssuerVault in YieldVault
+    const yv = await ethers.getContractAt("YieldVault", yieldVlt);
+    await (yv as any).authorizeVault(newVaultAddr, true);
+    console.log("IssuerVault authorized in YieldVault ✔");
+
+    // 4. Authorize new IssuerVault in PrimaryMarket (general whitelist)
+    const pm = await ethers.getContractAt("PrimaryMarket", primaryMkt);
+    await (pm as any).authorizeVault(newVaultAddr, true);
+    console.log("IssuerVault authorized in PrimaryMarket ✔");
+
+    // 5. Re-register per-asset vault routing in PrimaryMarket for all existing assets
+    //    Add new assets here as they are created.
+    const EXISTING_ASSETS = [
+      { uuid: "47b2197f-0b2e-4fcc-b8d8-9c937e47a0be", name: "G M Finance",   tokenAddress: "0x5aC8d17a826524Ebf0C843D146cb811EE6bd5747", rateBps: 1000 },
+      { uuid: "53b2a7cf-5709-43d3-bc28-3c84319dd1ce", name: "R K Ventures",  tokenAddress: "0xD2A336BbA7Cc336308983a1A47613db9658a0Cd8", rateBps: 1000 },
+    ];
+
+    for (const asset of EXISTING_ASSETS) {
+      const assetIdBytes32 = ("0x" + asset.uuid.replace(/-/g, "").padEnd(64, "0")) as `0x${string}`;
+
+      // Update per-asset routing in PrimaryMarket
+      await (pm as any).registerIssuerVault(assetIdBytes32, newVaultAddr);
+      console.log(`PrimaryMarket.registerIssuerVault → ${asset.name} ✔`);
+
+      // Register asset in new IssuerVault
+      await (IV as any).registerAsset(
+        assetIdBytes32,
+        asset.tokenAddress,
+        deployer.address,   // deployer acts as issuer — update to real issuer wallet if needed
+        asset.rateBps,
+      );
+      console.log(`IssuerVault.registerAsset → ${asset.name} ✔`);
+    }
+
+    console.log("\n✅ IssuerVault redeployed and fully wired.");
+    console.log(`   New address: ${newVaultAddr}`);
+    console.log("   ACTION REQUIRED: Update addresses.ts → HashkeyContracts.IssuerVault");
   }
 
   // ------------------------------------------------------------------

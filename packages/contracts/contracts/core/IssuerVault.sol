@@ -282,25 +282,27 @@ contract IssuerVault is Ownable, ReentrancyGuard {
 
         emit DebtRepaid(assetId, principalRepaid, interestRepaid, remainingDebt);
 
-        // Full repayment: forward the complete settlement (principal + interest) to YieldVault
-        // so investors can burn their RWA tokens to claim their pro-rata share.
-        // At this point IssuerVault holds: principalHeld (original deposits) + totalInterestPaid (repaid interest)
+        // Forward every repayment to YieldVault immediately so investors can begin claiming
+        // their pro-rata share as the issuer pays, without waiting for full repayment.
+        if (yieldVault != address(0)) {
+            USDC.approve(yieldVault, amount);
+            IYieldVaultSettlement(yieldVault).depositSettlement(vault.rwaTokenAddress, amount);
+            emit YieldDistributionTriggered(assetId, yieldVault, amount);
+        }
+
+        // On full repayment: also forward any principal the issuer never withdrew.
+        // (principalHeld - amountWithdrawn stays locked in this contract until settlement)
         if (vault.outstandingDebt == 0 && interestRepaid >= interestOwed) {
             vault.isFullyRepaid = true;
-            uint256 totalInterest = vault.totalInterestPaid;
-            // Full settlement = original principal raised + all interest repaid
-            uint256 totalSettlement = vault.principalHeld + totalInterest;
+            emit VaultFullyRepaid(assetId, vault.totalPrincipalRepaid, vault.totalInterestPaid);
 
-            emit VaultFullyRepaid(assetId, vault.totalPrincipalRepaid, totalInterest);
-
-            if (totalSettlement > 0) {
-                // Approve YieldVault to pull the full settlement (principal + interest)
-                USDC.approve(yieldVault, totalSettlement);
-                IYieldVaultSettlement(yieldVault).depositSettlement(
-                    vault.rwaTokenAddress,
-                    totalSettlement
-                );
-                emit YieldDistributionTriggered(assetId, yieldVault, totalSettlement);
+            uint256 neverWithdrawn = vault.principalHeld > vault.amountWithdrawn
+                ? vault.principalHeld - vault.amountWithdrawn
+                : 0;
+            if (neverWithdrawn > 0 && yieldVault != address(0)) {
+                USDC.approve(yieldVault, neverWithdrawn);
+                IYieldVaultSettlement(yieldVault).depositSettlement(vault.rwaTokenAddress, neverWithdrawn);
+                emit YieldDistributionTriggered(assetId, yieldVault, neverWithdrawn);
             }
         }
     }

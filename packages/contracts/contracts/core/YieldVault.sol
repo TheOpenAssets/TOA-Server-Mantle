@@ -101,23 +101,25 @@ contract YieldVault {
      */
     function depositSettlement(address tokenAddress, uint256 totalSettlement) external onlyPlatformOrAuthorizedVault {
         require(assets[tokenAddress].tokenAddress != address(0), "Asset not registered");
-        require(!assets[tokenAddress].isSettled, "Settlement already deposited");
         require(totalSettlement > 0, "Settlement must be > 0");
 
-        // Get total token supply at settlement time
+        // Get total token supply (used for zero-check and first-deposit snapshot)
         uint256 totalTokenSupply = IBurnableToken(tokenAddress).totalSupply();
         require(totalTokenSupply > 0, "Token supply is zero");
 
-        // Transfer USDC from platform to vault
+        // Transfer USDC from caller (e.g. IssuerVault) to this vault
         require(USDC.transferFrom(msg.sender, address(this), totalSettlement), "USDC transfer failed");
 
-        // Record settlement
-        assets[tokenAddress].totalSettlement = totalSettlement;
-        assets[tokenAddress].totalTokenSupply = totalTokenSupply;
+        // Accumulate settlement across multiple partial repayments;
+        // snapshot token supply only on the very first deposit so the ratio stays consistent.
+        assets[tokenAddress].totalSettlement += totalSettlement;
+        if (!assets[tokenAddress].isSettled) {
+            assets[tokenAddress].totalTokenSupply = totalTokenSupply;
+            assets[tokenAddress].isSettled = true;
+        }
         assets[tokenAddress].settlementTimestamp = block.timestamp;
-        assets[tokenAddress].isSettled = true;
 
-        emit SettlementDeposited(tokenAddress, assets[tokenAddress].assetId, totalSettlement, totalTokenSupply, block.timestamp);
+        emit SettlementDeposited(tokenAddress, assets[tokenAddress].assetId, assets[tokenAddress].totalSettlement, assets[tokenAddress].totalTokenSupply, block.timestamp);
     }
 
     /**

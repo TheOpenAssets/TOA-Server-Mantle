@@ -11,7 +11,7 @@
 
 import { ethers } from "hardhat";
 
-const ISSUER_VAULT_ADDRESS = "0x77f1C34Da561Dd38252277a8f1aEb8E14583b398";
+const ISSUER_VAULT_ADDRESS = "0xd500672D664dba51f216d4A0533e99BE03aF1c1a";
 
 const ASSETS = [
   {

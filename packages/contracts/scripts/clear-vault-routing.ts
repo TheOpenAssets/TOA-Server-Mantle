@@ -8,7 +8,7 @@
     console.log(`Using deployer: ${deployer.address}`);
 
     const PM_ADDRESS = "0x5DA2DB688A19d8ca174D1555FE6796d65F820BF5";                             
-    const CORRECT_VAULT = "0x77f1C34Da561Dd38252277a8f1aEb8E14583b398";
+    const CORRECT_VAULT = "0xd500672D664dba51f216d4A0533e99BE03aF1c1a";
 
     // Asset IDs that were listed with wrong IssuerVault — add all affected ones      
     const assetIds = [                                                                           

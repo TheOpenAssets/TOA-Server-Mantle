@@ -8,7 +8,7 @@ export const HashkeyContracts: Partial<Record<ContractName, string>> = {
   YieldVault:             '0xe2F84b7Fd58e7e93b96822bE9949d00F664F9957',
   TokenFactory:           '0x27bCC249e76B6896cf0728818A9A1eF4dd7AfC3a',
   PrimaryMarket:          '0x5DA2DB688A19d8ca174D1555FE6796d65F820BF5',
-  IssuerVault:            '0x77f1C34Da561Dd38252277a8f1aEb8E14583b398', // TODO: update after IssuerVault deploy
+  IssuerVault:            '0xd500672D664dba51f216d4A0533e99BE03aF1c1a', // UPDATE after STACK=issuervault deploy
   MockUSDC:               '0x3942C93fcB4C9bAA251A2959F745621105a40e0B',
   MockMETH:               '0xb7aA4B194CAC761F4f4F8e267B4D6875666c839A',
   MockFluxionDEX:         '0xA5A7d685d04687281a97083D9121b883d2bE8f15',
