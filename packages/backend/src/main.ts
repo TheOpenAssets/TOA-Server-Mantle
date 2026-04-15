@@ -13,6 +13,7 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'https://toa-client-mantle.pages.dev',
+      /^https:\/\/.*\.ngrok-free\.app$/,
       'http://localhost:5173',
       'http://localhost:3000',
       'https://dev.toa-client-mantle.pages.dev',
