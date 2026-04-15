@@ -427,6 +427,9 @@ export class SecondaryMarketService {
       }
 
       const identityRegistryAddress = this.contractLoader.getContractAddress('IdentityRegistry') as Address;
+      const network = this.configService.get('network.networkType');
+      this.logger.log(`[P2P Service] Using IdentityRegistry: ${identityRegistryAddress} on network: ${network}`);
+
       const identityAbi = [
         {
           type: 'function',
@@ -647,6 +650,189 @@ export class SecondaryMarketService {
         decodeErrors,
         receiptStatus: receipt.status,
       },
+    };
+  }
+
+  /**
+   * Manually sync an OrderFilled event from a tx hash.
+   *
+   * Use this when the automatic event listener missed the fill (e.g. because the
+   * matching P2POrder record was not yet in MongoDB when the BullMQ job ran, so
+   * processP2POrderFilled silently returned early).
+   *
+   * The method reads the OrderFilled log from the receipt, then queries the
+   * SecondaryMarket contract's `orders(orderId)` view function to obtain the
+   * fields (isBuy, pricePerToken) that are not present in the event itself.
+   * It then upserts the P2POrder and creates the P2PTrade record idempotently.
+   */
+  async syncOrderFilledFromTx(txHash: string) {
+    const normalizedHash = txHash as Hash;
+    const secondaryMarketAddress = this.contractLoader.getContractAddress('SecondaryMarket').toLowerCase();
+    const secondaryMarketAbi = this.contractLoader.getContractAbi('SecondaryMarket');
+
+    // Minimal ABI for the public `orders(uint256)` view getter
+    const ordersViewAbi = [
+      {
+        type: 'function',
+        name: 'orders',
+        stateMutability: 'view',
+        inputs: [{ name: 'orderId', type: 'uint256' }],
+        outputs: [
+          { name: 'id',           type: 'uint256' },
+          { name: 'maker',        type: 'address' },
+          { name: 'tokenAddress', type: 'address' },
+          { name: 'amount',       type: 'uint256' },
+          { name: 'pricePerToken',type: 'uint256' },
+          { name: 'isBuy',        type: 'bool'    },
+          { name: 'isActive',     type: 'bool'    },
+        ],
+      },
+    ] as const;
+
+    let receipt: any;
+    try {
+      receipt = await this.publicClient.waitForTransactionReceipt({
+        hash: normalizedHash,
+        confirmations: 1,
+        timeout: 120_000,
+        pollingInterval: 2_000,
+      });
+    } catch {
+      receipt = await this.publicClient.getTransactionReceipt({ hash: normalizedHash });
+    }
+
+    let synced = 0;
+    let skipped = 0;
+    let decodeErrors = 0;
+
+    for (const log of receipt.logs) {
+      const logAddress = (log.address || '').toLowerCase();
+      if (logAddress !== secondaryMarketAddress) continue;
+
+      let decoded: any;
+      try {
+        decoded = decodeEventLog({ abi: secondaryMarketAbi, data: log.data, topics: log.topics });
+      } catch (err: any) {
+        decodeErrors++;
+        this.logger.debug(`[P2P Service] Fill sync decode error: ${err?.message}`);
+        continue;
+      }
+
+      if (decoded.eventName !== 'OrderFilled') continue;
+
+      const args      = decoded.args;
+      const orderId   = args.orderId.toString();
+      const taker     = (args.taker as string).toLowerCase();
+      const maker     = (args.maker as string).toLowerCase();
+      const tokenAddr = (args.tokenAddress as string).toLowerCase();
+      const amountFilled    = args.amountFilled.toString();
+      const totalCost       = args.totalCost.toString();
+      const remainingAmount = args.remainingAmount.toString();
+      const blockNum        = Number(receipt.blockNumber || 0n);
+      const blockTs         = args.timestamp ? Number(args.timestamp) : blockNum;
+
+      // Idempotency — skip if trade already in DB
+      const tradeId = `${txHash}-${blockNum}-${orderId}`;
+      if (await this.tradeModel.findOne({ tradeId })) {
+        this.logger.warn(`[P2P Service] Fill sync skipped — trade ${tradeId} already exists`);
+        skipped++;
+        continue;
+      }
+
+      // ── Find or reconstruct the P2POrder ────────────────────────────────────
+      let order = await this.orderModel.findOne({ orderId });
+
+      if (!order) {
+        this.logger.warn(`[P2P Service] Fill sync — order #${orderId} not in DB, reconstructing from chain`);
+
+        // Read order struct from the contract to get isBuy + pricePerToken
+        let isBuy = false;
+        let pricePerToken = '0';
+        try {
+          const onChain = await (this.publicClient as any).readContract({
+            address: secondaryMarketAddress as Address,
+            abi: ordersViewAbi,
+            functionName: 'orders',
+            args: [BigInt(orderId)],
+          }) as any;
+          // Viem returns a named-object when ABI outputs have names
+          isBuy        = Boolean(onChain.isBuy        ?? onChain[5]);
+          pricePerToken = (onChain.pricePerToken ?? onChain[4]).toString();
+        } catch (err: any) {
+          this.logger.error(`[P2P Service] Fill sync — failed to read order from chain: ${err.message}`);
+          skipped++;
+          continue;
+        }
+
+        // Lookup asset by token address
+        const asset = await this.assetModel.findOne({
+          'token.address': new RegExp(`^${tokenAddr}$`, 'i'),
+        });
+        if (!asset) {
+          this.logger.error(`[P2P Service] Fill sync — asset not found for token ${tokenAddr}`);
+          skipped++;
+          continue;
+        }
+
+        // initialAmount approximation: filled + remaining (exact for single-fill orders)
+        const initialAmount = (BigInt(amountFilled) + BigInt(remainingAmount)).toString();
+
+        order = await this.orderModel.create({
+          orderId,
+          maker,
+          assetId: asset.assetId,
+          tokenAddress: tokenAddr,
+          isBuy,
+          initialAmount,
+          remainingAmount,
+          pricePerToken,
+          status: remainingAmount === '0' ? OrderStatus.FILLED : OrderStatus.OPEN,
+          txHash: `${txHash}-reconstructed`,
+          stlTxHash: txHash,
+          blockNumber: blockNum,
+          blockTimestamp: new Date(blockTs * 1000),
+        });
+
+        this.logger.log(`[P2P Service] ✅ Reconstructed P2POrder #${orderId} in DB (isBuy=${isBuy})`);
+      } else {
+        // Order exists — just update remaining amount and status
+        await this.orderModel.findOneAndUpdate(
+          { orderId },
+          {
+            remainingAmount,
+            status: remainingAmount === '0' ? OrderStatus.FILLED : OrderStatus.OPEN,
+            stlTxHash: txHash,
+          },
+        );
+        this.logger.log(`[P2P Service] Updated existing order #${orderId} → remainingAmount=${remainingAmount}`);
+      }
+
+      // ── Create trade record ─────────────────────────────────────────────────
+      await this.tradeModel.create({
+        tradeId,
+        orderId,
+        assetId: order.assetId,
+        tokenAddress: tokenAddr,
+        buyer:  order.isBuy ? maker : taker,
+        seller: order.isBuy ? taker : maker,
+        amount: amountFilled,
+        pricePerToken: order.pricePerToken,
+        totalValue: totalCost,
+        txHash,
+        blockNumber: blockNum,
+        blockTimestamp: new Date(blockTs * 1000),
+      });
+
+      this.logger.log(`[P2P Service] ✅ Fill sync complete — order #${orderId}, trade ${tradeId}`);
+      synced++;
+    }
+
+    return {
+      txHash,
+      synced,
+      skipped,
+      decodeErrors,
+      receiptStatus: receipt.status,
     };
   }
 

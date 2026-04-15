@@ -35,9 +35,13 @@ contract YieldVault {
     mapping(address => UserYield) public userYields;
     address[] public registeredAssets;
 
+    /// @notice Vaults (e.g. IssuerVault) authorised to call depositSettlement directly
+    mapping(address => bool) public authorizedVaults;
+
     event AssetRegistered(address indexed tokenAddress, bytes32 indexed assetId, address issuer);
     event SettlementDeposited(address indexed tokenAddress, bytes32 indexed assetId, uint256 totalSettlement, uint256 totalTokenSupply, uint256 timestamp);
     event YieldClaimed(address indexed user, address indexed tokenAddress, uint256 tokensBurned, uint256 usdcReceived, uint256 timestamp);
+    event VaultAuthorized(address indexed vault, bool authorized);
 
     // DEPRECATED EVENTS - kept for backwards compatibility
     event YieldDeposited(address indexed tokenAddress, bytes32 indexed assetId, uint256 amount, uint256 timestamp);
@@ -45,6 +49,14 @@ contract YieldVault {
 
     modifier onlyPlatform() {
         require(msg.sender == platform, "Only platform");
+        _;
+    }
+
+    modifier onlyPlatformOrAuthorizedVault() {
+        require(
+            msg.sender == platform || authorizedVaults[msg.sender],
+            "Only platform or authorized vault"
+        );
         _;
     }
 
@@ -63,6 +75,17 @@ contract YieldVault {
         factory = _factory;
     }
 
+    /**
+     * @notice Authorize or revoke a vault contract (e.g. IssuerVault) to call depositSettlement
+     * @param vault Address of the vault contract
+     * @param authorized True to authorize, false to revoke
+     */
+    function authorizeVault(address vault, bool authorized) external onlyPlatform {
+        require(vault != address(0), "Invalid vault address");
+        authorizedVaults[vault] = authorized;
+        emit VaultAuthorized(vault, authorized);
+    }
+
     function registerAsset(address tokenAddress, bytes32 assetId, address issuer) external onlyFactory {
         assets[tokenAddress].tokenAddress = tokenAddress;
         assets[tokenAddress].assetId = assetId;
@@ -76,7 +99,7 @@ contract YieldVault {
      * @param tokenAddress The RWA token address
      * @param totalSettlement The total USDC to distribute (after platform fee)
      */
-    function depositSettlement(address tokenAddress, uint256 totalSettlement) external onlyPlatform {
+    function depositSettlement(address tokenAddress, uint256 totalSettlement) external onlyPlatformOrAuthorizedVault {
         require(assets[tokenAddress].tokenAddress != address(0), "Asset not registered");
         require(!assets[tokenAddress].isSettled, "Settlement already deposited");
         require(totalSettlement > 0, "Settlement must be > 0");

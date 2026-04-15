@@ -7,7 +7,9 @@ import { Queue } from 'bullmq';
 import { createPublicClient, http, fallback, Address, parseAbiItem, decodeEventLog, Log } from 'viem';
 import { getActiveChain } from '@/src/config/active-chain';
 import { ContractLoaderService } from './contract-loader.service';
+import { NetworkContextService } from './network-context.service';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { NetworkType } from '@openassets/types';
 // IssuerVaultService is NOT imported here to avoid circular dependency.
 // IssuerVault events are dispatched to the BullMQ queue and processed by
 // IssuerVaultEventProcessor in the issuer-vault module.
@@ -20,13 +22,17 @@ export class EventListenerService implements OnModuleInit {
   private isPolling = false;
   private watchedTokenAddresses: Set<string> = new Set();
   private readonly blockTimestampCache = new Map<bigint, number>();
+  /** Active network derived from NETWORK_TYPE env — used to set ALS context in background polling. */
+  private readonly activeNetwork: NetworkType;
 
   constructor(
     private configService: ConfigService,
     private contractLoader: ContractLoaderService,
+    private networkContextService: NetworkContextService,
     @InjectQueue('event-processing') private eventQueue: Queue,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
   ) {
+    this.activeNetwork = (process.env.NETWORK_TYPE || 'mantle') as NetworkType;
     // Use HTTP transport (polling) with optional multi-RPC fallback.
     // This helps on public endpoints that frequently return rate-limit errors.
     const rpcUrl = this.configService.get<string>('blockchain.rpcUrl') || '';
@@ -69,14 +75,19 @@ export class EventListenerService implements OnModuleInit {
       'YieldVault',
       'IssuerVault',
     ];
-    const availableContracts = requiredContracts.filter((name) => this.contractLoader.hasContract(name));
+    // Contract availability must be checked under the correct network context.
+    // The event listener runs outside HTTP request scope (setInterval), so AsyncLocalStorage
+    // has no network set — it defaults to 'mantle'. We force the active network from env.
+    const availableContracts = this.networkContextService.runWithNetwork(this.activeNetwork, () =>
+      requiredContracts.filter((name) => this.contractLoader.hasContract(name))
+    );
 
     if (availableContracts.length === 0) {
       this.logger.warn('⚠️  No on-chain contract addresses resolved for active network. Skipping blockchain event listeners.');
       return;
     }
 
-    this.logger.log(`Resolved contracts for event polling: ${availableContracts.join(', ')}`);
+    this.logger.log(`Resolved contracts for event polling (network=${this.activeNetwork}): ${availableContracts.join(', ')}`);
 
     // Load existing tokens to watch
     await this.loadExistingTokens();
@@ -106,8 +117,13 @@ export class EventListenerService implements OnModuleInit {
       : 8000;
 
     this.logger.log(`Event polling interval: ${pollIntervalMs}ms`);
-    // Start polling loop
-    setInterval(() => this.pollBlockchainEvents(), pollIntervalMs);
+    // Start polling loop — wrap each tick in the active network context so that
+    // ContractLoaderService.hasContract() / getContractAddress() resolve against
+    // the correct network instead of defaulting to 'mantle' (ALS empty outside HTTP).
+    setInterval(
+      () => this.networkContextService.runWithNetwork(this.activeNetwork, () => this.pollBlockchainEvents()),
+      pollIntervalMs,
+    );
   }
 
   private async loadExistingTokens() {

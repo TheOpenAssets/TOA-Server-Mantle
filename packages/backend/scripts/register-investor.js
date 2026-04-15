@@ -47,7 +47,7 @@ async function registerInvestor() {
     console.log('⏳ Waiting for confirmation...');
     await tx.wait();
     console.log('✅ Identity registered!');
-    console.log('Explorer:', `https://testnet.bscscan.com/tx/${tx.hash}`);
+    console.log('Explorer:', `https://testnet-explorer.hsk.xyz/tx/${tx.hash}`);
   }
 
   console.log();

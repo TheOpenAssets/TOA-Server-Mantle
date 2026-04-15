@@ -6,6 +6,7 @@ import {
   IssuerVaultPositionSchema,
 } from '../../database/schemas/issuer-vault-position.schema';
 import { Asset, AssetSchema } from '../../database/schemas/asset.schema';
+import { Settlement, SettlementSchema } from '../../database/schemas/settlement.schema';
 import { IssuerVaultService } from './services/issuer-vault.service';
 import { IssuerVaultEventProcessor } from './services/issuer-vault-event.processor';
 import { IssuerVaultAdminController } from './controllers/issuer-vault-admin.controller';
@@ -19,6 +20,7 @@ import { AuthModule } from '../auth/auth.module';
     MongooseModule.forFeature([
       { name: IssuerVaultPosition.name, schema: IssuerVaultPositionSchema },
       { name: Asset.name, schema: AssetSchema },
+      { name: Settlement.name, schema: SettlementSchema },
     ]),
     BullModule.registerQueue({ name: 'event-processing' }),
     BlockchainModule,

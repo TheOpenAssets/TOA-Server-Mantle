@@ -214,7 +214,7 @@ async function main() {
   // ------------------------------------------------------------------
   if (!existingContracts.PrimaryMarketplace) {
     console.log("   ➜ Deploying PrimaryMarketplace...");
-    const x = await (await ethers.getContractFactory("PrimaryMarketplace")).deploy(
+    const x = await (await ethers.getContractFactory("PrimaryMarket")).deploy(
       existingContracts.TokenFactory,
       deployer.address,
       USDC
@@ -224,7 +224,33 @@ async function main() {
   }
 
   // ------------------------------------------------------------------
-  console.log("\n[6] SENIOR POOL + LIQUIDITY");
+  console.log("\n[6] ISSUER VAULT");
+  // ------------------------------------------------------------------
+  if (!existingContracts.IssuerVault) {
+    console.log("   ➜ Deploying IssuerVault...");
+    const x = await (await ethers.getContractFactory("IssuerVault")).deploy(
+      USDC,
+      existingContracts.PrimaryMarketplace,
+      existingContracts.YieldVault
+    );
+    await x.waitForDeployment();
+    set("IssuerVault", await x.getAddress());
+
+    console.log("   🔗 Authorizing IssuerVault in YieldVault");
+    const yieldVault = await ethers.getContractAt("YieldVault", existingContracts.YieldVault);
+    await (yieldVault as any).authorizeVault(x.target, true);
+    console.log("   ✔ IssuerVault authorized to call depositSettlement()");
+
+    console.log("   🔗 Authorizing IssuerVault in PrimaryMarket");
+    const primaryMarket = await ethers.getContractAt("PrimaryMarket", existingContracts.PrimaryMarketplace);
+    await (primaryMarket as any).authorizeVault(x.target, true);
+    console.log("   ✔ IssuerVault authorized in PrimaryMarket");
+  } else {
+    console.log(`   ✔ Using existing IssuerVault: ${existingContracts.IssuerVault}`);
+  }
+
+  // ------------------------------------------------------------------
+  console.log("\n[7] SENIOR POOL + LIQUIDITY");
   // ------------------------------------------------------------------
   if (!existingContracts.SeniorPool) {
     console.log("   ➜ Deploying SeniorPool...");
@@ -242,7 +268,7 @@ async function main() {
   }
 
   // ------------------------------------------------------------------
-  console.log("\n[7] LEVERAGE PRIMITIVES (mETH, DEX, Fluxion)");
+  console.log("\n[8] LEVERAGE PRIMITIVES (mETH, DEX, Fluxion)");
   // ------------------------------------------------------------------
   if (!existingContracts.MockMETH) {
     console.log("   ➜ Deploying MockMETH...");
@@ -340,14 +366,30 @@ async function main() {
   }
 
   // ------------------------------------------------------------------
-  console.log("\n[11] IDENTITY REGISTRATION");
+  console.log("\n[11] SECONDARY MARKET");
+  // ------------------------------------------------------------------
+  if (!existingContracts.SecondaryMarket) {
+    console.log("   ➜ Deploying SecondaryMarket...");
+    const x = await (await ethers.getContractFactory("SecondaryMarket")).deploy(
+      USDC,
+      existingContracts.IdentityRegistry
+    );
+    await x.waitForDeployment();
+    set("SecondaryMarket", await x.getAddress());
+  } else {
+    console.log(`   ✔ Using existing SecondaryMarket: ${existingContracts.SecondaryMarket}`);
+  }
+
+  // ------------------------------------------------------------------
+  console.log("\n[12] IDENTITY REGISTRATION");
   // ------------------------------------------------------------------
   const id = await ethers.getContractAt("IdentityRegistry", existingContracts.IdentityRegistry);
   const toRegister = [
     existingContracts.TokenFactory,
     existingContracts.PrimaryMarketplace,
     existingContracts.LeverageVault,
-    existingContracts.SolvencyVault
+    existingContracts.SolvencyVault,
+    existingContracts.SecondaryMarket,  // SecondaryMarket must be verified for SELL order transfers
   ];
 
   for (const addr of toRegister) {

@@ -1,6 +1,6 @@
 export enum NetworkType {
   MANTLE = 'mantle',
-  BNB = 'bnb',
+  HASHKEY = 'hashkey',
   STELLAR = 'stellar',
   ARBITRUM = 'arbitrum',
   CREDITCOIN = 'creditcoin',

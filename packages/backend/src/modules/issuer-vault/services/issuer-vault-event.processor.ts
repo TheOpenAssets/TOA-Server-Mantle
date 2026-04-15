@@ -59,6 +59,6 @@ export class IssuerVaultEventProcessor extends WorkerHost {
 
   private async onFullyRepaid(data: { assetId: string; totalInterest: string; txHash: string }) {
     this.logger.log(`VaultFullyRepaid: asset=${data.assetId} interest=${data.totalInterest} tx=${data.txHash}`);
-    await this.issuerVaultService.handleVaultFullyRepaid(data.assetId, data.txHash);
+    await this.issuerVaultService.handleVaultFullyRepaid(data.assetId, data.txHash, data.totalInterest);
   }
 }

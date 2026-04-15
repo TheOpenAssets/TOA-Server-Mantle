@@ -32,6 +32,7 @@ import { ChangelogModule } from './modules/changelog/changelog.module';
 import { SecondaryMarketModule } from './modules/secondary-market/secondary-market.module';
 import { UserPortfolioModule } from './modules/user-portfolio/user-portfolio.module';
 import { CreditScoreModule } from '@/src/modules/credit-score/credit-score.module';
+import { IssuerVaultModule } from './modules/issuer-vault/issuer-vault.module';
 
 @Module({})
 export class AppModule {
@@ -41,7 +42,7 @@ export class AppModule {
     // So we read from process.env directly here as a bootstrap step.
     const networkType = process.env.NETWORK_TYPE || 'mantle';
     const isMantle = networkType === 'mantle';
-    const isBnb = networkType === 'bnb';
+    const isHashkey = networkType === 'hashkey';
     const isArbitrum = networkType === 'arbitrum';
 
     const imports: any[] = [
@@ -113,8 +114,8 @@ export class AppModule {
     ];
 
     // Conditional Modules
-    // Leverage, SecondaryMarket, and Yield are available on both Mantle and Arbitrum
-    if (isMantle || isBnb || isArbitrum) {
+    // Leverage, SecondaryMarket, and Yield are available on Mantle, Hashkey and Arbitrum
+    if (isMantle || isHashkey || isArbitrum) {
       imports.push(
         LeverageModule.forRoot(),
         SecondaryMarketModule,
@@ -126,10 +127,11 @@ export class AppModule {
       imports.push(FaucetModule);
     }
 
-    if (isMantle || isBnb) {
+    if (isMantle || isHashkey) {
       imports.push(
         SolvencyModule,
         PartnersModule,
+        IssuerVaultModule,
       );
     }
 

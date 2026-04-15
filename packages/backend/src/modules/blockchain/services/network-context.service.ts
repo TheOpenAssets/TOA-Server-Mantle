@@ -11,7 +11,7 @@ export class NetworkContextService {
   }
 
   getNetwork(): NetworkType {
-    return this.als.getStore() || NetworkType.MANTLE;
+    return this.als.getStore() || NetworkType.HASHKEY;
   }
 
   runWithNetwork<T>(network: NetworkType, fn: () => T): T {

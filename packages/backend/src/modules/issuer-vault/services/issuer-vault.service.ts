@@ -16,9 +16,10 @@ import {
   IssuerVaultStatus,
 } from '../../../database/schemas/issuer-vault-position.schema';
 import { Asset, AssetDocument } from '../../../database/schemas/asset.schema';
+import { Settlement, SettlementDocument } from '../../../database/schemas/settlement.schema';
 import { NetworkRegistryService } from '../../blockchain/services/network-registry.service';
 import { CreateIssuerVaultDto, WithdrawLiquidityDto, RepayDebtDto, DebtSummaryResponse } from '../dto/issuer-vault.dto';
-import { NetworkType } from '@openassets/types';
+import { NetworkType, SettlementStatus } from '@openassets/types';
 
 // Minimal ABI for on-chain reads/writes we need
 const ISSUER_VAULT_ABI = [
@@ -75,6 +76,8 @@ export class IssuerVaultService implements OnModuleInit {
     private readonly vaultModel: Model<IssuerVaultPositionDocument>,
     @InjectModel(Asset.name)
     private readonly assetModel: Model<AssetDocument>,
+    @InjectModel(Settlement.name)
+    private readonly settlementModel: Model<SettlementDocument>,
     private readonly networkRegistryService: NetworkRegistryService,
     private readonly configService: ConfigService,
   ) {}
@@ -194,20 +197,24 @@ export class IssuerVaultService implements OnModuleInit {
    * Pull current debt state from chain and update DB.
    * Called by the event listener on DepositReceived / DebtRepaid events,
    * and by getDebtSummary for on-demand reconciliation.
+   *
+   * Uses position.contractAddress from DB rather than resolving via networkContextService
+   * so this is safe to call from BullMQ worker context (no HTTP / ALS).
    */
   async syncFromChain(assetId: string): Promise<void> {
     const position = await this.vaultModel.findOne({ assetId });
     if (!position) return;
 
     const assetIdBytes32 = this.assetIdToBytes32(assetId);
-    const issuerVaultAddress = this.getIssuerVaultAddress();
+    // Use the stored contract address — avoids network-context dependency in BullMQ context
+    const issuerVaultAddress = (position.contractAddress || this.getIssuerVaultAddress()) as `0x${string}`;
 
     try {
       const [
         principalHeld,
         amountWithdrawn,
         outstandingDebt,
-        interestOwed,
+        ,
         ,
         agreedRateBps,
         withdrawalTimestamp,
@@ -261,10 +268,12 @@ export class IssuerVaultService implements OnModuleInit {
 
     // Interest is live-read from chain (not stored, to avoid stale value)
     const assetIdBytes32 = this.assetIdToBytes32(assetId);
+    // Use stored contract address to avoid network-context dependency (safe from any call context)
+    const vaultAddress = (fresh!.contractAddress || this.getIssuerVaultAddress()) as `0x${string}`;
     let interestOwed = '0';
     try {
       const result = await this.publicClient.readContract({
-        address: this.getIssuerVaultAddress(),
+        address: vaultAddress,
         abi: ISSUER_VAULT_ABI,
         functionName: 'getDebtSummary',
         args: [assetIdBytes32],
@@ -300,6 +309,67 @@ export class IssuerVaultService implements OnModuleInit {
     return v;
   }
 
+  /**
+   * Admin recovery: force-sync an already-repaid vault and create its Settlement record.
+   *
+   * Use when the event listener missed the VaultFullyRepaid event (e.g. after the
+   * event-listener network-context bug was present). Idempotent — no-op if Settlement
+   * already exists or vault is not yet fully repaid on-chain.
+   *
+   * @param assetId  The asset UUID
+   * @param txHash   The on-chain repayDebt tx hash (from block explorer)
+   * @param totalInterest  totalInterestPaid emitted in VaultFullyRepaid (as wei string)
+   */
+  async recoverSettlement(assetId: string, txHash: string, totalInterest: string): Promise<{ created: boolean; message: string }> {
+    const vault = await this.vaultModel.findOne({ assetId });
+    if (!vault) throw new NotFoundException(`IssuerVault not found for asset ${assetId}`);
+
+    // Sync chain state first to get accurate principalHeld
+    await this.syncFromChain(assetId);
+    const fresh = await this.vaultModel.findOne({ assetId });
+
+    if (fresh?.status !== IssuerVaultStatus.REPAID) {
+      return { created: false, message: `Vault status is ${fresh?.status} — must be REPAID before creating Settlement` };
+    }
+
+    const existing = await this.settlementModel.findOne({ assetId });
+    if (existing) {
+      return { created: false, message: `Settlement already exists for asset ${assetId}` };
+    }
+
+    const asset = await this.assetModel.findOne({ assetId });
+    if (!asset?.token?.address) {
+      return { created: false, message: `Asset ${assetId} has no token address` };
+    }
+
+    const principalHeldWei = BigInt(fresh!.principalHeld || '0');
+    const totalInterestWei = BigInt(totalInterest || '0');
+    const totalSettlementWei = principalHeldWei + totalInterestWei;
+    const principalUsd = Number(principalHeldWei) / 1e6;
+    const interestUsd = Number(totalInterestWei) / 1e6;
+    const totalSettlementUsd = principalUsd + interestUsd;
+    const network = (fresh!.network as NetworkType) || NetworkType.HASHKEY;
+
+    await this.settlementModel.create({
+      assetId,
+      tokenAddress: asset.token.address,
+      network,
+      settlementAmount: totalSettlementUsd,
+      amountRaised: principalUsd,
+      platformFeeRate: 0,
+      platformFee: 0,
+      netDistribution: totalSettlementUsd,
+      usdcAmount: totalSettlementWei.toString(),
+      status: SettlementStatus.DISTRIBUTED,
+      settlementDate: new Date(),
+      distributedAt: new Date(),
+      vaultDepositTxHash: txHash,
+    });
+
+    this.logger.log(`[Recovery] Settlement created for asset ${assetId}: ${totalSettlementUsd.toFixed(2)} USDC`);
+    return { created: true, message: `Settlement created: ${totalSettlementUsd.toFixed(2)} USDC (principal=${principalUsd.toFixed(2)}, interest=${interestUsd.toFixed(2)})` };
+  }
+
   // ─── Event-driven DB updates (called by event listener) ──────────────────────
 
   async handleDepositReceived(assetId: string, amount: string): Promise<void> {
@@ -325,7 +395,8 @@ export class IssuerVaultService implements OnModuleInit {
     this.logger.log(`DebtRepaid synced for asset ${assetId}`);
   }
 
-  async handleVaultFullyRepaid(assetId: string, txHash: string): Promise<void> {
+  async handleVaultFullyRepaid(assetId: string, txHash: string, totalInterest: string): Promise<void> {
+    // Mark vault as repaid in DB
     await this.vaultModel.updateOne(
       { assetId },
       {
@@ -335,7 +406,63 @@ export class IssuerVaultService implements OnModuleInit {
         },
       },
     );
+
+    // Sync vault state from chain so principalHeld is up to date
     await this.syncFromChain(assetId);
+
+    // Create a Settlement record so the investor portfolio service can show the claim button.
+    // The full settlement = principalHeld (original investor deposits) + totalInterest (interest paid by issuer).
+    // We skip creation if one already exists for this asset (idempotent).
+    try {
+      const existing = await this.settlementModel.findOne({ assetId });
+      if (!existing) {
+        const vault = await this.vaultModel.findOne({ assetId });
+        const asset = await this.assetModel.findOne({ assetId });
+
+        if (vault && asset?.token?.address) {
+          // principalHeld and totalInterest are in USDC 6-decimal wei strings.
+          // Convert to human-readable USD for the Settlement schema's number fields.
+          const principalHeldWei = BigInt(vault.principalHeld || '0');
+          const totalInterestWei = BigInt(totalInterest || '0');
+          const totalSettlementWei = principalHeldWei + totalInterestWei;
+
+          const principalUsd = Number(principalHeldWei) / 1e6;
+          const interestUsd = Number(totalInterestWei) / 1e6;
+          const totalSettlementUsd = principalUsd + interestUsd;
+
+          // Use the vault's own network so the Settlement is discoverable by
+          // portfolio queries that filter by networkContextService.getNetwork()
+          const network = (vault.network as NetworkType) || NetworkType.MANTLE;
+
+          await this.settlementModel.create({
+            assetId,
+            tokenAddress: asset.token.address,
+            network,
+            settlementAmount: totalSettlementUsd,
+            amountRaised: principalUsd,
+            platformFeeRate: 0,
+            platformFee: 0,
+            netDistribution: totalSettlementUsd,
+            // usdcAmount stored as wei 6-decimal string — this is what portfolio service reads
+            usdcAmount: totalSettlementWei.toString(),
+            status: SettlementStatus.DISTRIBUTED,
+            settlementDate: new Date(),
+            distributedAt: new Date(),
+            vaultDepositTxHash: txHash,
+          });
+
+          this.logger.log(
+            `Settlement record created for asset ${assetId}: ${totalSettlementUsd.toFixed(2)} USDC (principal: ${principalUsd.toFixed(2)} + interest: ${interestUsd.toFixed(2)})`,
+          );
+        }
+      } else {
+        this.logger.log(`Settlement already exists for asset ${assetId} — skipping creation`);
+      }
+    } catch (err: any) {
+      // Don't let settlement creation failure block the vault REPAID status update
+      this.logger.error(`Failed to create Settlement record for asset ${assetId}: ${err.message}`);
+    }
+
     this.logger.log(`VaultFullyRepaid for asset ${assetId}, yieldTx=${txHash}`);
   }
 }

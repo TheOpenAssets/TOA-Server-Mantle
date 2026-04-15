@@ -1,5 +1,5 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Logger, Inject, forwardRef } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -12,18 +12,19 @@ import { Purchase, PurchaseDocument } from '../../../database/schemas/purchase.s
 import { TokenHolderTrackingService } from '../../yield/services/token-holder-tracking.service';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { SseEmitterService } from '../../notifications/services/sse-emitter.service';
-import { 
-  AssetStatus, 
-  BidStatus, 
-  OrderStatus, 
-  NotificationType, 
-  NotificationSeverity, 
+import {
+  AssetStatus,
+  BidStatus,
+  OrderStatus,
+  NotificationType,
+  NotificationSeverity,
   NotificationAction,
   SolvencyPositionStatus as PositionStatus,
   NetworkType
 } from '@openassets/types';
 import { SolvencyPositionService } from '../../solvency/services/solvency-position.service';
 import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
+import { SecondaryMarketService } from '../../secondary-market/services/secondary-market.service';
 
 @Processor('event-processing')
 export class EventProcessor extends WorkerHost {
@@ -41,6 +42,7 @@ export class EventProcessor extends WorkerHost {
     private sseService: SseEmitterService,
     private solvencyPositionService: SolvencyPositionService,
     private userPortfolioService: UserPortfolioService,
+    @Inject(forwardRef(() => SecondaryMarketService)) private secondaryMarketService: SecondaryMarketService,
   ) {
     super();
   }
@@ -440,7 +442,21 @@ export class EventProcessor extends WorkerHost {
     );
 
     if (!order) {
-      this.logger.error(`[P2P Event Processor] Order #${orderId} not found in database`);
+      this.logger.warn(
+        `[P2P Event Processor] Order #${orderId} not in DB when processing fill tx ${txHash} — ` +
+        `triggering syncOrderFilledFromTx recovery path.`
+      );
+      try {
+        const syncResult = await this.secondaryMarketService.syncOrderFilledFromTx(txHash);
+        this.logger.log(
+          `[P2P Event Processor] syncOrderFilledFromTx recovery — synced=${syncResult.synced}, skipped=${syncResult.skipped}`
+        );
+      } catch (err: any) {
+        this.logger.error(
+          `[P2P Event Processor] syncOrderFilledFromTx recovery failed for tx ${txHash}: ${err?.message}. ` +
+          `Manual fix: POST /marketplace/secondary/sync/order-filled with { "txHash": "${txHash}" }`
+        );
+      }
       return;
     }
 

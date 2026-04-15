@@ -86,6 +86,18 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.IdentityRegistry__factory>;
     getContractFactory(
+      name: "IPrimaryMarketListing",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IPrimaryMarketListing__factory>;
+    getContractFactory(
+      name: "IssuerVault",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IssuerVault__factory>;
+    getContractFactory(
+      name: "IYieldVaultSettlement",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IYieldVaultSettlement__factory>;
+    getContractFactory(
       name: "IFluxionIntegration",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.IFluxionIntegration__factory>;
@@ -165,6 +177,10 @@ declare module "hardhat/types/runtime" {
       name: "OAID",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.OAID__factory>;
+    getContractFactory(
+      name: "IIssuerVault",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IIssuerVault__factory>;
     getContractFactory(
       name: "PrimaryMarket",
       signerOrOptions?: ethers.Signer | FactoryOptions
@@ -293,6 +309,21 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.IdentityRegistry>;
     getContractAt(
+      name: "IPrimaryMarketListing",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IPrimaryMarketListing>;
+    getContractAt(
+      name: "IssuerVault",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IssuerVault>;
+    getContractAt(
+      name: "IYieldVaultSettlement",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IYieldVaultSettlement>;
+    getContractAt(
       name: "IFluxionIntegration",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -392,6 +423,11 @@ declare module "hardhat/types/runtime" {
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.OAID>;
+    getContractAt(
+      name: "IIssuerVault",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IIssuerVault>;
     getContractAt(
       name: "PrimaryMarket",
       address: string | ethers.Addressable,
@@ -511,6 +547,18 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IdentityRegistry>;
     deployContract(
+      name: "IPrimaryMarketListing",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IPrimaryMarketListing>;
+    deployContract(
+      name: "IssuerVault",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IssuerVault>;
+    deployContract(
+      name: "IYieldVaultSettlement",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IYieldVaultSettlement>;
+    deployContract(
       name: "IFluxionIntegration",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IFluxionIntegration>;
@@ -590,6 +638,10 @@ declare module "hardhat/types/runtime" {
       name: "OAID",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.OAID>;
+    deployContract(
+      name: "IIssuerVault",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IIssuerVault>;
     deployContract(
       name: "PrimaryMarket",
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -718,6 +770,21 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IdentityRegistry>;
     deployContract(
+      name: "IPrimaryMarketListing",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IPrimaryMarketListing>;
+    deployContract(
+      name: "IssuerVault",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IssuerVault>;
+    deployContract(
+      name: "IYieldVaultSettlement",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IYieldVaultSettlement>;
+    deployContract(
       name: "IFluxionIntegration",
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -817,6 +884,11 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.OAID>;
+    deployContract(
+      name: "IIssuerVault",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IIssuerVault>;
     deployContract(
       name: "PrimaryMarket",
       args: any[],

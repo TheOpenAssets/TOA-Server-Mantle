@@ -178,10 +178,22 @@ export class UserPortfolioService {
     } as any;
 
     if (settlement && settlement.usdcAmount) {
-      const totalSupplyCanonical = (asset?.listing?.sold || asset?.tokenParams?.totalSupply || '0').includes('.')
-        ? (asset?.listing?.sold || asset?.tokenParams?.totalSupply || '0')
-        : toCanonical(asset?.listing?.sold || asset?.tokenParams?.totalSupply || '0', 18).value;
-      
+      // Resolve total supply: prefer listing.sold (numerically > 0) then
+      // token.supply (set at deployment) then tokenParams.totalSupply.
+      // NOTE: JS string '0' is truthy, so must compare numerically.
+      const soldValue = asset?.listing?.sold;
+      const soldNum = parseFloat(soldValue ?? '0');
+      const totalSupplySource: string =
+        soldNum > 0
+          ? soldValue!
+          : (asset?.token?.supply && parseFloat(asset.token.supply) > 0
+              ? asset.token.supply
+              : (asset?.tokenParams?.totalSupply ?? '0'));
+
+      const totalSupplyCanonical = totalSupplySource.includes('.')
+        ? totalSupplySource
+        : toCanonical(totalSupplySource, 18).value;
+
       const soldAmountRaw = fromCanonical(totalSupplyCanonical, 18);
       const userBalanceRaw = fromCanonical(holding.tokenBalance, 18);
       

@@ -41,6 +41,12 @@ export class EvmContractAdapter implements ContractAdapter {
       this.abis = { ...MantleAbis };   // same ABI surface as Mantle
       this.addAlias('PrimaryMarketplace', 'PrimaryMarket');
       this.addAlias('USDC', 'MockUSDC');
+    } else if (networkType === 'bnb') {
+      this.contracts = { ...BnbContracts };
+      this.abis = { ...BnbAbis };
+      this.addAlias('PrimaryMarketplace', 'PrimaryMarket');
+      this.addAlias('USDC', 'MockUSDC');
+      this.addAlias('LeverageVault', 'BNBLeverageVault');
     } else {
       this.contracts = { ...MantleContracts };
       this.abis = { ...MantleAbis };

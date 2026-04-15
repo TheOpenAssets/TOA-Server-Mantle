@@ -140,4 +140,21 @@ export class SecondaryMarketController {
     this.logger.debug(`[P2P] Manual sync result - created: ${result.createdOrders}, skipped: ${result.skippedOrders}`);
     return result;
   }
+
+  /**
+   * Manually sync an OrderFilled event from a fill tx hash.
+   * Use when the order fill happened on-chain but the DB was not updated because
+   * the matching P2POrder record was missing when the BullMQ job ran.
+   * The handler reconstructs the order from on-chain state if needed, then
+   * creates the P2PTrade record idempotently.
+   */
+  @Post('sync/order-filled')
+  @UseGuards(JwtAuthGuard)
+  async syncOrderFilled(@Body() dto: SyncOrderTxDto, @Req() req: any) {
+    const walletAddress = req.user.walletAddress;
+    this.logger.log(`[P2P] Manual fill sync requested by ${walletAddress} for tx ${dto.txHash}`);
+    const result = await this.secondaryMarketService.syncOrderFilledFromTx(dto.txHash);
+    this.logger.log(`[P2P] Fill sync result — synced: ${result.synced}, skipped: ${result.skipped}`);
+    return result;
+  }
 }

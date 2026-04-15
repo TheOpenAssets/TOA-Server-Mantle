@@ -28,6 +28,8 @@ export interface YieldVaultInterface extends Interface {
     nameOrSignature:
       | "USDC"
       | "assets"
+      | "authorizeVault"
+      | "authorizedVaults"
       | "claimAllYield"
       | "claimYield"
       | "depositSettlement"
@@ -48,6 +50,7 @@ export interface YieldVaultInterface extends Interface {
     nameOrSignatureOrTopic:
       | "AssetRegistered"
       | "SettlementDeposited"
+      | "VaultAuthorized"
       | "YieldClaimed"
       | "YieldDeposited"
       | "YieldDistributed"
@@ -55,6 +58,14 @@ export interface YieldVaultInterface extends Interface {
 
   encodeFunctionData(functionFragment: "USDC", values?: undefined): string;
   encodeFunctionData(functionFragment: "assets", values: [AddressLike]): string;
+  encodeFunctionData(
+    functionFragment: "authorizeVault",
+    values: [AddressLike, boolean]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "authorizedVaults",
+    values: [AddressLike]
+  ): string;
   encodeFunctionData(
     functionFragment: "claimAllYield",
     values?: undefined
@@ -108,6 +119,14 @@ export interface YieldVaultInterface extends Interface {
 
   decodeFunctionResult(functionFragment: "USDC", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "assets", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "authorizeVault",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "authorizedVaults",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(
     functionFragment: "claimAllYield",
     data: BytesLike
@@ -194,6 +213,19 @@ export namespace SettlementDepositedEvent {
     totalSettlement: bigint;
     totalTokenSupply: bigint;
     timestamp: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace VaultAuthorizedEvent {
+  export type InputTuple = [vault: AddressLike, authorized: boolean];
+  export type OutputTuple = [vault: string, authorized: boolean];
+  export interface OutputObject {
+    vault: string;
+    authorized: boolean;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -352,6 +384,14 @@ export interface YieldVault extends BaseContract {
     "view"
   >;
 
+  authorizeVault: TypedContractMethod<
+    [vault: AddressLike, authorized: boolean],
+    [void],
+    "nonpayable"
+  >;
+
+  authorizedVaults: TypedContractMethod<[arg0: AddressLike], [boolean], "view">;
+
   claimAllYield: TypedContractMethod<[], [void], "nonpayable">;
 
   claimYield: TypedContractMethod<
@@ -465,6 +505,16 @@ export interface YieldVault extends BaseContract {
     "view"
   >;
   getFunction(
+    nameOrSignature: "authorizeVault"
+  ): TypedContractMethod<
+    [vault: AddressLike, authorized: boolean],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "authorizedVaults"
+  ): TypedContractMethod<[arg0: AddressLike], [boolean], "view">;
+  getFunction(
     nameOrSignature: "claimAllYield"
   ): TypedContractMethod<[], [void], "nonpayable">;
   getFunction(
@@ -566,6 +616,13 @@ export interface YieldVault extends BaseContract {
     SettlementDepositedEvent.OutputObject
   >;
   getEvent(
+    key: "VaultAuthorized"
+  ): TypedContractEvent<
+    VaultAuthorizedEvent.InputTuple,
+    VaultAuthorizedEvent.OutputTuple,
+    VaultAuthorizedEvent.OutputObject
+  >;
+  getEvent(
     key: "YieldClaimed"
   ): TypedContractEvent<
     YieldClaimedEvent.InputTuple,
@@ -608,6 +665,17 @@ export interface YieldVault extends BaseContract {
       SettlementDepositedEvent.InputTuple,
       SettlementDepositedEvent.OutputTuple,
       SettlementDepositedEvent.OutputObject
+    >;
+
+    "VaultAuthorized(address,bool)": TypedContractEvent<
+      VaultAuthorizedEvent.InputTuple,
+      VaultAuthorizedEvent.OutputTuple,
+      VaultAuthorizedEvent.OutputObject
+    >;
+    VaultAuthorized: TypedContractEvent<
+      VaultAuthorizedEvent.InputTuple,
+      VaultAuthorizedEvent.OutputTuple,
+      VaultAuthorizedEvent.OutputObject
     >;
 
     "YieldClaimed(address,address,uint256,uint256,uint256)": TypedContractEvent<

@@ -14,6 +14,7 @@ import { NotificationType, NotificationSeverity } from '../../notifications/enum
 import { NotificationAction } from '../../notifications/enums/notification-action.enum';
 import { ChainManagerRegistry } from '../../blockchain/services/chain-manager-registry.service';
 import { NetworkContextService } from '../../blockchain/services/network-context.service';
+import { NetworkRegistryService } from '../../blockchain/services/network-registry.service';
 import { UserPortfolioService } from '../../user-portfolio/services/user-portfolio.service';
 import { toCanonical, fromCanonical } from '../../blockchain/utils/numeric-conversion';
 
@@ -25,6 +26,7 @@ export class PurchaseTrackerService {
     private configService: ConfigService,
     private chainManagerRegistry: ChainManagerRegistry,
     private networkContextService: NetworkContextService,
+    private networkRegistryService: NetworkRegistryService,
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(Settlement.name) private settlementModel: Model<SettlementDocument>,
@@ -33,6 +35,29 @@ export class PurchaseTrackerService {
     private userPortfolioService: UserPortfolioService,
     @InjectConnection() private connection: Connection,
   ) {}
+
+  /**
+   * Read claimable yield from on-chain YieldVault (source of truth).
+   * Returns canonical USDC string (e.g. "12.3456").
+   */
+  private async getOnChainClaimableYield(
+    investorWallet: string,
+    tokenAddress?: string,
+  ): Promise<string> {
+    if (!tokenAddress) return '0.0000';
+
+    try {
+      return await this.networkRegistryService.getInvestorClaimableYield(
+        investorWallet,
+        tokenAddress,
+      );
+    } catch (error: any) {
+      this.logger.warn(
+        `On-chain claimable lookup failed for ${tokenAddress}: ${error?.message || error}`,
+      );
+      return '0.0000';
+    }
+  }
 
   /**
    * Validate and record a purchase transaction
@@ -502,72 +527,50 @@ export class PurchaseTrackerService {
     const staticPortfolio = await Promise.all(
       Array.from(portfolioMap.values()).map(async (item) => {
         try {
-          // Check if settlement has been distributed for this asset
+          // Settlement document is now metadata only (date/id/tx refs).
+          // Claimable amount itself must come from chain.
           const settlement = await this.settlementModel.findOne({
             assetId: item.assetId,
             network,
           }).sort({ createdAt: -1 });
 
-          if (settlement && settlement.usdcAmount) {
-            // Get asset details for total supply
-            const asset = await this.assetModel.findOne({ assetId: item.assetId, network });
+          // Asset lookup (for tokenAddress needed by on-chain claimable read)
+          const asset = await this.assetModel.findOne({ assetId: item.assetId });
+          const tokenAddress = asset?.token?.address;
 
-            if (asset && (asset.listing?.sold || asset.tokenParams?.totalSupply)) {
-              const userTokenBalanceRaw = fromCanonical(item.totalAmount, 18);
-              const settlementUSDCCanonical = settlement.usdcAmount.includes('.') 
-                ? settlement.usdcAmount 
-                : toCanonical(settlement.usdcAmount, 6).value;
-              const settlementUSDCRaw = fromCanonical(settlementUSDCCanonical, 6);
-              
-              const totalSupplyCanonical = (asset.listing?.sold || asset.tokenParams?.totalSupply || '0').includes('.')
-                ? (asset.listing?.sold || asset.tokenParams?.totalSupply || '0')
-                : toCanonical(asset.listing?.sold || asset.tokenParams?.totalSupply || '0', 18).value;
-              const totalSupplyRaw = fromCanonical(totalSupplyCanonical, 18);
+          const claimableYield = await this.getOnChainClaimableYield(
+            investorWallet,
+            tokenAddress,
+          );
 
-              // Calculate claimable yield: (userTokens * settlementUSDC) / totalSupply
-              const claimableYieldRaw = totalSupplyRaw > 0n
-                ? (userTokenBalanceRaw * settlementUSDCRaw) / totalSupplyRaw
-                : 0n;
+          const claimable = Number.parseFloat(claimableYield || '0');
+          const hasClaimable = Number.isFinite(claimable) && claimable > 0;
 
-              const claimableYieldCanonical = toCanonical(claimableYieldRaw, 6);
+          const yieldInfo: any = {
+            // settlement doc can be missing if listener lags; if on-chain claimable > 0, treat as distributed
+            settlementDistributed: Boolean(settlement) || hasClaimable,
+            claimableYield,
+            claimableYieldFormatted: `${claimableYield} USDC`,
+            settlementDate: settlement?.settlementDate,
+            settlementId: settlement?._id,
+          };
 
-              const yieldInfo: any = {
-                settlementDistributed: true,
-                claimableYield: claimableYieldCanonical.value, // in canonical USDC
-                claimableYieldFormatted: `${claimableYieldCanonical.value} USDC`,
-                settlementDate: settlement.settlementDate,
-                settlementId: settlement._id,
-              };
-
-              // If status is CLAIMED, fetch yield claim transaction hash
-              if (item.status === 'CLAIMED') {
-                const yieldClaim = await this.yieldClaimModel.findOne({
-                  assetId: item.assetId,
-                  investorWallet: investorWallet.toLowerCase(),
-                  network,
-                });
-                if (yieldClaim) {
-                  yieldInfo.yieldClaimTxHash = yieldClaim.txHash;
-                }
-              }
-
-              return {
-                purchaseType: 'STATIC',
-                ...item,
-                yieldInfo,
-              };
+          // If status is CLAIMED, fetch yield claim transaction hash
+          if (item.status === 'CLAIMED') {
+            const yieldClaim = await this.yieldClaimModel.findOne({
+              assetId: item.assetId,
+              investorWallet: investorWallet.toLowerCase(),
+              network,
+            });
+            if (yieldClaim) {
+              yieldInfo.yieldClaimTxHash = yieldClaim.txHash;
             }
           }
 
-          // No settlement yet
           return {
             purchaseType: 'STATIC',
             ...item,
-            yieldInfo: {
-              settlementDistributed: false,
-              claimableYield: '0.0000',
-              claimableYieldFormatted: '0.0000 USDC',
-            },
+            yieldInfo,
           };
         } catch (error) {
           this.logger.error(`Error calculating yield for asset ${item.assetId}: ${error}`);

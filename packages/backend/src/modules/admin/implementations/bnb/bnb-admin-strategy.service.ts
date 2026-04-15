@@ -9,12 +9,13 @@ import { NotificationService } from '../../../notifications/services/notificatio
 import { DeployTokenDto } from '../../../blockchain/dto/deploy-token.dto';
 import { ListOnMarketplaceDto } from '../../../blockchain/dto/list-on-marketplace.dto';
 import { NetworkRegistryService } from '../../../blockchain/services/network-registry.service';
+import { IssuerVaultService } from '../../../issuer-vault/services/issuer-vault.service';
 import { ConfigService } from '@nestjs/config';
 import { MantleAdminStrategy } from '../mantle/mantle-admin-strategy.service';
 
 @Injectable()
 export class BnbAdminStrategy extends MantleAdminStrategy {
-  private readonly bnbExplorerPrefix = 'https://testnet.bscscan.com/tx/';
+  private readonly bnbExplorerPrefix = 'https://testnet-explorer.hsk.xyz/tx/';
 
   private convertToBnbExplorerUrl(value: string): string {
     const txHashPattern = /(0x[a-fA-F0-9]{64})$/;
@@ -35,6 +36,7 @@ export class BnbAdminStrategy extends MantleAdminStrategy {
     assetLifecycleService: AssetLifecycleService,
     notificationService: NotificationService,
     configService: ConfigService,
+    issuerVaultService: IssuerVaultService,
   ) {
     super(
       assetModel,
@@ -44,6 +46,7 @@ export class BnbAdminStrategy extends MantleAdminStrategy {
       assetLifecycleService,
       notificationService,
       configService,
+      issuerVaultService,
     );
   }
 

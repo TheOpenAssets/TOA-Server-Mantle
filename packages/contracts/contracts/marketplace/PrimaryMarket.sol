@@ -5,6 +5,10 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../core/RWAToken.sol";
 import "../core/IdentityRegistry.sol";
 
+interface IIssuerVault {
+    function recordDeposit(bytes32 assetId, uint256 amount) external;
+}
+
 contract PrimaryMarket {
     enum ListingType { STATIC, AUCTION }
     enum AuctionPhase { BIDDING, ENDED }
@@ -40,11 +44,20 @@ contract PrimaryMarket {
     mapping(bytes32 => Listing) public listings;
     // AssetId => Array of Bids
     mapping(bytes32 => Bid[]) public bids;
-    
+
+    // ─── IssuerVault routing ──────────────────────────────────────────────────
+    /// @notice Per-asset IssuerVault address. If non-zero, USDC routes there directly.
+    ///         If zero (old assets), USDC routes to platformCustody (backwards compatible).
+    mapping(bytes32 => address) public issuerVaultForAsset;
+
     address public platformCustody;
     IERC20 public USDC;
     address public factory;
     address public owner;
+
+    /// @notice Platform fee in basis points (150 = 1.5%)
+    uint256 public constant PLATFORM_FEE_BPS = 150;
+    uint256 public constant BASIS_POINTS = 10_000;
 
     // Authorized vaults for creating liquidation listings
     mapping(address => bool) public authorizedVaults;
@@ -55,6 +68,7 @@ contract PrimaryMarket {
     event AuctionEnded(bytes32 indexed assetId, uint256 clearingPrice, uint256 totalTokensSold);
     event BidSettled(bytes32 indexed assetId, address indexed bidder, uint256 tokensReceived, uint256 cost, uint256 refund);
     event VaultAuthorized(address indexed vault, bool authorized);
+    event IssuerVaultRegistered(bytes32 indexed assetId, address indexed issuerVault);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner");
@@ -87,6 +101,23 @@ contract PrimaryMarket {
         emit VaultAuthorized(vault, authorized);
     }
 
+    /**
+     * @notice Register an IssuerVault for an asset so purchases route USDC there directly.
+     *         Must be called before the listing goes live.
+     * @param assetId     The asset identifier
+     * @param issuerVault The deployed IssuerVault contract address
+     */
+    function registerIssuerVault(bytes32 assetId, address issuerVault) external onlyOwner {
+        require(issuerVault != address(0), "Invalid issuerVault address");
+        issuerVaultForAsset[assetId] = issuerVault;
+        emit IssuerVaultRegistered(assetId, issuerVault);
+    }
+
+    /**
+     * @notice Create a marketplace listing.
+     * @param issuerVault  Optional IssuerVault address. If non-zero, registers vault routing
+     *                     for this asset so purchases route USDC directly there.
+     */
     function createListing(
         bytes32 assetId,
         address tokenAddress,
@@ -95,9 +126,16 @@ contract PrimaryMarket {
         uint256 minPrice,
         uint256 duration,
         uint256 totalSupply,
-        uint256 minInvestment
+        uint256 minInvestment,
+        address issuerVault
     ) external onlyOwnerOrAuthorizedVault {
         require(!listings[assetId].active, "Already listed");
+
+        // Register IssuerVault routing if provided
+        if (issuerVault != address(0)) {
+            issuerVaultForAsset[assetId] = issuerVault;
+            emit IssuerVaultRegistered(assetId, issuerVault);
+        }
 
         Listing storage newListing = listings[assetId];
         newListing.tokenAddress = tokenAddress;
@@ -119,7 +157,42 @@ contract PrimaryMarket {
         emit ListingCreated(assetId, tokenAddress, listingType, priceOrReserve);
     }
 
-    // --- STATIC LISTING FUNCTIONS ---
+    // ─── Internal: route USDC payment ─────────────────────────────────────────
+
+    /**
+     * @dev Splits payment into platform fee (to platformCustody) and net amount
+     *      (to IssuerVault if registered, else to platformCustody).
+     *      Calls IssuerVault.recordDeposit() to update accounting.
+     * @param assetId  The asset identifier
+     * @param payer    Address paying USDC
+     * @param payment  Total USDC amount (gross, before fee split)
+     */
+    function _routePayment(bytes32 assetId, address payer, uint256 payment) internal {
+        address vault = issuerVaultForAsset[assetId];
+
+        if (vault != address(0)) {
+            // Split: 1.5% fee to platformCustody, 98.5% net to IssuerVault
+            uint256 fee = (payment * PLATFORM_FEE_BPS) / BASIS_POINTS;
+            uint256 netToVault = payment - fee;
+
+            // Pull full amount from payer into this contract first
+            require(USDC.transferFrom(payer, address(this), payment), "Payment failed");
+
+            // Forward fee to platform
+            if (fee > 0) {
+                require(USDC.transfer(platformCustody, fee), "Fee transfer failed");
+            }
+
+            // Forward net amount to IssuerVault and notify its accounting
+            require(USDC.transfer(vault, netToVault), "Vault transfer failed");
+            IIssuerVault(vault).recordDeposit(assetId, netToVault);
+        } else {
+            // Legacy path: full payment goes to platformCustody (old assets)
+            require(USDC.transferFrom(payer, platformCustody, payment), "Payment failed");
+        }
+    }
+
+    // ─── Static listing ───────────────────────────────────────────────────────
 
     function buyTokens(bytes32 assetId, uint256 amount) external {
         Listing storage listing = listings[assetId];
@@ -131,8 +204,8 @@ contract PrimaryMarket {
         uint256 price = listing.staticPrice;
         uint256 payment = price * amount / 1e18; // Price is per 1e18 tokens (1 full token)
 
-        require(USDC.transferFrom(msg.sender, platformCustody, payment), "Payment failed");
-        
+        _routePayment(assetId, msg.sender, payment);
+
         RWAToken(listing.tokenAddress).transferFrom(platformCustody, msg.sender, amount);
 
         listing.sold += amount;
@@ -143,7 +216,7 @@ contract PrimaryMarket {
         emit TokensPurchased(assetId, msg.sender, amount, price, payment);
     }
 
-    // --- AUCTION FUNCTIONS ---
+    // ─── Auction functions ────────────────────────────────────────────────────
 
     function submitBid(bytes32 assetId, uint256 tokenAmount, uint256 price) external {
         Listing storage listing = listings[assetId];
@@ -172,29 +245,27 @@ contract PrimaryMarket {
         Listing storage listing = listings[assetId];
         require(listing.listingType == ListingType.AUCTION, "Not an auction");
         require(listing.auctionPhase == AuctionPhase.BIDDING, "Already ended");
-        // We allow manual ending even before endTime if admin decides, or require endTime passed:
-        // require(block.timestamp >= listing.endTime, "Auction not yet ended"); 
 
         listing.auctionPhase = AuctionPhase.ENDED;
         listing.clearingPrice = clearingPrice;
-        listing.active = false; // Bidding stops
+        listing.active = false;
 
-        emit AuctionEnded(assetId, clearingPrice, 0); // Emitting 0 for tokens sold as it's not known until settlement. Off-chain services should calculate this.
+        emit AuctionEnded(assetId, clearingPrice, 0);
     }
 
     function settleBid(bytes32 assetId, uint256 bidIndex) external {
         Listing storage listing = listings[assetId];
         require(listing.listingType == ListingType.AUCTION, "Not an auction");
         require(listing.auctionPhase == AuctionPhase.ENDED, "Auction not ended");
-        
+
         Bid storage bid = bids[assetId][bidIndex];
         require(!bid.settled, "Already settled");
         require(msg.sender == bid.bidder || msg.sender == owner, "Not authorized to settle");
-        
+
         bid.settled = true;
 
         if (bid.price > listing.clearingPrice) {
-            // --- Oversubscription Protection ---
+            // ─── Oversubscription Protection ─────────────────────────────────
             uint256 tokensToAllocate = bid.tokenAmount;
             uint256 remainingSupply = listing.totalSupply - listing.sold;
 
@@ -206,28 +277,39 @@ contract PrimaryMarket {
                 uint256 cost = listing.clearingPrice * tokensToAllocate / 1e18;
                 uint256 refund = bid.usdcDeposited - cost;
 
-                // 1. Update sold amount BEFORE transfer
                 listing.sold += tokensToAllocate;
 
-                // 2. Transfer tokens to bidder
+                // Transfer tokens to bidder
                 RWAToken(listing.tokenAddress).transferFrom(platformCustody, bid.bidder, tokensToAllocate);
-                
-                // 3. Transfer cost to platform
-                require(USDC.transfer(platformCustody, cost), "Platform transfer failed");
-                
-                // 4. Refund excess
+
+                // Route cost: 1.5% fee to platformCustody, 98.5% to IssuerVault (or all to custody)
+                address vault = issuerVaultForAsset[assetId];
+                if (vault != address(0)) {
+                    uint256 fee = (cost * PLATFORM_FEE_BPS) / BASIS_POINTS;
+                    uint256 netToVault = cost - fee;
+
+                    if (fee > 0) {
+                        require(USDC.transfer(platformCustody, fee), "Fee transfer failed");
+                    }
+                    require(USDC.transfer(vault, netToVault), "Vault transfer failed");
+                    IIssuerVault(vault).recordDeposit(assetId, netToVault);
+                } else {
+                    require(USDC.transfer(platformCustody, cost), "Platform transfer failed");
+                }
+
+                // Refund excess to bidder
                 if (refund > 0) {
                     require(USDC.transfer(bid.bidder, refund), "Refund failed");
                 }
 
                 emit BidSettled(assetId, bid.bidder, tokensToAllocate, cost, refund);
             } else {
-                // No supply left for this bid
+                // No supply left — full refund
                 require(USDC.transfer(bid.bidder, bid.usdcDeposited), "Refund failed");
                 emit BidSettled(assetId, bid.bidder, 0, 0, bid.usdcDeposited);
             }
         } else {
-            // Losing Bid - Full Refund
+            // Losing bid — full refund
             require(USDC.transfer(bid.bidder, bid.usdcDeposited), "Refund failed");
             emit BidSettled(assetId, bid.bidder, 0, 0, bid.usdcDeposited);
         }
@@ -237,7 +319,7 @@ contract PrimaryMarket {
     function getBidCount(bytes32 assetId) external view returns (uint256) {
         return bids[assetId].length;
     }
-    
+
     function closeListing(bytes32 assetId) external onlyOwner {
         listings[assetId].active = false;
     }

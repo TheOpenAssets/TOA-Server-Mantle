@@ -4,6 +4,7 @@ export const ContractNameRegistry = {
   IdentityRegistry: 'IdentityRegistry',
   TokenFactory: 'TokenFactory',
   YieldVault: 'YieldVault',
+  IssuerVault: 'IssuerVault',
   PrimaryMarket: 'PrimaryMarket',
   SecondaryMarket: 'SecondaryMarket',
   TrustedIssuersRegistry: 'TrustedIssuersRegistry',

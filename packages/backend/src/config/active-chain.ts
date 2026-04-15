@@ -1,14 +1,15 @@
 import { Chain } from 'viem';
-import { arbitrumSepolia, bscTestnet } from 'viem/chains';
+import { arbitrumSepolia } from 'viem/chains';
 import { creditcoinTestnet } from '@/src/config/creditcoin-chain';
 import { mantleSepolia } from '@/src/config/mantle-chain';
+import { hashkeyTestnet } from '@/src/config/hashkey-chain';
 
 /**
  * Returns the active viem Chain object based on the NETWORK_TYPE environment variable.
  *
  * Supported values:
  *  - 'creditcoin'  → Creditcoin Testnet (CC3)
- *  - 'bnb'         → BNB Smart Chain Testnet
+ *  - 'hashkey'     → HashKey Chain Testnet
  *  - 'arbitrum'    → Arbitrum Sepolia
  *  - anything else (default/mantle) → Mantle Sepolia
  */
@@ -23,8 +24,8 @@ export function getActiveChain(): Chain {
     return arbitrumSepolia;
   }
 
-  if (networkType === 'bnb') {
-    return bscTestnet;
+  if (networkType === 'hashkey') {
+    return hashkeyTestnet;
   }
 
   return mantleSepolia;

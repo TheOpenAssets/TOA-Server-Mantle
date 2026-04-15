@@ -98,8 +98,8 @@ export class PartnerGatewayController {
         borrowTxHash: '0xabc...',
         recordTxHash: '0xghi...',
         explorerLinks: {
-          borrow: 'https://testnet.bscscan.com/tx/0xabc...',
-          record: 'https://testnet.bscscan.com/tx/0xghi...',
+          borrow: 'https://testnet-explorer.hsk.xyz/tx/0xabc...',
+          record: 'https://testnet-explorer.hsk.xyz/tx/0xghi...',
         },
         creditBoost: {
           score: 720,
@@ -149,8 +149,8 @@ export class PartnerGatewayController {
         partnerRepayTxHash: '0xjkl...',
         vaultRepayTxHash: '0xmno...',
         explorerLinks: {
-          partnerRepay: 'https://testnet.bscscan.com/tx/0xjkl...',
-          vaultRepay: 'https://testnet.bscscan.com/tx/0xmno...',
+          partnerRepay: 'https://testnet-explorer.hsk.xyz/tx/0xjkl...',
+          vaultRepay: 'https://testnet-explorer.hsk.xyz/tx/0xmno...',
         },
       },
     },

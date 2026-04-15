@@ -201,7 +201,7 @@ async function main() {
     await (Yield as any).setFactory(Factory.target);
     console.log("YieldVault.setFactory -> OK");
 
-    const PM = await (await ethers.getContractFactory("PrimaryMarketplace")).deploy(
+    const PM = await (await ethers.getContractFactory("PrimaryMarket")).deploy(
       Factory.target, deployer.address, usdc
     );
     await PM.waitForDeployment();
